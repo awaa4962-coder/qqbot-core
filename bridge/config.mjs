@@ -12,6 +12,11 @@ function _readKey(filename, label) {
   try {
     return fs.readFileSync(p, 'utf-8').trim();
   } catch (e) {
+    // CI / 测试环境允许缺少密钥文件
+    if (process.env.CI || process.env.NODE_ENV === 'test') {
+      console.warn('[config] 缺少密钥文件: ' + p + ' (' + label + ')，测试模式跳过');
+      return '';
+    }
     console.error('[config] 缺少密钥文件: ' + p + ' (' + label + ')');
     console.error('[config] 请确认 ' + filename + ' 存在且可读');
     process.exit(1);
