@@ -18,5 +18,7 @@ jobs:
           cache: npm
 
       - run: npm ci
+      # CI 环境创建 dummy .env 文件（测试需要 config 模块加载不崩溃）
+      - run: echo dummy > .env_mimo && echo dummy > .env_ds && echo dummy > .env_tavily && echo dummy > .env_doubao
       - run: npm run lint
       - run: npm test
