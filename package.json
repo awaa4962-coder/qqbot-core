@@ -1,0 +1,22 @@
+{
+  "name": "qqfriend",
+  "version": "1.1.0",
+  "description": "夜星 QQ 机器人桥接器",
+  "type": "module",
+  "main": "napcat_bridge.mjs",
+  "scripts": {
+    "start": "node napcat_bridge.mjs",
+    "test": "node --test \"test/**/*.mjs\"",
+    "lint": "eslint bridge/"
+  },
+  "dependencies": {
+    "docx": "^9.7.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.4"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

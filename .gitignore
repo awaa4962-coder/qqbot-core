@@ -1,0 +1,50 @@
+# 敏感信息 - 绝不提交
+.env_*
+.ds_key
+.env
+*.key
+
+# 依赖
+node_modules/
+
+# 运行时数据
+user_memory.json
+group_chats.json
+*.tmp.*
+logs/
+napcat_inbox.json
+ddg_search.json
+
+# 日志
+bridge_stdout.log
+bridge_stderr.log
+*.log
+
+# NapCat 框架
+NapCat/
+
+# 文档生成
+*.docx
+~$*.docx
+
+# 备份
+*.bak
+napcat_bridge.js
+
+# 个人配置
+MEMORY.md
+SOUL.md
+IDENTITY.md
+USER.md
+AGENTS.md
+HEARTBEAT.md
+DREAMS.md
+TOOLS.md
+memory/
+
+# 其他
+.openclaw/
+tools/
+skills/
+0
+Drawing1.*
