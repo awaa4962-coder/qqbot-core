@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QQFriend 控制台</title>
+  <link rel="stylesheet" href="./app.css?v=20260730-capture">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="控制台导航">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">QF</span>
+        <div>
+          <strong>夜星控制台</strong>
+          <small id="sidebarVersion">QQFriend</small>
+        </div>
+      </div>
+
+      <nav class="side-nav">
+        <button type="button" class="view-tab active" data-view="overview" aria-current="page"><span>总览</span></button>
+        <button type="button" class="view-tab" data-view="capabilities"><span>能力</span><i id="capabilityNavCount">-</i></button>
+        <button type="button" class="view-tab" data-view="api-center"><span>API</span><i id="apiNavCount">-</i></button>
+        <button type="button" class="view-tab" data-view="services"><span>服务</span></button>
+        <button type="button" class="view-tab" data-view="configuration"><span>配置</span></button>
+        <button type="button" class="view-tab" data-view="memes"><span>梗库</span><i id="memeNavCount">-</i></button>
+        <button type="button" class="view-tab" data-view="stickers"><span>表情</span><i id="stickerNavCount">-</i></button>
+        <button type="button" class="view-tab" data-view="diagnostics"><span>诊断</span></button>
+        <button type="button" class="view-tab" data-view="logs"><span>日志</span></button>
+      </nav>
+
+      <div class="side-nav side-nav-footer">
+        <button type="button" class="view-tab" data-view="maintenance"><span>维护与外观</span></button>
+      </div>
+      <div class="sidebar-health">
+        <span class="status-dot" id="sidebarStatusDot"></span>
+        <div><strong id="sidebarStatus">正在连接</strong><small id="sidebarStatusDetail">等待 Bridge</small></div>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <div class="page-heading">
+          <p class="eyebrow" id="pageEyebrow">运行中心</p>
+          <h1 id="pageTitle">总览</h1>
+          <p class="subtitle" id="subtitle">正在连接本地 Bridge...</p>
+        </div>
+        <div class="topbar-actions">
+          <span class="refresh-meta" id="lastUpdated">等待首次刷新</span>
+          <button type="button" data-action="refresh">刷新</button>
+          <button type="button" class="primary" id="topServiceButton" data-view="services">服务控制</button>
+        </div>
+      </header>
+
+      <div class="activity-bar" id="activityBar" role="status" aria-live="polite">
+        <span class="activity-spinner" aria-hidden="true"></span>
+        <div class="activity-copy"><strong id="activityTitle">正在处理</strong><small id="activityDetail">完成后会自动更新当前页面。</small></div>
+        <span class="activity-progress" aria-hidden="true"><i></i></span>
+      </div>
+
+      <main class="content">
+        <section class="view active" data-view-panel="overview">
+          <div class="notice-strip ok" id="systemNotice"><strong>正在检查服务</strong><span>稍候会显示需要处理的事项。</span></div>
+
+          <section class="status-grid" aria-label="运行状态">
+            <article class="metric"><span>Bridge</span><strong id="bridgeState">未知</strong><small id="bridgeDetail">等待刷新</small></article>
+            <article class="metric"><span>群与用户</span><strong id="storageState">-</strong><small>记忆库状态</small></article>
+            <article class="metric"><span>内存</span><strong id="memoryState">-</strong><small id="uptimeState">运行时长 -</small></article>
+            <article class="metric"><span>消息队列</span><strong id="stormState">-</strong><small id="stormDetail">保护状态</small></article>
+            <article class="metric"><span>短期上下文</span><strong id="cognitionState">-</strong><small id="cognitionDetail">等待状态</small></article>
+          </section>
+
+          <section class="surface">
+            <div class="section-head">
+              <div><p class="eyebrow">当前生效</p><h2>功能和访问范围</h2></div>
+              <button type="button" data-action="refresh">刷新全部</button>
+            </div>
+            <div class="config-list" id="configList"></div>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="capabilities" hidden>
+          <section class="surface workspace-surface">
+            <div class="section-head">
+              <div><p class="eyebrow">功能发现</p><h2>哈吉米能做什么</h2><small>聊天帮助和这里共用同一份能力目录。</small></div>
+              <button type="button" data-action="refreshCapabilities">刷新状态</button>
+            </div>
+            <div class="capability-toolbar">
+              <label>搜索能力<input id="capabilitySearch" placeholder="例如：JM、识图、日报"></label>
+              <label>分类<select id="capabilityCategory"><option value="all">全部分类</option></select></label>
+              <label>状态<select id="capabilityStatus"><option value="all">全部状态</option><option value="available">可用</option><option value="limited">受限</option><option value="unavailable">不可用</option><option value="reserved">预留</option></select></label>
+            </div>
+            <div class="capability-summary" id="capabilitySummary">等待读取能力目录</div>
+            <div class="capability-list" id="capabilityList"></div>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="api-center" hidden>
+          <section class="surface workspace-surface">
+            <div class="section-head">
+              <div><p class="eyebrow">模型快拆</p><h2>API 中心</h2><small>先保存并测试 API，再把它装入功能插槽。Key 只写入本机，不会回显。</small></div>
+              <div class="action-row"><button type="button" data-action="refreshApiProviders">刷新</button><button type="button" data-action="rollbackApiProviders">回滚上一版</button></div>
+            </div>
+
+            <div class="api-summary" id="apiSummary">
+              <article><span>API 实例</span><strong id="apiProviderCount">-</strong><small>当前已加载</small></article>
+              <article><span>已配置 Key</span><strong id="apiKeyCount">-</strong><small>不会显示原文</small></article>
+              <article><span>协议预设</span><strong id="apiPresetCount">-</strong><small>支持四类协议</small></article>
+              <article><span>群聊路由</span><strong id="apiGroupRoute">-</strong><small>主力 → DeepSeek</small></article>
+            </div>
+
+            <div class="api-workbench">
+              <aside class="api-provider-list">
+                <div class="panel-title"><div><span>我的 API</span><small>选择后编辑或测试</small></div><button type="button" data-action="newApiProvider">新增</button></div>
+                <div id="apiProviderList" class="provider-cards"></div>
+              </aside>
+
+              <div class="api-provider-editor">
+                <div class="panel-title"><div><span id="apiEditorTitle">API 设置</span><small id="apiEditorHint">从左侧选择一个实例</small></div><span class="save-state" id="apiKeyState">未配置</span></div>
+                <div class="api-form-grid">
+                  <label>厂商预设<select id="apiPreset"></select></label>
+                  <label>实例 ID<input id="apiId" placeholder="例如 kimi-main"></label>
+                  <label>显示名称<input id="apiName" placeholder="例如 Kimi 主力"></label>
+                  <label>协议<select id="apiProtocol"></select></label>
+                  <label class="wide">完整 Endpoint<input id="apiEndpoint" placeholder="https://.../chat/completions"></label>
+                  <label>模型名<input id="apiModel" placeholder="从供应商控制台复制"></label>
+                  <label>鉴权<select id="apiAuth"><option value="bearer">Bearer</option><option value="x-api-key">x-api-key</option><option value="x-goog-api-key">x-goog-api-key</option><option value="api-key">api-key</option><option value="none">无需 Key</option></select></label>
+                  <label>Token 字段<input id="apiTokenField" value="max_tokens"></label>
+                  <label>API Key<input id="apiKey" type="password" autocomplete="new-password" placeholder="留空表示不修改"></label>
+                  <label class="toggle-field"><input id="apiAllowLocal" type="checkbox"><span>这是本机模型接口</span></label>
+                </div>
+                <div class="capability-checks" id="apiCapabilityChecks">
+                  <label><input type="checkbox" value="text" checked>文本</label>
+                  <label><input type="checkbox" value="vision">图片</label>
+                  <label><input type="checkbox" value="tools">工具调用</label>
+                  <label><input type="checkbox" value="reasoning">思考模式</label>
+                </div>
+                <div class="action-row left">
+                  <button type="button" class="primary" id="apiSaveButton" data-action="saveApiProvider">保存修改</button>
+                  <button type="button" data-action="testApiProvider">测试连接</button>
+                  <button type="button" class="danger-quiet" data-action="deleteApiProvider">删除</button>
+                </div>
+                <pre class="output compact-empty" id="apiTestOutput">尚未测试连接</pre>
+              </div>
+            </div>
+          </section>
+
+          <section class="surface workspace-surface">
+            <div class="section-head">
+              <div><p class="eyebrow">功能插槽</p><h2>把 API 用在哪里</h2><small>切换只影响新请求；群聊 DeepSeek 兜底固定保留。</small></div>
+              <button type="button" class="primary" data-action="saveApiRoutes">应用插槽</button>
+            </div>
+            <div class="api-route-list" id="apiRouteList"></div>
+            <pre class="output compact-empty" id="apiRouteOutput">当前插槽会在这里显示</pre>
+          </section>
+
+          <section class="surface api-guide">
+            <div class="section-head"><div><p class="eyebrow">其他模型</p><h2>不知道选哪个预设？</h2></div></div>
+            <div class="guide-paths">
+              <div><strong>/chat/completions</strong><span>选 OpenAI Chat 兼容</span></div>
+              <div><strong>/responses</strong><span>选 Responses 兼容</span></div>
+              <div><strong>/v1/messages</strong><span>选 Anthropic 兼容</span></div>
+              <div><strong>:generateContent</strong><span>选 Gemini 原生</span></div>
+            </div>
+            <p class="muted">从供应商文档复制完整 Endpoint 和模型名，保存后先点“测试连接”。测试通过再装入插槽，失败不会影响当前机器人。</p>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="services" hidden>
+          <section class="surface">
+            <div class="section-head"><div><p class="eyebrow">运行控制</p><h2>启动、检查与重启</h2></div></div>
+            <div class="service-actions">
+              <button type="button" class="service-action primary" data-action="startAll"><strong>启动全部</strong><small>NapCat · Bridge · 守护进程</small></button>
+              <button type="button" class="service-action" data-action="health"><strong>健康检查</strong><small>登录 · 端口 · Bridge</small></button>
+              <button type="button" class="service-action" data-action="restartBridge"><strong>重启 Bridge</strong><small>保留 QQ 登录</small></button>
+              <button type="button" class="service-action danger" data-action="stopBridge"><strong>停止 Bridge</strong><small>停止回复服务</small></button>
+              <button type="button" class="service-action danger" data-action="stopAll"><strong>停止全部</strong><small>Bridge · 守护进程 · NapCat</small></button>
+            </div>
+            <pre class="output compact-empty" id="serviceOutput">还没有运行操作记录</pre>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="configuration" hidden>
+          <section class="surface workspace-surface">
+            <div class="section-head">
+              <div><p class="eyebrow">常用配置</p><div class="heading-row"><h2>名称和白名单</h2><span class="save-state" id="configDirtyState">已保存</span></div></div>
+              <button type="button" data-action="refreshConfig">重新读取</button>
+            </div>
+
+            <div class="friendly-config" id="friendlyConfigForm">
+              <section class="config-editor-section">
+                <h3>机器人</h3>
+                <div class="config-form-grid two">
+                  <div class="list-field"><span>机器人名称</span><div class="list-editor" data-list-editor-for="cfgBotNames"><div class="list-editor-chips"></div><input aria-label="新增机器人名称" placeholder="输入名称后按回车"><button type="button" class="icon-button" data-list-add title="添加名称" aria-label="添加名称">+</button></div><input id="cfgBotNames" type="hidden"></div>
+                  <div class="list-field"><span>管理员 QQ</span><div class="list-editor" data-list-editor-for="cfgAdminUins" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增管理员 QQ" inputmode="numeric" placeholder="输入 QQ 后按回车"><button type="button" class="icon-button" data-list-add title="添加 QQ" aria-label="添加 QQ">+</button></div><input id="cfgAdminUins" type="hidden"></div>
+                </div>
+              </section>
+
+              <section class="config-editor-section">
+                <h3>群聊范围</h3>
+                <div class="config-form-grid two">
+                  <div class="list-field"><span>群白名单</span><div class="list-editor" data-list-editor-for="cfgGroupWhitelist" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增群号" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgGroupWhitelist" type="hidden"></div>
+                  <div class="list-field"><span>日报群</span><div class="list-editor" data-list-editor-for="cfgSummaryGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增日报群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgSummaryGroups" type="hidden"></div>
+                  <div class="list-field"><span>资源 / JM 群</span><div class="list-editor" data-list-editor-for="cfgResourceGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增资源群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgResourceGroups" type="hidden"></div>
+                  <div class="list-field"><span>功能群</span><div class="list-editor" data-list-editor-for="cfgFeatureGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增功能群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgFeatureGroups" type="hidden"></div>
+                  <div class="list-field"><span>长上下文群</span><div class="list-editor" data-list-editor-for="cfgLongGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增长上下文群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgLongGroups" type="hidden"></div>
+                </div>
+              </section>
+
+              <section class="config-editor-section">
+                <h3>私聊范围</h3>
+                <div class="config-form-grid two">
+                  <div class="list-field"><span>好友白名单</span><div class="list-editor" data-list-editor-for="cfgFriendWhitelist" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增好友 QQ" inputmode="numeric" placeholder="输入 QQ"><button type="button" class="icon-button" data-list-add title="添加 QQ" aria-label="添加 QQ">+</button></div><input id="cfgFriendWhitelist" type="hidden"></div>
+                  <div class="list-field"><span>JM 私聊白名单</span><div class="list-editor" data-list-editor-for="cfgJmUsers" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增 JM 用户" inputmode="numeric" placeholder="输入 QQ"><button type="button" class="icon-button" data-list-add title="添加 QQ" aria-label="添加 QQ">+</button></div><input id="cfgJmUsers" type="hidden"></div>
+                  <div class="list-field"><span>机器人黑名单</span><div class="list-editor" data-list-editor-for="cfgBotBlacklist" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增黑名单 QQ" inputmode="numeric" placeholder="输入 QQ"><button type="button" class="icon-button" data-list-add title="添加 QQ" aria-label="添加 QQ">+</button></div><input id="cfgBotBlacklist" type="hidden"></div>
+                </div>
+              </section>
+            </div>
+            <pre class="output compact-empty" id="configStatus">修改后保存，重启 Bridge 生效</pre>
+            <div class="save-bar" id="configSaveBar"><span><b id="configSaveHint">没有未保存修改</b><small>保存只写非密钥配置</small></span><div><button type="button" data-action="refreshConfig">放弃修改</button><button type="button" class="primary" data-action="saveConfig">保存并重启</button></div></div>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="memes" hidden>
+          <section class="surface workspace-surface">
+            <div class="section-head">
+              <div><p class="eyebrow">内容管理</p><div class="heading-row"><h2>联网梗库</h2><span class="save-state" id="memeDirtyState">已保存</span><span class="save-state neutral" id="memeUpdateState">等待更新</span></div></div>
+              <div class="action-row"><button type="button" data-action="refreshMemes">刷新</button><button type="button" data-action="runMemeWebUpdate">联网更新</button><button type="button" class="primary" data-action="saveMeme">保存词条</button><button type="button" class="more-button" data-menu-toggle="memeMoreMenu">更多操作</button></div>
+            </div>
+            <div class="action-menu" id="memeMoreMenu" hidden><button type="button" data-action="researchMemeWeb">查证当前词</button><button type="button" data-action="rollbackMemeWebUpdate">回退上次更新</button><button type="button" data-action="quarantineMeme">移入隔离</button><button type="button" data-action="activateMeme">恢复启用</button><button type="button" data-action="disableMeme">停用</button><button type="button" class="danger-quiet" data-action="deleteMeme">删除并防复活</button></div>
+            <div class="meme-editor">
+              <aside class="meme-list">
+                <div class="meme-mode"><span>使用范围</span><div class="segmented"><button type="button" data-action="setMemeMode" data-mode="steady">全部词条</button><button type="button" data-action="setMemeMode" data-mode="shadow">仅人工</button><button type="button" data-action="setMemeMode" data-mode="off">关闭</button></div></div>
+                <div class="meme-list-head"><label>词条<select id="memeSelect"></select></label></div>
+                <button type="button" data-action="newMeme">新建词条</button>
+                <div class="meme-history"><label>修改记录<select id="memeHistorySelect"></select></label><button type="button" data-action="restoreMemeHistory">恢复此版本</button></div>
+                <pre class="output compact" id="memeStatus">等待加载梗库</pre>
+              </aside>
+              <div class="meme-form" id="memeForm">
+                <div class="form-grid"><label>梗名<input id="memeName" placeholder="例如：哈基米"></label><label>等级<select id="memeLevel"><option>S</option><option>A</option><option>B</option></select></label><label>置信度<input id="memeConfidence" type="number" min="0" max="100" step="1" value="70"></label><label>状态<select id="memeEntryStatus"><option value="active">启用</option><option value="quarantined">隔离</option><option value="disabled">停用</option><option value="stale">过期</option></select></label></div>
+                <div class="form-grid scope-grid"><label>作用范围<select id="memeScopeType"><option value="global">全部群</option><option value="groups">指定群</option></select></label><label class="wide-field">群号<input id="memeScopeGroups" placeholder="多个群号用空格分隔"></label></div>
+                <label>别名<input id="memeAliases" placeholder="用空格、逗号或顿号分隔"></label>
+                <label>触发词<input id="memeTriggers" placeholder="用空格、逗号或顿号分隔"></label>
+                <label>含义<textarea id="memeMeaning" rows="3" placeholder="这个梗大概是什么意思"></textarea></label>
+                <label>用法<textarea id="memeUsage" rows="3" placeholder="什么时候能接，什么时候只理解不复读"></textarea></label>
+                <label>例句<textarea id="memeExamples" rows="3" placeholder="每行一个真实用法"></textarea></label>
+                <section class="meme-source-editor">
+                  <div class="subsection-head"><div><b>资料来源</b><small>网页标题与链接</small></div><button type="button" data-action="addMemeSource">添加来源</button></div>
+                  <div class="meme-source-list" id="memeSourceList"></div>
+                </section>
+                <fieldset class="meme-locks"><legend>人工保护</legend><label><input type="checkbox" data-meme-lock="name">梗名</label><label><input type="checkbox" data-meme-lock="aliases">别名</label><label><input type="checkbox" data-meme-lock="triggers">触发词</label><label><input type="checkbox" data-meme-lock="meaning">含义</label><label><input type="checkbox" data-meme-lock="usage">用法</label><label><input type="checkbox" data-meme-lock="examples">例句</label><label><input type="checkbox" data-meme-lock="sources">来源</label><label><input type="checkbox" data-meme-lock="scope">范围</label><label><input type="checkbox" data-meme-lock="confidence">置信度</label><label><input type="checkbox" data-meme-lock="level">等级</label><label><input type="checkbox" data-meme-lock="status">状态</label></fieldset>
+                <div class="meme-entry-meta" id="memeEntryMeta">选择词条后显示来源、范围和审核证据</div>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="stickers" hidden>
+          <section class="surface workspace-surface">
+            <div class="section-head">
+              <div><p class="eyebrow">回复素材</p><h2>QQ 收藏表情</h2></div>
+              <div class="action-row"><button type="button" data-action="refreshStickers">刷新</button><button type="button" data-action="analyzeStickers">分析待处理</button><button type="button" class="primary" data-action="syncStickers">同步收藏</button></div>
+            </div>
+            <div class="sticker-summary" id="stickerSummary"></div>
+            <div class="sticker-capture-panel">
+              <div class="sticker-capture-head">
+                <div>
+                  <p class="eyebrow">群聊采集</p>
+                  <h3>自动收集常用表情</h3>
+                  <span id="stickerCaptureCapability">正在读取 NapCat 能力</span>
+                </div>
+                <div class="segmented">
+                  <button type="button" data-action="setStickerCaptureMode" data-capture-mode="off">关闭</button>
+                  <button type="button" data-action="setStickerCaptureMode" data-capture-mode="observe">只观察</button>
+                  <button type="button" data-action="setStickerCaptureMode" data-capture-mode="auto">自动收录</button>
+                </div>
+              </div>
+              <div class="sticker-capture-settings">
+                <label>每天最多收录<input id="stickerCaptureDailyLimit" type="number" min="0" max="200" step="1"></label>
+                <label>采集库上限<input id="stickerCaptureCatalogLimit" type="number" min="1" max="2000" step="1"></label>
+                <label>直接收录可信度 %<input id="stickerCaptureConfidence" type="number" min="0" max="100" step="1"></label>
+                <label>重复发送人数<input id="stickerCaptureSenders" type="number" min="1" max="20" step="1"></label>
+                <button type="button" data-action="saveStickerSettings">保存采集设置</button>
+                <button type="button" data-action="refreshStickerCapabilities">检查 NapCat</button>
+                <button type="button" data-action="cleanupStickerTemp">清理临时文件</button>
+              </div>
+              <div class="sticker-capture-status" id="stickerCaptureStatus">等待采集状态</div>
+            </div>
+            <div class="sticker-settings">
+              <div class="setting-block">
+                <span>运行模式</span>
+                <div class="segmented"><button type="button" data-action="setStickerMode" data-mode="steady">正常</button><button type="button" data-action="setStickerMode" data-mode="shadow">只观察</button><button type="button" data-action="setStickerMode" data-mode="off">关闭</button></div>
+              </div>
+              <label class="toggle-line"><input id="stickerGroupEnabled" type="checkbox"><span>群聊使用</span></label>
+              <label class="toggle-line"><input id="stickerPrivateEnabled" type="checkbox"><span>私聊使用</span></label>
+              <label>普通概率 %<input id="stickerChance" type="number" min="0" max="100" step="1"></label>
+              <label>强语境概率 %<input id="stickerStrongChance" type="number" min="0" max="100" step="1"></label>
+              <label>冷却 分钟<input id="stickerCooldown" type="number" min="0" max="1440" step="1"></label>
+              <label class="wide">群白名单<input id="stickerGroups" placeholder="群号用空格分隔"></label>
+              <button type="button" data-action="saveStickerSettings">保存设置</button>
+            </div>
+            <div class="sticker-workbench">
+              <aside>
+                <label class="sticker-filter">显示
+                  <select id="stickerFilter">
+                    <option value="all">全部表情</option>
+                    <option value="qq-favorite">我的 QQ 收藏</option>
+                    <option value="group-capture">群聊采集</option>
+                    <option value="candidate">待确认候选</option>
+                  </select>
+                </label>
+                <div class="sticker-list-head"><b>收藏列表</b><span id="stickerListCount">0 张</span></div>
+                <div class="sticker-grid" id="stickerGrid"></div>
+              </aside>
+              <div class="sticker-detail" id="stickerDetailPanel">
+                <div class="sticker-preview" id="stickerPreview"><span>选择一张表情</span></div>
+                <input id="stickerId" type="hidden">
+                <div class="sticker-entry-meta" id="stickerEntryMeta">选择一张表情查看来源</div>
+                <button type="button" class="danger ghost" id="removeCapturedStickerButton" data-action="removeCapturedSticker" hidden>移除机器人采集</button>
+                <label>聊天含义<textarea id="stickerDescription" rows="3" placeholder="例如：无语地看着对方"></textarea></label>
+                <label>标签<input id="stickerTags" placeholder="无语 搞笑 吐槽"></label>
+                <label>可用群<input id="stickerAllowedGroups" placeholder="留空表示跟随总白名单"></label>
+                <label class="toggle-line"><input id="stickerEntryEnabled" type="checkbox"><span>允许发送这张表情</span></label>
+                <button type="button" class="primary" data-action="saveSticker">保存这张</button>
+              </div>
+            </div>
+            <div class="sticker-simulator">
+              <div><p class="eyebrow">发送预演</p><h3>看看会选哪张</h3></div>
+              <label>用户说<input id="stickerSimUser" value="哈哈哈这也太离谱了"></label>
+              <label>夜星回复<input id="stickerSimAssistant" value="确实，看到这里我也绷不住了。"></label>
+              <label>群号<input id="stickerSimGroup" inputmode="numeric" value="1000000002"></label>
+              <button type="button" data-action="simulateSticker">开始预演</button>
+              <pre class="output compact" id="stickerStatus">等待加载收藏表情</pre>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="diagnostics" hidden>
+          <section class="surface workspace-surface">
+            <div class="section-head"><div><p class="eyebrow">消息链路</p><h2>模拟一条消息</h2></div><button type="button" class="primary" data-action="diagnose">开始诊断</button></div>
+            <div class="diagnose-form">
+              <label>场景<select id="diagType"><option value="group">群聊</option><option value="private">私聊</option></select></label>
+              <label id="diagGroupField">群号<input id="diagGroup" inputmode="numeric" value="1000000002"></label>
+              <label>QQ 号<input id="diagUser" inputmode="numeric" value="1000000010"></label>
+              <label class="diagnose-message">消息内容<input id="diagText" value="@夜星 help"></label>
+            </div>
+            <div class="diagnose-result" id="diagnoseOutput">填写消息后开始诊断</div>
+            <details class="technical-details" id="diagnoseDetails"><summary>查看技术详情</summary><pre class="output details-output" id="diagnoseRaw">暂无详细结果</pre></details>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="logs" hidden>
+          <section class="surface workspace-surface">
+            <div class="section-head"><div><p class="eyebrow">运行记录</p><h2>Bridge 日志</h2></div><div class="action-row"><button type="button" id="logFollowButton" data-log-action="follow">跟随最新</button><button type="button" data-action="refreshLogs">刷新日志</button></div></div>
+            <div class="log-toolbar">
+              <label>级别<select id="logLevel"><option value="all">全部</option><option value="error">错误</option><option value="warn">警告</option><option value="info">普通</option></select></label>
+              <label>模块<select id="logModule"><option value="all">全部模块</option><option value="model">模型</option><option value="message">消息</option><option value="network">网络</option><option value="summary">日报</option><option value="jm">JM</option></select></label>
+              <label class="log-filter">关键字<input id="logFilter" placeholder="筛选当前日志"></label>
+              <span id="logCount">0 条</span>
+            </div>
+            <pre class="output logs" id="logsOutput">切换到日志页后加载</pre>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="maintenance" hidden>
+          <div class="maintenance-grid">
+            <section class="surface">
+              <div class="section-head"><div><p class="eyebrow">安全操作</p><h2>备份与目录</h2></div></div>
+              <div class="action-row left"><button type="button" class="primary" data-action="createBackup">创建备份</button><button type="button" data-action="openLogs">打开日志目录</button></div>
+              <pre class="output compact-empty" id="actionOutput">还没有维护操作记录</pre>
+            </section>
+
+            <section class="surface">
+              <div class="section-head"><div><p class="eyebrow">个性化</p><h2>外观</h2></div></div>
+              <div class="appearance-settings">
+                <div><span>主题</span><div class="segmented"><button type="button" data-ui-theme="auto">跟随系统</button><button type="button" data-ui-theme="light">浅色</button><button type="button" data-ui-theme="dark">深色</button></div></div>
+                <div><span>界面密度</span><div class="segmented"><button type="button" data-ui-density="comfortable">舒适</button><button type="button" data-ui-density="compact">紧凑</button></div></div>
+                <div><span>背景</span><div class="segmented background-actions"><button type="button" data-action="setBuiltInBackground">内置</button><button type="button" data-action="setDesktopBackground">桌面</button><button type="button" data-action="chooseBackgroundImage">图片</button></div></div>
+                <label>模糊强度<input type="range" id="blurStrength" min="12" max="52" step="4" value="28"></label>
+              </div>
+            </section>
+          </div>
+
+          <section class="surface advanced-tools">
+            <div class="section-head"><div><p class="eyebrow">高级入口</p><h2>工程工具</h2></div></div>
+            <div class="tool-links">
+              <button type="button" data-native-page="命令">命令清单</button><button type="button" data-native-page="模块">模块状态</button><button type="button" data-native-page="工作流">工作流</button><button type="button" data-native-page="插件">插件</button><button type="button" data-native-page="命令生成">命令生成</button><button type="button" data-native-page="备份">备份记录</button><button type="button" data-native-page="审计">审计</button><button type="button" data-native-page="自描述">自描述</button><button type="button" data-native-page="配置">原始配置</button><button type="button" data-native-page="启动输出">启动输出</button>
+            </div>
+          </section>
+        </section>
+      </main>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite">就绪</div>
+  <script src="./host-client.js?v=20260730-capture"></script>
+  <script src="./app.js?v=20260730-capture"></script>
+</body>
+</html>

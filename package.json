@@ -1,0 +1,46 @@
+{
+  "name": "qqfriend",
+  "version": "1.3.3-meme-web-update",
+  "private": true,
+  "description": "夜星 QQ 机器人桥接器",
+  "type": "module",
+  "main": "napcat_bridge.mjs",
+  "scripts": {
+    "start": "node napcat_bridge.mjs",
+    "watchdog": "node scripts/watchdog.mjs",
+    "release": "node scripts/release.mjs",
+    "release:zip": "node scripts/release.mjs --zip-only",
+    "release:check": "node scripts/release.mjs --check-only",
+    "package:release": "node scripts/release.mjs",
+    "summary:daily": "node daily_summary.mjs",
+    "summary:date": "node scripts/send-summary-for-date.mjs",
+    "test": "node scripts/run-tests.mjs",
+    "lint": "eslint bridge/ test/ scripts/ *.mjs",
+    "check:jm": "node scripts/check-jm-runtime.mjs",
+    "check:jm:install": "node scripts/check-jm-runtime.mjs --install",
+    "check:runtime": "node scripts/runtime-check.mjs",
+    "check:runtime:ci": "node scripts/runtime-check.mjs --allow-missing-env",
+    "command:scaffold": "node scripts/scaffold-command.mjs",
+    "self:describe": "node scripts/generate-self-description.mjs",
+    "meme:audit": "node scripts/audit-meme-matches.mjs"
+  },
+  "dependencies": {
+    "7zip-bin": "^5.2.0",
+    "sharp": "^0.35.3",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/awaa4962-coder/qqbot-core.git"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

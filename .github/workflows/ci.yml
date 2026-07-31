@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      # CI 环境创建 dummy .env 文件（测试需要 config 模块加载不崩溃）
+      - run: echo dummy > .env_mimo && echo dummy > .env_ds && echo dummy > .env_tavily && echo dummy > .env_doubao
+      - run: npm run check:runtime:ci
+      - run: npm run lint
+      - run: npm test

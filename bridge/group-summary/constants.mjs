@@ -1,0 +1,2 @@
+export const DEFAULT_SUMMARY_GROUP_ID = 1000000002;
+export const DEFAULT_SUMMARY_GROUP_NAME = "观澜湖同好会";
