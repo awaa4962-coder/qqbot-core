@@ -48,7 +48,7 @@ export function buildArchitectureDescription(root = ROOT) {
     ],
     safetyBoundaries: [
       "Do not expose model keys or .env_* values.",
-      "Do not send reasoning_content or chain-of-thought.",
+      "Do not send reasoning_content, analysis, thinking fields or chain-of-thought.",
       "Do not enable relationship export unless explicitly implemented and reviewed.",
       "Do not call real model APIs from diagnostics.",
       "Image meme cache may store perceptual fingerprints and objective descriptions, never image files or raw group chat.",
@@ -121,6 +121,13 @@ const WORKFLOWS = [
     surface: "cli",
     steps: ["npm run lint", "npm test", "npm run check:runtime:ci", "npm run check:jm", "npm run release:check"],
     verify: ["lint 0 errors / 0 warnings", "全部测试通过", "release check complete"],
+  },
+  {
+    id: "publish-github",
+    name: "发布到 GitHub",
+    surface: "cli/github",
+    steps: ["检查 git status 和本轮范围", "运行发布前检查", "扫描密钥与运行时文件", "显式暂存源码", "提交并推送分支", "核对远端 commit"],
+    verify: ["远端分支包含本次 commit", "没有私密或运行时文件", "最终报告包含分支与 commit"],
   },
   {
     id: "diagnose-reply",

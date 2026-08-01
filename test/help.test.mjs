@@ -42,9 +42,9 @@ describe("help text", () => {
 
     const en = buildChangelogText("en");
     assert.match(en, new RegExp("Current version: v" + VERSION));
-    assert.match(en, /multi-item, cross-domain evidence/);
-    assert.match(en, /raw messages and QQ identifiers are not stored/);
-    assert.match(en, /DeepSeek fallback/);
+    assert.match(en, /Economy, Smart and Deep reasoning controls/);
+    assert.match(en, /Only final content can leave the output pipeline/);
+    assert.match(en, /DeepSeek group fallback/);
     assert.match(en, /Still reserved:/);
   });
 });

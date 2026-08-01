@@ -230,7 +230,7 @@ export async function cleanupExpiredJmTempDirs(options = {}) {
   const root = options.root || os.tmpdir();
   const maxAgeMs = options.maxAgeMs ?? JM_CLEANUP_DELAY_MS;
   const now = options.now || Date.now();
-  let items;
+  let items = [];
   try {
     items = await fs.readdir(root, { withFileTypes: true });
   } catch (error) {

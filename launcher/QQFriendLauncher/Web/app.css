@@ -682,11 +682,29 @@ button.provider-card.active {
   align-items: center;
 }
 
+.reasoning-toolbar {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(250px, 0.9fr) auto;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-soft) 78%, transparent);
+}
+
+.reasoning-heading { display: flex; gap: 10px; align-items: center; }
+.reasoning-heading span { color: var(--muted); font-size: 11px; font-weight: 800; }
+.reasoning-heading strong { color: var(--green); font-size: 13px; }
+.reasoning-presets { width: min(100%, 330px); justify-self: end; }
+.reasoning-output-lock { color: var(--green); font-size: 11px; font-weight: 800; white-space: nowrap; }
+
 .api-route-list { display: grid; gap: 7px; }
 
 .api-route-row {
   display: grid;
-  grid-template-columns: minmax(150px, 0.85fr) minmax(180px, 1fr) 24px minmax(180px, 1fr) 70px;
+  grid-template-columns: minmax(135px, 0.72fr) minmax(175px, 1fr) 20px minmax(175px, 1fr) minmax(105px, 0.55fr) 62px;
   gap: 9px;
   align-items: end;
   min-height: 62px;
@@ -698,6 +716,7 @@ button.provider-card.active {
 .api-route-row > div small { color: var(--muted); font-size: 10px; }
 .route-arrow { align-self: center; color: var(--muted); text-align: center; }
 .route-lock { align-self: center; color: var(--amber); font-size: 10px; font-weight: 800; }
+.api-route-row.reasoning-unavailable .route-reasoning { opacity: 0.58; }
 
 .guide-paths {
   display: grid;
@@ -935,7 +954,7 @@ button.provider-card.active {
   .service-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tool-links { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .api-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .api-route-row { grid-template-columns: minmax(130px, 0.8fr) minmax(160px, 1fr) 18px minmax(160px, 1fr); }
+  .api-route-row { grid-template-columns: minmax(120px, 0.7fr) minmax(150px, 1fr) 18px minmax(150px, 1fr) minmax(100px, 0.55fr); }
   .api-route-row .route-lock { display: none; }
 }
 
@@ -957,6 +976,8 @@ button.provider-card.active {
   .capability-toolbar label:first-child { grid-column: 1 / -1; }
   .diagnose-form { grid-template-columns: 1fr 1fr; }
   .api-workbench { grid-template-columns: 1fr; }
+  .reasoning-toolbar { grid-template-columns: 1fr auto; }
+  .reasoning-presets { grid-column: 1 / -1; grid-row: 2; width: 100%; justify-self: stretch; }
   .api-provider-list { padding: 0 0 14px; border-right: 0; border-bottom: 1px solid var(--line); }
   .provider-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 280px; }
   .guide-paths { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -984,6 +1005,8 @@ button.provider-card.active {
   .save-bar > div { justify-content: flex-end; }
   .api-form-grid .wide { grid-column: auto; }
   .api-route-row { grid-template-columns: 1fr; align-items: stretch; }
+  .reasoning-toolbar { grid-template-columns: 1fr; }
+  .reasoning-presets { grid-column: auto; grid-row: auto; }
   .route-arrow, .route-lock { display: none; }
   .sticker-summary, .sticker-settings, .sticker-capture-settings, .sticker-workbench, .sticker-simulator { grid-template-columns: 1fr; }
   .sticker-capture-head { align-items: stretch; flex-direction: column; }

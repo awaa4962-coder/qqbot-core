@@ -37,7 +37,7 @@ test("self-description does not expose configured secret-like values", () => {
   const data = buildProjectSelfDescription({
     cfg: {
       botNames: ["夜星"],
-      adminUins: ["1000000010"],
+      adminUins: ["1000000002"],
       resourceGroupWhitelist: [1],
       summaryGroupWhitelist: [2],
       legacyProfileRefreshEnabled: false,

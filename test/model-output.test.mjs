@@ -39,12 +39,12 @@ describe("MiMo output sizing", () => {
     assert.equal(Object.prototype.hasOwnProperty.call(body, "max_tokens"), false);
   });
 
-  it("uses 1024 max tokens for long group mentions", async () => {
+  it("uses 1024 max tokens and economy thinking for a short long-group mention", async () => {
     const { body } = await captureMiMoBody(() =>
       tryMiMo("hello", "user", [], [], LONG_GROUP_ID, true, "")
     );
     assert.equal(body.max_completion_tokens, 1024);
-    assert.equal(Object.prototype.hasOwnProperty.call(body, "thinking"), false);
+    assert.deepEqual(body.thinking, { type: "disabled" });
   });
 
   it("uses 1536 max tokens for normal group mentions", async () => {
@@ -52,6 +52,13 @@ describe("MiMo output sizing", () => {
       tryMiMo("hello", "user", [], [], NORMAL_GROUP_ID, true, "")
     );
     assert.equal(body.max_completion_tokens, 1536);
+  });
+
+  it("enables deep thinking for a complex group question in auto mode", async () => {
+    const { body } = await captureMiMoBody(() =>
+      tryMiMo("请详细分析这个错误为什么发生，并给出完整修复方案", "user", [], [], NORMAL_GROUP_ID, true, "")
+    );
+    assert.deepEqual(body.thinking, { type: "enabled" });
   });
 
   it("passes a selected hiss cue into the MiMo system prompt", async () => {

@@ -508,10 +508,10 @@ describe("parseIncomingEvent", () => {
   it("解析群消息 @ 检测", () => {
     const ev = {
       post_type: "message", message_type: "group",
-      user_id: 123456, group_id: 1000000002, message_id: 999,
+      user_id: 123456, group_id: 2000000001, message_id: 999,
       sender: { card: "测试用户", nickname: "test" },
-      message: [{ type: "text", data: { text: "你好" } }, { type: "at", data: { qq: "1000000006" } }],
-      raw_message: "你好[CQ:at,qq=1000000006]",
+      message: [{ type: "text", data: { text: "你好" } }, { type: "at", data: { qq: "1000000001" } }],
+      raw_message: "你好[CQ:at,qq=1000000001]",
     };
     const ctx = parseIncomingEvent(ev);
     assert.strictEqual(ctx.isAtMe, true);
@@ -527,15 +527,15 @@ describe("parseIncomingEvent", () => {
   });
 
   it("bot 自己的消息应标记", () => {
-    const ev = { message_type: "group", user_id: 1000000006, group_id: 1, message_id: 1, sender: {}, message: [], raw_message: "" };
+    const ev = { message_type: "group", user_id: 1000000001, group_id: 1, message_id: 1, sender: {}, message: [], raw_message: "" };
     const ctx = parseIncomingEvent(ev);
-    assert.strictEqual(ctx.user_id, 1000000006);
+    assert.strictEqual(ctx.user_id, 1000000001);
   });
 
   it("私聊消息", () => {
     const ev = {
       post_type: "message", message_type: "private",
-      user_id: 1000000005, message_id: 1,
+      user_id: 3000000001, message_id: 1,
       sender: { nickname: "雪风" },
       message: [{ type: "text", data: { text: "你好" } }],
       raw_message: "你好",
@@ -784,7 +784,7 @@ describe("parseIncomingEvent 防御心跳事件", () => {
     const ev = {
       post_type: "meta_event",
       meta_event_type: "heartbeat",
-      self_id: 1000000006,
+      self_id: 1000000001,
       time: Date.now(),
     };
     // parseIncomingEvent 应为 meta_event 生成安全的 ctx
@@ -801,7 +801,7 @@ describe("parseIncomingEvent 防御心跳事件", () => {
       post_type: "message",
       message_type: "group",
       user_id: 123,
-      group_id: 1000000002,
+      group_id: 2000000001,
       sender: {},
       // message 和 raw_message 都缺失
     };
@@ -1025,7 +1025,7 @@ describe("tryMiMo tool_call defensive handling", () => {
           }],
         }),
       };
-    }, async () => tryMiMo("天气", "测试用户", [], [], 1000000002, true, ""));
+    }, async () => tryMiMo("天气", "测试用户", [], [], 2000000001, true, ""));
     assert.strictEqual(result, null);
     assert.strictEqual(calls, 1);
   });
@@ -1039,7 +1039,7 @@ describe("tryMiMo tool_call defensive handling", () => {
           choices: [{ message: { content: '{"reply":"先别急喵，慢慢说。"}' } }],
         }),
       };
-    }, async () => tryMiMo("我有点红温了", "小黑", [], [], 1000000002, false, "", { replyMode: "interjection", currentUserId: "123" }));
+    }, async () => tryMiMo("我有点红温了", "小黑", [], [], 2000000001, false, "", { replyMode: "interjection", currentUserId: "123" }));
     assert.strictEqual(result, "先别急喵，慢慢说。");
     assert.strictEqual(body.max_completion_tokens, 192);
     assert.deepEqual(body.thinking, { type: "disabled" });

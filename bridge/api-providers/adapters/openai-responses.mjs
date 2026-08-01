@@ -9,7 +9,13 @@ export async function callOpenAiResponses(provider, key, request) {
     max_output_tokens: request.maxTokens || 1024,
   };
   if (system) body.instructions = system;
-  if (request.temperature !== undefined) body.temperature = request.temperature;
+  const reasoningEnabled = request.reasoning && request.reasoning.effort !== "none";
+  if (request.temperature !== undefined && !reasoningEnabled) {
+    body.temperature = request.temperature;
+  }
+  if (request.reasoning && provider.capabilities.includes("reasoning")) {
+    body.reasoning = request.reasoning;
+  }
   if (request.tools?.length && provider.capabilities.includes("tools")) {
     body.tools = request.tools.map(convertTool);
     body.tool_choice = request.toolChoice || "auto";

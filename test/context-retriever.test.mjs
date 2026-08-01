@@ -136,7 +136,7 @@ describe("context retriever", () => {
       { uid: "10", nickname: "A", text: "前面在讨论毕业去向", role: "member", ts: now - 5000, messageId: "a" },
       { uid: "11", nickname: "B", text: "前面在讨论毕业去向！", role: "member", ts: now - 4000, messageId: "b" },
       { uid: "12", nickname: "C", text: "help", role: "member", ts: now - 3000, messageId: "command" },
-      { uid: "1000000006", nickname: "夜星", text: "机器人旧回复", role: "assistant", ts: now - 2000, messageId: "bot" },
+      { uid: "1000000001", nickname: "夜星", text: "机器人旧回复", role: "assistant", ts: now - 2000, messageId: "bot" },
       { uid: "42", nickname: "Alice", text: "我可能不去基层", role: "member", ts: now, messageId: "current" },
     ];
 

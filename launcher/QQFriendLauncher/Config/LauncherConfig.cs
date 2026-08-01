@@ -2,7 +2,11 @@ namespace QQFriendLauncher.Config;
 
 internal sealed class LauncherConfig
 {
-    public string ProjectDir { get; set; } = ResolveDefaultProjectDir();
+    public string ProjectDir { get; set; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        ".openclaw",
+        "workspace",
+        "qqfriend");
     public string NapCatExe { get; set; } = "";
     public string NapCatApi { get; set; } = "http://127.0.0.1:6700";
     public string BridgeHealthUrl { get; set; } = "http://127.0.0.1:16789/health";
@@ -13,27 +17,6 @@ internal sealed class LauncherConfig
     public bool AutoCheckSummaryModule { get; set; } = true;
     public int WaitNapCatSeconds { get; set; } = 90;
     public int WaitBridgeSeconds { get; set; } = 60;
-
-    private static string ResolveDefaultProjectDir()
-    {
-        var configured = Environment.GetEnvironmentVariable("QQFRIEND_PROJECT_DIR");
-        if (!string.IsNullOrWhiteSpace(configured)) return Path.GetFullPath(configured);
-
-        var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current != null)
-        {
-            if (File.Exists(Path.Combine(current.FullName, "package.json")) &&
-                Directory.Exists(Path.Combine(current.FullName, "bridge")))
-            {
-                return current.FullName;
-            }
-            current = current.Parent;
-        }
-
-        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var openClawProject = Path.Combine(userProfile, ".openclaw", "workspace", "qqfriend");
-        return Directory.Exists(openClawProject) ? openClawProject : AppContext.BaseDirectory;
-    }
 
     public string ResolvedNapCatExe()
     {

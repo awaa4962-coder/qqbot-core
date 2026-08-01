@@ -74,7 +74,7 @@ test("admin editor can protect selected fields on a web-verified entry", async (
         title: "人工资料",
         url: "https://example.com/meme",
       }],
-      scope: { type: "groups", groupIds: ["1000000002"] },
+      scope: { type: "groups", groupIds: ["2000000001"] },
       manualFields: ["meaning", "examples", "sources", "scope"],
     },
   });
@@ -83,7 +83,7 @@ test("admin editor can protect selected fields on a web-verified entry", async (
   assert.equal(saved.entry.meaning, "人工核对后的解释。");
   assert.deepEqual(saved.entry.examples, ["这下芭比Q了。"]);
   assert.equal(saved.entry.sources[0].url, "https://example.com/meme");
-  assert.deepEqual(saved.entry.scope.groupIds, ["1000000002"]);
+  assert.deepEqual(saved.entry.scope.groupIds, ["2000000001"]);
   assert.ok(saved.entry.manualFields.includes("meaning"));
   assert.equal(saved.entry.manualFields.includes("usage"), false);
 });

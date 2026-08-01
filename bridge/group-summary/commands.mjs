@@ -22,7 +22,7 @@ export function buildGroupSummaryHelpText() {
     "",
     "示例：",
     "  @夜星 日报预览 昨天 short",
-    "  @夜星 日报发送 1000000009 2026-06-26 technical",
+    "  @夜星 日报发送 <群号> 2026-06-26 technical",
     "",
     "风格：" + listSummaryStyles().map(style => style.id + "=" + style.label).join(" / "),
   ].join("\n");

@@ -1084,13 +1084,13 @@ internal sealed partial class LauncherForm : Form
         return """
 {
   "message_type": "group",
-  "group_id": 1000000002,
-  "user_id": 1000000010,
+  "group_id": 2000000001,
+  "user_id": 1000000002,
   "message": [
-    { "type": "at", "data": { "qq": "1000000006" } },
+    { "type": "at", "data": { "qq": "1000000001" } },
     { "type": "text", "data": { "text": " help" } }
   ],
-  "raw_message": "[CQ:at,qq=1000000006] help"
+  "raw_message": "[CQ:at,qq=1000000001] help"
 }
 """;
     }

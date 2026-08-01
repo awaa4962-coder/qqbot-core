@@ -133,7 +133,7 @@
                   <label><input type="checkbox" value="text" checked>文本</label>
                   <label><input type="checkbox" value="vision">图片</label>
                   <label><input type="checkbox" value="tools">工具调用</label>
-                  <label><input type="checkbox" value="reasoning">思考模式</label>
+                  <label><input type="checkbox" value="reasoning">支持推理</label>
                 </div>
                 <div class="action-row left">
                   <button type="button" class="primary" id="apiSaveButton" data-action="saveApiProvider">保存修改</button>
@@ -149,6 +149,15 @@
             <div class="section-head">
               <div><p class="eyebrow">功能插槽</p><h2>把 API 用在哪里</h2><small>切换只影响新请求；群聊 DeepSeek 兜底固定保留。</small></div>
               <button type="button" class="primary" data-action="saveApiRoutes">应用插槽</button>
+            </div>
+            <div class="reasoning-toolbar">
+              <div class="reasoning-heading"><span>思考强度</span><strong id="apiReasoningState">等待读取</strong></div>
+              <div class="segmented reasoning-presets" id="apiReasoningPresets" role="group" aria-label="全局思考强度">
+                <button type="button" data-reasoning-preset="economy">省额度</button>
+                <button type="button" data-reasoning-preset="auto">智能</button>
+                <button type="button" data-reasoning-preset="deep">深度</button>
+              </div>
+              <span class="reasoning-output-lock" title="内部推理不会写入 QQ 消息、日志正文或用户记忆">仅发送结果</span>
             </div>
             <div class="api-route-list" id="apiRouteList"></div>
             <pre class="output compact-empty" id="apiRouteOutput">当前插槽会在这里显示</pre>
@@ -328,7 +337,7 @@
               <div><p class="eyebrow">发送预演</p><h3>看看会选哪张</h3></div>
               <label>用户说<input id="stickerSimUser" value="哈哈哈这也太离谱了"></label>
               <label>夜星回复<input id="stickerSimAssistant" value="确实，看到这里我也绷不住了。"></label>
-              <label>群号<input id="stickerSimGroup" inputmode="numeric" value="1000000002"></label>
+              <label>群号<input id="stickerSimGroup" inputmode="numeric" value="2000000001"></label>
               <button type="button" data-action="simulateSticker">开始预演</button>
               <pre class="output compact" id="stickerStatus">等待加载收藏表情</pre>
             </div>
@@ -340,8 +349,8 @@
             <div class="section-head"><div><p class="eyebrow">消息链路</p><h2>模拟一条消息</h2></div><button type="button" class="primary" data-action="diagnose">开始诊断</button></div>
             <div class="diagnose-form">
               <label>场景<select id="diagType"><option value="group">群聊</option><option value="private">私聊</option></select></label>
-              <label id="diagGroupField">群号<input id="diagGroup" inputmode="numeric" value="1000000002"></label>
-              <label>QQ 号<input id="diagUser" inputmode="numeric" value="1000000010"></label>
+              <label id="diagGroupField">群号<input id="diagGroup" inputmode="numeric" value="2000000001"></label>
+              <label>QQ 号<input id="diagUser" inputmode="numeric" value="1000000002"></label>
               <label class="diagnose-message">消息内容<input id="diagText" value="@夜星 help"></label>
             </div>
             <div class="diagnose-result" id="diagnoseOutput">填写消息后开始诊断</div>

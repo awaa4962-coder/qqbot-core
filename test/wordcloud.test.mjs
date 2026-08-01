@@ -56,7 +56,7 @@ test("collects wordcloud tokens without placeholders or blocked words", () => {
   assert.ok(tokens.some(item => item.word === "wordcloud"));
 });
 
-test("filters yesterday messages by Shanghai day regardless of host timezone", () => {
+test("filters yesterday messages by local day", () => {
   const chats = [
     { text: "old", ts: new Date("2026-07-03T23:59:59+08:00").getTime() },
     { text: "yesterday", ts: new Date("2026-07-04T09:00:00+08:00").getTime() },
@@ -71,10 +71,10 @@ test("wordcloud command sends fallback text when renderer is unavailable", async
   const handled = await handleWordcloudCommand({
     isAtMe: true,
     text: "@夜星 词云",
-    group_id: 1000000002,
+    group_id: 2000000001,
   }, {
     botNames: ["夜星"],
-    featureGroupWhitelist: [1000000002],
+    featureGroupWhitelist: [2000000001],
     replyToId: 99,
     now,
     chats: [
@@ -87,7 +87,7 @@ test("wordcloud command sends fallback text when renderer is unavailable", async
 
   assert.equal(handled, true);
   assert.equal(sent.length, 1);
-  assert.equal(sent[0].groupId, 1000000002);
+  assert.equal(sent[0].groupId, 2000000001);
   assert.equal(sent[0].replyToId, 99);
   assert.match(sent[0].text, /词云生成好了/);
   assert.match(sent[0].text, /wordcloud/);
@@ -101,17 +101,17 @@ test("wordcloud command respects feature group whitelist", async () => {
     group_id: 42,
   }, {
     botNames: ["夜星"],
-    featureGroupWhitelist: [1000000002],
+    featureGroupWhitelist: [2000000001],
     sender: async (groupId, text) => sent.push({ groupId, text }),
   });
 
   assert.equal(handled, true);
-  assert.equal(isFeatureGroupAllowed(42, [1000000002]), false);
+  assert.equal(isFeatureGroupAllowed(42, [2000000001]), false);
   assert.match(sent[0].text, /还没开启词云功能/);
 });
 
 test("buildWordcloudReply can use injected renderer", async () => {
-  const reply = await buildWordcloudReply(1000000002, { range: "days", days: 7 }, {
+  const reply = await buildWordcloudReply(2000000001, { range: "days", days: 7 }, {
     now,
     chats: [
       { role: "member", text: "模块 模块 词云 词云", ts: now.getTime() },

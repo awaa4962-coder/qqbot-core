@@ -32,9 +32,12 @@ function makeTempProject() {
     "HEARTBEAT.md": "# heartbeat\n",
     "daily_summary.mjs": "console.log('summary');\n",
     ".env_ds": "real-key\n",
-    ".env_admins": "1000000010\n",
+    ".env_admins": "1000000002\n",
     ".qqfriend/index.json": "{\"safe\":true}\n",
+    ".qqfriend/api-providers.json": "{\"runtime\":true}\n",
+    ".qqfriend/api-providers.previous.json": "{\"runtime\":true}\n",
     ".qqfriend/memes.json": "{\"contexts\":[\"private runtime data\"]}\n",
+    ".qqfriend/memes.json.tmp.1234": "{\"runtime\":true}\n",
     ".qqfriend/image-memes.json": "{\"entries\":[{\"description\":\"runtime\"}]}\n",
     ".qqfriend/stickers/catalog.json": "{\"entries\":[{\"key\":\"runtime-send-key\"}]}\n",
     "node_modules/pkg/index.js": "bad\n",
@@ -57,8 +60,10 @@ describe("release forbidden paths", () => {
     assert.equal(isForbiddenPath("private/plan.docx"), true);
     assert.equal(isForbiddenPath(".qqfriend/image-memes.json"), true);
     assert.equal(isForbiddenPath(".qqfriend/memes.json"), true);
+    assert.equal(isForbiddenPath(".qqfriend/memes.json.tmp.1234"), true);
     assert.equal(isForbiddenPath(".qqfriend/api-providers.json"), true);
-    assert.equal(isForbiddenPath(".qqfriend/api-providers.previous.json"), true);
+    assert.equal(isForbiddenPath("launcher/App/bin/Release/app.dll"), true);
+    assert.equal(isForbiddenPath("launcher/App.exe.WebView2/Default/Cookies"), true);
     assert.equal(isForbiddenPath(".qqfriend/stickers/catalog.json"), true);
   });
 
@@ -79,7 +84,10 @@ describe("collectReleaseFiles", () => {
     assert.equal(files.some(file => file.startsWith("node_modules/")), false);
     assert.equal(files.some(file => file.endsWith(".docx")), false);
     assert.equal(files.includes(".qqfriend/index.json"), true);
+    assert.equal(files.includes(".qqfriend/api-providers.json"), false);
+    assert.equal(files.includes(".qqfriend/api-providers.previous.json"), false);
     assert.equal(files.includes(".qqfriend/memes.json"), false);
+    assert.equal(files.includes(".qqfriend/memes.json.tmp.1234"), false);
     assert.equal(files.includes(".qqfriend/image-memes.json"), false);
     assert.equal(files.includes(".qqfriend/stickers/catalog.json"), false);
   });

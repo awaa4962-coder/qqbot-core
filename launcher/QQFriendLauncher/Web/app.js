@@ -704,8 +704,12 @@ function renderApiRouteList(snapshot) {
   const options = providers.map(item =>
     `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} · ${escapeHtml(item.model || "未选模型")}</option>`
   ).join("");
+  const reasoningOptions = (snapshot.reasoningModes || [
+    { id: "economy", name: "省额度" },
+    { id: "auto", name: "智能" },
+    { id: "deep", name: "深度" },
+  ]).map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join("");
   $("apiRouteList").innerHTML = (snapshot.tasks || []).map(task => {
-    const route = snapshot.routes?.[task.id] || {};
     const fallbackProtected = task.protectedFallback === "deepseek";
     return [
       `<article class="api-route-row" data-api-task="${escapeHtml(task.id)}">`,
@@ -713,6 +717,7 @@ function renderApiRouteList(snapshot) {
       `<label>主力<select data-route-primary>${options}</select></label>`,
       `<span class="route-arrow">→</span>`,
       `<label>兜底<select data-route-fallback${fallbackProtected ? " disabled" : ""}><option value="">无</option>${options}</select></label>`,
+      `<label class="route-reasoning">思考<select data-route-reasoning>${reasoningOptions}</select></label>`,
       fallbackProtected ? '<span class="route-lock">固定 DS</span>' : "",
       "</article>",
     ].join("");
@@ -722,8 +727,54 @@ function renderApiRouteList(snapshot) {
     const route = snapshot.routes?.[task] || {};
     row.querySelector("[data-route-primary]").value = route.primary || "";
     row.querySelector("[data-route-fallback]").value = route.fallback || "";
+    row.querySelector("[data-route-reasoning]").value = route.reasoning || "auto";
+    updateApiRouteReasoningAvailability(row);
   });
-  $("apiRouteOutput").textContent = `配置版本 ${snapshot.revision || 1} · 切换只影响后续模型请求`;
+  syncGlobalReasoningState();
+  $("apiRouteOutput").textContent = `配置版本 ${snapshot.revision || 1} · API 与思考设置只影响后续请求`;
+}
+
+function updateApiRouteReasoningAvailability(row) {
+  const providerId = row.querySelector("[data-route-primary]")?.value;
+  const provider = (apiSnapshot.providers || []).find(item => item.id === providerId);
+  const select = row.querySelector("[data-route-reasoning]");
+  const configurable = provider?.reasoningControl?.configurable === true;
+  select.disabled = !configurable;
+  select.title = configurable ? "设置这个功能的思考强度" : "当前主力 API 不提供可控思考档位";
+  row.classList.toggle("reasoning-unavailable", !configurable);
+}
+
+function applyGlobalReasoningPreset(mode) {
+  let changed = 0;
+  document.querySelectorAll("[data-api-task]").forEach(row => {
+    const select = row.querySelector("[data-route-reasoning]");
+    if (select.disabled) return;
+    select.value = mode;
+    changed++;
+  });
+  syncGlobalReasoningState();
+  $("apiRouteOutput").textContent = changed
+    ? `已选择“${reasoningModeLabel(mode)}”，点击“应用插槽”后生效`
+    : "当前 API 没有可调思考档位";
+}
+
+function syncGlobalReasoningState() {
+  const selects = [...document.querySelectorAll("[data-route-reasoning]:not(:disabled)")];
+  const modes = [...new Set(selects.map(select => select.value))];
+  const activeMode = modes.length === 1 ? modes[0] : "";
+  document.querySelectorAll("[data-reasoning-preset]").forEach(button => {
+    button.classList.toggle("active", button.dataset.reasoningPreset === activeMode);
+  });
+  if (!$("apiReasoningState")) return;
+  $("apiReasoningState").textContent = !selects.length
+    ? "跟随模型"
+    : activeMode
+      ? reasoningModeLabel(activeMode)
+      : "按功能细调";
+}
+
+function reasoningModeLabel(mode) {
+  return ({ economy: "省额度", auto: "智能", deep: "深度" })[mode] || "智能";
 }
 
 function fillApiProviderForm(provider) {
@@ -803,6 +854,7 @@ function apiRoutesPayload() {
     routes[row.dataset.apiTask] = {
       primary: row.querySelector("[data-route-primary]").value,
       fallback: row.querySelector("[data-route-fallback]").value || null,
+      reasoning: row.querySelector("[data-route-reasoning]").value || "auto",
     };
   });
   return { action: "save-routes", routes };
@@ -1414,7 +1466,7 @@ function diagnosePayload() {
   if (messageType === "group" && (!Number.isSafeInteger(groupId) || groupId <= 0)) throw new Error("群号格式不正确。");
   if (!Number.isSafeInteger(userId) || userId <= 0) throw new Error("QQ 号格式不正确。");
   const clean = stripConfiguredMention($("diagText").value);
-  const selfUin = String(lastStatus.config?.selfUin || "1000000006");
+  const selfUin = String(lastStatus.config?.selfUin || "1000000001");
   if (messageType === "private") {
     return {
       message_type: "private",
@@ -1488,7 +1540,7 @@ function validateAction(action) {
     return window.confirm(`确定删除 API 实例“${selectedApiProviderId}”吗？`);
   }
   if (action === "saveApiRoutes") {
-    return window.confirm("确定把当前 API 分配应用到各功能插槽吗？");
+    return window.confirm("确定应用当前 API 分配和思考强度吗？");
   }
   if (action === "rollbackApiProviders") {
     if (!apiSnapshot.rollbackAvailable) {
@@ -1954,6 +2006,11 @@ host.onEvent((message) => {
 });
 
 document.addEventListener("click", (event) => {
+  const reasoningPreset = event.target.closest("[data-reasoning-preset]");
+  if (reasoningPreset) {
+    applyGlobalReasoningPreset(reasoningPreset.dataset.reasoningPreset || "auto");
+    return;
+  }
   const sourceRemove = event.target.closest("[data-remove-meme-source]");
   if (sourceRemove) {
     sourceRemove.closest(".meme-source-row")?.remove();
@@ -2051,6 +2108,17 @@ document.addEventListener("focusout", (event) => {
 
 document.addEventListener("change", (event) => {
   if (!event.target) return;
+  if (event.target.matches("[data-route-primary]")) {
+    updateApiRouteReasoningAvailability(event.target.closest("[data-api-task]"));
+    syncGlobalReasoningState();
+    $("apiRouteOutput").textContent = "插槽尚未保存，点击“应用插槽”后生效";
+    return;
+  }
+  if (event.target.matches("[data-route-reasoning]")) {
+    syncGlobalReasoningState();
+    $("apiRouteOutput").textContent = "思考强度尚未保存，点击“应用插槽”后生效";
+    return;
+  }
   if (event.target.id === "stickerFilter") {
     stickerFilter = event.target.value;
     selectedStickerId = "";

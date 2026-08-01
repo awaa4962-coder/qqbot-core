@@ -12,6 +12,7 @@ test("workflow catalog exposes safe Chinese workflow metadata", () => {
   assert.equal(catalog.count, catalog.workflows.length);
   assert.ok(catalog.workflows.some(workflow => workflow.id === "start-all"));
   assert.ok(catalog.workflows.some(workflow => workflow.name === "发布前检查"));
+  assert.ok(catalog.workflows.some(workflow => workflow.id === "publish-github"));
   assert.equal(JSON.stringify(catalog).includes("�"), false);
 });
 

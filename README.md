@@ -295,7 +295,12 @@ Supported protocol families:
 
 The route table separates group chat, interjections, private chat, file chat,
 group summaries, relationship comments, vision, profiles, and search summaries.
-Each task has a primary and fallback slot.
+Each task has a primary and fallback slot plus an independent reasoning policy.
+The console offers Economy, Smart, and Deep modes. Smart mode makes a local,
+deterministic choice from the task and request shape without another API call.
+MiMo Chat maps these choices to its native thinking toggle. Providers without a
+verified runtime control keep their own defaults instead of receiving guessed
+parameters.
 
 Provider metadata is stored in `.qqfriend/api-providers.json`. API keys are
 stored separately in `.env_api_<provider-id>` and are not returned by the admin
@@ -313,6 +318,8 @@ For an unknown service, start from one of the generic presets and identify:
 Public endpoints must use HTTPS. Localhost models such as Ollama, LM Studio, or
 vLLM require the explicit local-connection option. Provider connection tests use
 a minimal prompt and still pass through the output-safety pipeline.
+Private reasoning fields are never shown in the console or sent to QQ; the
+output boundary accepts final content only.
 
 ## Favorite Sticker Replies
 

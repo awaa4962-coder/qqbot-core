@@ -4,6 +4,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { findApiPreset } from "./presets.mjs";
+import {
+  defaultReasoningMode,
+  getProviderReasoningControl,
+  isReasoningMode,
+  listReasoningModes,
+  normalizeReasoningMode,
+} from "./reasoning-policy.mjs";
 
 const ROOT = path.resolve(
   process.env.QQBOT_CONFIG_ROOT ||
@@ -25,23 +32,23 @@ const TASK_IDS = Object.freeze([
 
 export function createDefaultApiConfig() {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     revision: 1,
     providers: {
       mimo: defaultProvider("mimo", "MiMo 主力", "mimo-official", ".env_mimo"),
       deepseek: defaultProvider("deepseek", "DeepSeek 兜底", "deepseek-official", ".env_ds", true),
     },
     routes: {
-      group_chat: route("mimo", "deepseek"),
-      interjection: route("mimo", null),
-      private_chat: route("deepseek", null),
-      file_chat: route("deepseek", null),
-      group_summary: route("mimo", "deepseek"),
-      relationship_comment: route("mimo", "deepseek"),
-      sticker_select: route("mimo", "deepseek"),
-      vision: route("mimo", null),
-      profile: route("mimo", "deepseek"),
-      search_summary: route("deepseek", null),
+      group_chat: route("mimo", "deepseek", "group_chat"),
+      interjection: route("mimo", null, "interjection"),
+      private_chat: route("deepseek", null, "private_chat"),
+      file_chat: route("deepseek", null, "file_chat"),
+      group_summary: route("mimo", "deepseek", "group_summary"),
+      relationship_comment: route("mimo", "deepseek", "relationship_comment"),
+      sticker_select: route("mimo", "deepseek", "sticker_select"),
+      vision: route("mimo", null, "vision"),
+      profile: route("mimo", "deepseek", "profile"),
+      search_summary: route("deepseek", null, "search_summary"),
     },
     updatedAt: null,
   };
@@ -94,9 +101,11 @@ export function buildApiConfigSnapshot(options = {}) {
     updatedAt: config.updatedAt,
     providers: Object.values(config.providers).map(provider => publicProvider(provider, { root })),
     routes: cloneRoutes(config.routes),
+    reasoningModes: listReasoningModes(),
     tasks: TASK_IDS.map(id => ({
       id,
       name: taskName(id),
+      defaultReasoning: defaultReasoningMode(id),
       protectedFallback: id === "group_chat" ? "deepseek" : null,
     })),
     rollbackAvailable: fs.existsSync(path.join(root, ".qqfriend", "api-providers.previous.json")),
@@ -208,8 +217,8 @@ function defaultProvider(id, name, presetId, secretFile, protectedProvider = fal
   };
 }
 
-function route(primary, fallback) {
-  return { primary, fallback };
+function route(primary, fallback, task) {
+  return { primary, fallback, reasoning: defaultReasoningMode(task) };
 }
 
 function normalizeStoredConfig(value, defaults) {
@@ -223,7 +232,7 @@ function normalizeStoredConfig(value, defaults) {
     }
   }
   const base = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     revision: positiveInteger(source.revision, defaults.revision),
     providers,
     routes: defaults.routes,
@@ -271,7 +280,11 @@ function normalizeRoutes(payload, config, options = {}) {
     const candidate = source[task] || {};
     const primary = normalizeProviderReference(candidate.primary, config.providers, false);
     const fallback = normalizeProviderReference(candidate.fallback, config.providers, true);
-    result[task] = { primary, fallback };
+    if (!options.partial && candidate.reasoning !== undefined && !isReasoningMode(candidate.reasoning)) {
+      throw new Error("不支持的思考档位：" + String(candidate.reasoning));
+    }
+    const reasoning = normalizeReasoningMode(candidate.reasoning ?? result[task]?.reasoning, task);
+    result[task] = { primary, fallback, reasoning };
   }
   if (!options.partial && result.group_chat.fallback !== "deepseek") {
     throw new Error("群聊 DeepSeek 兜底为受保护插槽，不能清空或替换");
@@ -327,6 +340,7 @@ function publicProvider(provider, options = {}) {
     tokenField: provider.tokenField,
     allowLocal: provider.allowLocal,
     capabilities: [...provider.capabilities],
+    reasoningControl: getProviderReasoningControl(provider),
     protected: provider.protected,
     enabled: provider.enabled,
     keyConfigured: provider.auth === "none" || Boolean(readProviderSecret(provider, options)),
@@ -343,7 +357,14 @@ function resolveRootFile(root, relativeFile) {
 }
 
 function cloneRoutes(routes) {
-  return Object.fromEntries(TASK_IDS.map(task => [task, { ...(routes[task] || route("mimo", null)) }]));
+  return Object.fromEntries(TASK_IDS.map(task => {
+    const source = routes[task] || route("mimo", null, task);
+    return [task, {
+      primary: source.primary,
+      fallback: source.fallback ?? null,
+      reasoning: normalizeReasoningMode(source.reasoning, task),
+    }];
+  }));
 }
 
 function normalizeCapabilities(value) {

@@ -106,6 +106,11 @@ test('launcher frontend separates daily work into focused views', async () => {
   assert.match(html, /id="capabilityList"/);
   assert.match(html, /id="apiProviderList"/);
   assert.match(html, /id="apiRouteList"/);
+  assert.match(html, /id="apiReasoningPresets"/);
+  assert.match(html, /data-reasoning-preset="economy"/);
+  assert.match(html, /data-reasoning-preset="deep"/);
+  assert.match(html, /仅发送结果/);
+  assert.match(html, /支持推理/);
   assert.match(html, /id="stickerGrid"/);
   assert.match(html, /id="stickerCaptureStatus"/);
   assert.match(html, /data-capture-mode="auto"/);
@@ -119,6 +124,8 @@ test('launcher frontend separates daily work into focused views', async () => {
   assert.match(app, /function renderCapabilities/);
   assert.match(app, /getCapabilities/);
   assert.match(app, /function renderApiProviders/);
+  assert.match(app, /function applyGlobalReasoningPreset/);
+  assert.match(app, /data-route-reasoning/);
   assert.match(app, /manageApiProviders/);
   assert.match(app, /manageStickers/);
   assert.match(app, /function renderStickerCaptureStatus/);

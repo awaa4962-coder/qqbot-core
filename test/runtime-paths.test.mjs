@@ -42,13 +42,13 @@ describe("NapCat 运行时发现", () => {
     const runtime = createRuntime(root, "NapCat.v4.18.13.Shell", { official: true });
     fs.writeFileSync(
       path.join(runtime, "config", "webui.json"),
-      JSON.stringify({ autoLoginAccount: "1000000006" }),
+      JSON.stringify({ autoLoginAccount: "1000000001" }),
       "utf8"
     );
 
     const launch = prepareNapCatLaunch({ root });
     assert.equal(launch.mode, "official-injection");
-    assert.deepEqual(launch.args.slice(-2), ["-q", "1000000006"]);
+    assert.deepEqual(launch.args.slice(-2), ["-q", "1000000001"]);
     assert.equal(launch.args[0], path.join(runtime, "QQ.exe"));
     assert.equal(launch.env.NAPCAT_MAIN_PATH, path.join(runtime, "napcat.mjs"));
     assert.match(fs.readFileSync(path.join(runtime, "loadNapCat.js"), "utf8"), /file:\/\/\/.*napcat\.mjs/);

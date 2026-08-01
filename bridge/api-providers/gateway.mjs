@@ -3,9 +3,11 @@ import { callAnthropicMessages } from "./adapters/anthropic-messages.mjs";
 import { callGeminiNative } from "./adapters/gemini-native.mjs";
 import { callOpenAiChat } from "./adapters/openai-chat.mjs";
 import { callOpenAiResponses } from "./adapters/openai-responses.mjs";
+import { applyReasoningPolicy } from "./reasoning-policy.mjs";
 import {
   getProvider,
   getTaskRoute,
+  loadApiConfig,
   readProviderSecret,
   validateProviderEndpoint,
 } from "./store.mjs";
@@ -39,11 +41,22 @@ export async function callApiProvider(providerId, request = {}, options = {}) {
 }
 
 export async function callTaskApi(task, position, request = {}, options = {}) {
-  const route = getTaskRoute(task, options);
+  const config = options.config || loadApiConfig(options);
+  const sharedOptions = { ...options, config };
+  const route = getTaskRoute(task, sharedOptions);
   const slot = position === "fallback" ? "fallback" : "primary";
   const providerId = route[slot];
   if (!providerId) return failed("", "任务插槽未配置");
-  return await callApiProvider(providerId, request, options);
+  const provider = getProvider(providerId, sharedOptions);
+  const resolved = applyReasoningPolicy(provider, request, {
+    task,
+    mode: route.reasoning,
+  });
+  const result = await callApiProvider(providerId, resolved.request, {
+    ...sharedOptions,
+    provider,
+  });
+  return { ...result, reasoningPolicy: resolved.meta };
 }
 
 export function providerSupports(providerId, capability, options = {}) {

@@ -50,6 +50,7 @@ export async function callMiMoApi(systemPrompt, messages, maxTokens, options = {
     temperature: options.temperature ?? 0.7,
     timeoutMs: options.timeoutMs || 60000,
     thinking: options.thinking,
+    reasoningSignals: options.reasoningSignals,
     tools: options.allowTools === false ? [] : MIMO_TOOLS,
     toolChoice: "auto",
   };
@@ -133,6 +134,7 @@ export async function tryMiMo(userMsg, userName, history, imageUrls, groupId, is
     providerId: options.providerId,
     task: options.task || (options.replyMode === "interjection" ? "interjection" : "group_chat"),
     position: options.position || "primary",
+    reasoningSignals: { hasImages: Boolean(imageUrls?.length) },
     ...(Object.prototype.hasOwnProperty.call(options, 'visionContext')
       ? { visionContext: options.visionContext }
       : {}),
@@ -147,6 +149,7 @@ export async function tryMiMo(userMsg, userName, history, imageUrls, groupId, is
       providerId: mimoOptions.providerId,
       task: mimoOptions.task,
       position: mimoOptions.position,
+      reasoningSignals: mimoOptions.reasoningSignals,
     });
     return await parseInitialMiMoResult(system, msgs, response, maxTok, userMsg, userName, mimoOptions);
   } catch (e) {

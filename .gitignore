@@ -14,6 +14,8 @@ group_chats.json
 logs/
 napcat_inbox.json
 ddg_search.json
+.qqfriend/
+openclaw-workspace-state.json
 
 # 日志
 bridge_stdout.log
@@ -26,10 +28,28 @@ NapCat/
 # 文档生成
 *.docx
 ~$*.docx
+docs/*.pdf
+docs/render_*/
+docs/build_usage_guide.py
+docs/build_yexing_os_feasibility_report.py
+docs/make_contact_sheet.py
+create_docx.cjs
+create_docx.ps1
+gen_docs.mjs
+gen_docx.mjs
 
 # 备份
 *.bak
 napcat_bridge.js
+backups/
+
+# 启动器构建与本机浏览器数据
+launcher/**/bin/
+launcher/**/obj/
+launcher/publish-*/
+launcher/**/*.WebView2/
+launcher-config.json
+launcher-background.json
 
 # 个人配置
 MEMORY.md
@@ -46,25 +66,10 @@ memory/
 .openclaw/
 tools/
 skills/
+debug_bridge.mjs
+search_comp.mjs
+test_server.mjs
 0
 Drawing1.*
-
-# Local runtime state
-.qqfriend/
-openclaw-workspace-state.json
-runtime_deps/
-backups/
-dist/
-
-# Launcher build output
-launcher/**/bin/
-launcher/**/obj/
-launcher/publish-*/
-launcher-config.json
-
-# IDE and generated documentation
-.vs/
-*.user
-docs/render_*/
-*.pdf
 NapCat.Shell.Windows.OneKey.zip
+dist/

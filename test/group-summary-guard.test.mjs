@@ -23,26 +23,26 @@ afterEach(() => {
 describe("daily summary guard", () => {
   it("blocks a second run while the same group/date is running", () => {
     const rootDir = tempRoot();
-    const first = createDailySummaryGuard({ dateText: "2026-07-07", groupId: 1000000002, rootDir });
+    const first = createDailySummaryGuard({ dateText: "2026-07-07", groupId: 2000000001, rootDir });
     assert.equal(first.ok, true);
 
-    const second = createDailySummaryGuard({ dateText: "2026-07-07", groupId: 1000000002, rootDir });
+    const second = createDailySummaryGuard({ dateText: "2026-07-07", groupId: 2000000001, rootDir });
     assert.equal(second.ok, false);
     assert.equal(second.reason, "already_running");
 
     first.release();
-    const third = createDailySummaryGuard({ dateText: "2026-07-07", groupId: 1000000002, rootDir });
+    const third = createDailySummaryGuard({ dateText: "2026-07-07", groupId: 2000000001, rootDir });
     assert.equal(third.ok, true);
     third.release();
   });
 
   it("blocks later runs after a summary was marked sent", () => {
     const rootDir = tempRoot();
-    const first = createDailySummaryGuard({ dateText: "2026-07-07", groupId: 1000000002, rootDir });
+    const first = createDailySummaryGuard({ dateText: "2026-07-07", groupId: 2000000001, rootDir });
     first.markSent({ messages: 42, result: { status: "ok" } });
     first.release();
 
-    const second = createDailySummaryGuard({ dateText: "2026-07-07", groupId: 1000000002, rootDir });
+    const second = createDailySummaryGuard({ dateText: "2026-07-07", groupId: 2000000001, rootDir });
     assert.equal(second.ok, false);
     assert.equal(second.reason, "already_sent");
     assert.match(fs.readFileSync(first.sentFile, "utf8"), /"messages": 42/);
@@ -50,13 +50,13 @@ describe("daily summary guard", () => {
 
   it("removes stale locks before starting a new run", () => {
     const rootDir = tempRoot();
-    const first = createDailySummaryGuard({ dateText: "2026-07-07", groupId: 1000000002, rootDir });
+    const first = createDailySummaryGuard({ dateText: "2026-07-07", groupId: 2000000001, rootDir });
     const oldTime = new Date(Date.now() - 10_000);
     fs.utimesSync(first.lockDir, oldTime, oldTime);
 
     const second = createDailySummaryGuard({
       dateText: "2026-07-07",
-      groupId: 1000000002,
+      groupId: 2000000001,
       rootDir,
       staleMs: 1,
     });

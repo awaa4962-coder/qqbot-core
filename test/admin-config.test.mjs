@@ -43,18 +43,18 @@ test("normalizes editable config and rejects unknown fields", () => {
   const normalized = normalizeEditablePayload({
     editable: {
       botNames: "夜星 QQFriend 夜星",
-      groupWhitelist: ["1000000002", "1000000002", 1000000009],
-      featureGroupWhitelist: "1000000002 1000000009",
-      jmUserWhitelist: "1000000010",
-      adminUins: "1000000010",
+      groupWhitelist: ["2000000001", "2000000001", 2000000002],
+      featureGroupWhitelist: "2000000001 2000000002",
+      jmUserWhitelist: "1000000002",
+      adminUins: "1000000002",
     },
   });
 
   assert.deepEqual(normalized.botNames, ["夜星", "QQFriend"]);
-  assert.deepEqual(normalized.groupWhitelist, ["1000000002", "1000000009"]);
-  assert.deepEqual(normalized.featureGroupWhitelist, ["1000000002", "1000000009"]);
-  assert.deepEqual(normalized.jmUserWhitelist, ["1000000010"]);
-  assert.deepEqual(normalized.adminUins, ["1000000010"]);
+  assert.deepEqual(normalized.groupWhitelist, ["2000000001", "2000000002"]);
+  assert.deepEqual(normalized.featureGroupWhitelist, ["2000000001", "2000000002"]);
+  assert.deepEqual(normalized.jmUserWhitelist, ["1000000002"]);
+  assert.deepEqual(normalized.adminUins, ["1000000002"]);
   assert.throws(() => normalizeEditablePayload({ mimoKey: "secret" }), /unsupported config field/);
   assert.throws(() => normalizeEditablePayload({ groupWhitelist: ["abc"] }), /invalid groupWhitelist/);
 });
@@ -64,20 +64,20 @@ test("saveEditableConfig writes only mapped non-secret files", () => {
   const result = saveEditableConfig({
     editable: {
       botNames: ["夜星", "Yexing"],
-      groupWhitelist: [1000000002],
+      groupWhitelist: [2000000001],
       summaryGroupWhitelist: [],
-      featureGroupWhitelist: [1000000002, 1000000009],
-      jmUserWhitelist: [1000000010],
+      featureGroupWhitelist: [2000000001, 2000000002],
+      jmUserWhitelist: [1000000002],
     },
   }, { root });
 
   assert.equal(result.ok, true);
   assert.equal(result.restartRequired, true);
   assert.equal(fs.readFileSync(path.join(root, ".env_bot_names"), "utf8"), "夜星\nYexing\n");
-  assert.equal(fs.readFileSync(path.join(root, ".env_groups"), "utf8"), "1000000002\n");
+  assert.equal(fs.readFileSync(path.join(root, ".env_groups"), "utf8"), "2000000001\n");
   assert.equal(fs.readFileSync(path.join(root, ".env_summary_groups"), "utf8"), "");
-  assert.equal(fs.readFileSync(path.join(root, ".env_feature_groups"), "utf8"), "1000000002\n1000000009\n");
-  assert.equal(fs.readFileSync(path.join(root, ".env_jm_users"), "utf8"), "1000000010\n");
+  assert.equal(fs.readFileSync(path.join(root, ".env_feature_groups"), "utf8"), "2000000001\n2000000002\n");
+  assert.equal(fs.readFileSync(path.join(root, ".env_jm_users"), "utf8"), "1000000002\n");
   assert.equal(fs.existsSync(path.join(root, ".env_mimo")), false);
 });
 

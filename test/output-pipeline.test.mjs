@@ -31,6 +31,22 @@ describe("output pipeline", () => {
     assert.equal(packet.reason, "empty_content_with_reasoning");
   });
 
+  it("ignores alternate private reasoning fields and sends only content", () => {
+    const packet = buildOutputPacket({
+      choices: [{ message: { content: "最终答案", analysis: "内部分析", thinking: { text: "内部思考" } } }],
+    });
+    assert.equal(packet.ok, true);
+    assert.equal(packet.text, "最终答案");
+    assert.equal(packet.text.includes("内部"), false);
+  });
+
+  it("rejects analysis-only responses instead of exposing them", () => {
+    const packet = buildOutputPacket({ choices: [{ message: { analysis: "内部分析不能外发" } }] });
+    assert.equal(packet.ok, false);
+    assert.equal(packet.text, null);
+    assert.equal(packet.reason, "empty_content_with_reasoning");
+  });
+
   it("rejects content that still looks like reasoning", () => {
     const raw = {
       choices: [{

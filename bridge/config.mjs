@@ -11,7 +11,13 @@ const CONFIG_ROOT = path.resolve(process.env.QQBOT_CONFIG_ROOT || ROOT);
 const DATA_ROOT = path.resolve(process.env.QQBOT_DATA_DIR || ROOT);
 const LOG_ROOT = path.resolve(process.env.QQBOT_LOG_DIR || path.join(DATA_ROOT, 'logs'));
 
-const DEFAULT_GROUP_WHITELIST = [1000000002, 1000000009, 1000000008, 1000000001, 2000000002];
+const DEFAULT_GROUP_WHITELIST = [];
+const TEST_SELF_UIN = 1000000001;
+const TEST_GROUP_WHITELIST = [2000000001, 2000000002, 2000000003, 2000000004, 2000000005];
+const TEST_SUMMARY_EXCLUDED = new Set([2000000004, 2000000005]);
+const TEST_FRIEND_WHITELIST = [3000000001, 3000000002];
+const TEST_BOT_BLACKLIST = [4000000001];
+const TEST_LONG_GROUPS = ['2000000005', '2000000003'];
 const DEFAULT_RESOURCE_MAX_BYTES = 500 * 1024 * 1024;
 const DEFAULT_JM_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_JM_ZIP_PASSWORD = 'FS';
@@ -74,14 +80,21 @@ function readBotNames() {
 
 function readGroupWhitelist() {
   const fromConfig = _readOptionalNumberList('.env_groups', 'QQBOT_GROUPS');
-  return fromConfig.length ? fromConfig : DEFAULT_GROUP_WHITELIST;
+  if (fromConfig.length) return fromConfig;
+  return TEST_MODE ? TEST_GROUP_WHITELIST : DEFAULT_GROUP_WHITELIST;
+}
+
+function readSelfUin() {
+  const fromConfig = _readOptionalNumberList('.env_self_uin', 'QQBOT_SELF_UIN');
+  return fromConfig[0] || (TEST_MODE ? TEST_SELF_UIN : 0);
 }
 
 function readSummaryGroupWhitelist(groupWhitelist) {
   const fromConfig = _readOptionalNumberList('.env_summary_groups', 'QQBOT_SUMMARY_GROUPS');
-  return fromConfig.length ? fromConfig : groupWhitelist.filter(function(groupId) {
-    return ![1000000001, 2000000002].includes(groupId);
-  });
+  if (fromConfig.length) return fromConfig;
+  return TEST_MODE
+    ? groupWhitelist.filter(groupId => !TEST_SUMMARY_EXCLUDED.has(groupId))
+    : groupWhitelist;
 }
 
 function readResourceGroupWhitelist(groupWhitelist) {
@@ -101,7 +114,7 @@ function readStickerGroupWhitelist(groupWhitelist) {
 
 function readFriendWhitelist() {
   const fromConfig = _readOptionalNumberList('.env_friends', 'QQBOT_FRIENDS');
-  return fromConfig.length ? fromConfig : [1000000005, 1000000007];
+  return fromConfig.length || !TEST_MODE ? fromConfig : TEST_FRIEND_WHITELIST;
 }
 
 function readJmUserWhitelist() {
@@ -110,12 +123,12 @@ function readJmUserWhitelist() {
 
 function readBotBlacklist() {
   const fromConfig = _readOptionalNumberList('.env_bot_blacklist', 'QQBOT_BLACKLIST');
-  return fromConfig.length ? fromConfig : [1000000003];
+  return fromConfig.length || !TEST_MODE ? fromConfig : TEST_BOT_BLACKLIST;
 }
 
 function readLongGroups() {
   const fromConfig = _readOptionalNumberList('.env_long_groups', 'QQBOT_LONG_GROUPS');
-  return fromConfig.length ? fromConfig.map(String) : ['2000000002', '1000000008'];
+  return fromConfig.length || !TEST_MODE ? fromConfig.map(String) : TEST_LONG_GROUPS;
 }
 
 function readJmPython() {
@@ -185,7 +198,7 @@ const STICKER_GROUP_WHITELIST = readStickerGroupWhitelist(GROUP_WHITELIST);
 export const CFG = {
   napcatApi: 'http://127.0.0.1:6700',
   listenPort: 16789,
-  selfUin: 1000000006,
+  selfUin: readSelfUin(),
   groupWhitelist: GROUP_WHITELIST,
   summaryGroupWhitelist: SUMMARY_GROUP_WHITELIST,
   resourceGroupWhitelist: RESOURCE_GROUP_WHITELIST,

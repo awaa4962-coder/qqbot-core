@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, it } from "node:test";
 
-import { callApiProvider } from "../bridge/api-providers/gateway.mjs";
+import { callApiProvider, callTaskApi } from "../bridge/api-providers/gateway.mjs";
 import { listApiPresets } from "../bridge/api-providers/presets.mjs";
 import { applyApiProviderAction } from "../bridge/admin-api/api-provider-manager.mjs";
 import {
@@ -36,9 +36,38 @@ describe("API provider presets and storage", () => {
 
   it("keeps DeepSeek as the protected group fallback", () => {
     const config = createDefaultApiConfig();
+    assert.equal(config.schemaVersion, 2);
     assert.equal(config.routes.group_chat.primary, "mimo");
     assert.equal(config.routes.group_chat.fallback, "deepseek");
+    assert.equal(config.routes.group_chat.reasoning, "auto");
+    assert.equal(config.routes.interjection.reasoning, "economy");
     assert.equal(config.routes.private_chat.primary, "deepseek");
+  });
+
+  it("migrates legacy routes to task reasoning defaults", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-api-migrate-"));
+    const legacy = createDefaultApiConfig();
+    legacy.schemaVersion = 1;
+    for (const route of Object.values(legacy.routes)) delete route.reasoning;
+    fs.mkdirSync(path.join(root, ".qqfriend"), { recursive: true });
+    fs.writeFileSync(path.join(root, ".qqfriend", "api-providers.json"), JSON.stringify(legacy), "utf8");
+
+    const migrated = loadApiConfig({ root });
+    assert.equal(migrated.schemaVersion, 2);
+    assert.equal(migrated.routes.group_chat.reasoning, "auto");
+    assert.equal(migrated.routes.group_summary.reasoning, "deep");
+    assert.equal(migrated.routes.sticker_select.reasoning, "economy");
+  });
+
+  it("persists valid reasoning modes and rejects unknown modes", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-api-reasoning-"));
+    saveApiRoutes({
+      group_chat: { primary: "mimo", fallback: "deepseek", reasoning: "deep" },
+    }, { root });
+    assert.equal(loadApiConfig({ root }).routes.group_chat.reasoning, "deep");
+    assert.throws(() => saveApiRoutes({
+      group_chat: { primary: "mimo", fallback: "deepseek", reasoning: "maximum" },
+    }, { root }), /不支持的思考档位/);
   });
 
   it("stores custom keys outside the public JSON snapshot", () => {
@@ -141,6 +170,31 @@ describe("API provider presets and storage", () => {
 });
 
 describe("API protocol adapters", () => {
+  it("applies task reasoning before calling MiMo and not DeepSeek fallback", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-api-gateway-"));
+    saveApiRoutes({
+      group_chat: { primary: "mimo", fallback: "deepseek", reasoning: "deep" },
+    }, { root });
+    fs.writeFileSync(path.join(root, ".env_mimo"), "sk-test-mimo-key", "utf8");
+    fs.writeFileSync(path.join(root, ".env_ds"), "sk-test-ds-key", "utf8");
+    const bodies = [];
+    globalThis.fetch = async (_url, options) => {
+      bodies.push(JSON.parse(options.body));
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ choices: [{ message: { content: "OK" } }] }),
+      };
+    };
+
+    const primary = await callTaskApi("group_chat", "primary", basicRequest(), { root });
+    const fallback = await callTaskApi("group_chat", "fallback", basicRequest(), { root });
+    assert.deepEqual(bodies[0].thinking, { type: "enabled" });
+    assert.equal(Object.prototype.hasOwnProperty.call(bodies[1], "thinking"), false);
+    assert.equal(primary.reasoningPolicy.effectiveMode, "deep");
+    assert.equal(fallback.reasoningPolicy.applied, false);
+  });
+
   it("normalizes Responses output into the shared output pipeline", async () => {
     mockJsonResponse({
       id: "resp-1",

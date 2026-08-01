@@ -4,7 +4,6 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { CFG } from "../../config.mjs";
-import { dateRange, formatDate } from "../../group-summary/date.mjs";
 import { logE } from "../../logger.mjs";
 import { sendMsg, sendMsgWithImage } from "../../napcat.mjs";
 import { groupChats } from "../../storage.mjs";
@@ -99,8 +98,8 @@ export function filterMessagesByRange(chats, parsed, now = new Date()) {
   const end = now.getTime();
   let start = end - DAY_MS;
   if (parsed.range === "yesterday") {
-    const shanghaiStart = dateRange(formatDate(now)).start;
-    return chats.filter(item => item.ts >= shanghaiStart - DAY_MS && item.ts < shanghaiStart);
+    const localStart = startOfLocalDay(now);
+    return chats.filter(item => item.ts >= localStart - DAY_MS && item.ts < localStart);
   }
   if (parsed.range === "days") start = end - parsed.days * DAY_MS;
   return chats.filter(item => item.ts >= start && item.ts <= end);
@@ -206,6 +205,12 @@ async function loadSharp() {
   } catch {
     return null;
   }
+}
+
+function startOfLocalDay(now) {
+  const date = new Date(now);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
 }
 
 function escapeXml(value) {

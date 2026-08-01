@@ -1,5 +1,16 @@
 # 夜星桥接器更新日志
 
+## v1.3.4-reasoning-control - 2026-08-01 - 思考强度与结果隔离
+- API 中心新增“省额度 / 智能 / 深度”三档快捷控制，并允许群聊、私聊、文件、日报、关系短评、表情选择、识图、画像和搜索总结分别设置。
+- “智能”档使用本地确定性规则判断短聊和复杂任务，不额外调用一次模型；MiMo Chat 最终映射为真实的 `thinking.type=disabled/enabled`。
+- API 路由配置升级到 schema v2，旧配置自动补齐任务默认档位；保存后从下一次模型请求热生效，DeepSeek 群聊兜底仍受保护。
+- DeepSeek 官方路由保持供应商默认行为，不注入未经确认的 MiMo 思考参数；Responses 协议使用标准 reasoning effort 映射。
+- 前端原“思考模式”能力标记更名为“支持推理”，与实际运行档位分离；不支持可控档位的主力 API 会显示为跟随模型。
+- 输出管线扩展拦截 `reasoning_content`、`reasoning`、`analysis` 和 `thinking`；只允许最终正文进入发送层，内部推理只记录长度且不会写入 QQ 消息。
+- 新增配置迁移、自动档判断、协议映射、DeepSeek 不注入、替代推理字段隔离和前端控件测试。
+- 新增强制 GitHub 发布门禁：每次更新必须经过验收、隐私扫描、显式暂存、提交、推送和远端 commit 核验；未推送不得标记完成。
+- 公开源码移除真实 QQ 标识和本机绝对路径，运行值迁至已忽略的 `.env_*`；发布过滤新增 WebView2、构建目录、备份、API 路由运行态和 `*.tmp.<PID>` 防护。
+
 ## v1.3.3-meme-web-update - 2026-07-31 - 联网梗库与人工可控治理
 - 梗库升级为 v3：旧版群聊碎片自动学习和中文词典同步不再参与运行；迁移前保留备份，候选区清空，旧自动词条进入隔离状态。
 - 新增公开热点采集层，支持 DailyHot 兼容接口、微博/B 站/知乎公开端点和可选 RSSHub；单个来源故障只记录状态，不会改动正式梗库。
@@ -396,4 +407,4 @@
 
 # v1.2.4 launcher supplement - 2026-07-02
 - 新增 Windows 一键启动器：桌面 `QQFriend一键启动.exe` 可串起 NapCat、Bridge、watchdog、JM 自检、日报模块导入检查和 `/health` 检查。
-- 启动器首次运行会在 exe 同目录生成 `launcher-config.json`，优先读取 `QQFRIEND_PROJECT_DIR`，随后自动查找项目目录，不读取或打包真实 `.env` key。
+- 启动器首次运行会在 exe 同目录生成 `launcher-config.json`，默认指向 `%USERPROFILE%\.openclaw\workspace\qqfriend`，不读取或打包真实 `.env` key。

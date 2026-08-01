@@ -19,9 +19,9 @@ test("module catalog is safe and includes health metadata", () => {
   const catalog = buildModuleCatalog({
     cfg: {
       botNames: ["夜星"],
-      adminUins: ["1000000010"],
-      resourceGroupWhitelist: [1000000002],
-      summaryGroupWhitelist: [1000000009],
+      adminUins: ["1000000002"],
+      resourceGroupWhitelist: [2000000001],
+      summaryGroupWhitelist: [2000000002],
       legacyProfileRefreshEnabled: false,
       resourceMaxBytes: 500 * 1024 * 1024,
       jmTimeoutMs: 1000,
@@ -30,7 +30,7 @@ test("module catalog is safe and includes health metadata", () => {
       jmZipPassword: "FS",
       jmSevenZipPath: "C:/7z.exe",
     },
-    longGroups: ["2000000003"],
+    longGroups: ["2000000005"],
   });
 
   assert.equal(catalog.count, catalog.modules.length);

@@ -4,30 +4,26 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.3.3-meme-web-update";
-export const VERSION_NAME = "meme-web-update";
+export const VERSION = "1.3.4-reasoning-control";
+export const VERSION_NAME = "reasoning-control";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "梗库升级到 v3：停用旧的群聊碎片自动学习和旧中文词典同步，迁移时清空候选并隔离旧自动词条。",
-  "新增定时联网更新，从公开热点源取候选，再用实际提到候选词的跨域网页证据核验；来源失败不会改动现有梗库。",
-  "MiMo 只负责依据证据整理含义和用法，并必须标明引用序号；请求或解析失败时由 DeepSeek 兜底，模型不能凭空新增词条。",
-  "联网词条必须满足多条、跨域证据门槛，并保存来源标题、平台、链接、查证时间和过期状态。",
-  "控制台新增联网更新、当前词查证、来源编辑、群范围、字段保护、编辑历史恢复和整批回滚。",
-  "人工锁定的名称、含义、用法、示例等字段不会被后续联网更新覆盖。",
-  "群聊只会给已知梗增加匿名使用计数，不保存群聊原文、QQ 号，也不会从复读或普通短句造词。",
-  "更新任务带进程内与跨进程锁、失败隔离和到期降级；DeepSeek 模型兜底继续保留。",
+  "控制台 API 中心新增省额度、智能、深度三档思考控制，并支持按功能单独设置。",
+  "智能档使用本地规则区分短聊与复杂任务，不会为了判断档位额外调用模型。",
+  "MiMo Chat 使用真实 thinking 开关；不支持可控档位的模型继续跟随供应商默认行为。",
+  "任务路由配置升级为 schema v2，旧配置自动迁移，保存后从下一次请求热生效。",
+  "DeepSeek 群聊兜底继续固定保留，不会被注入 MiMo 专用参数。",
+  "输出管线只允许最终正文外发，reasoning_content、analysis、thinking 等内部推理字段永久隔离。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "The meme store is now v3; legacy chat-fragment learning and dictionary sync are retired and migrated candidates are cleared.",
-  "A scheduled updater requires independent cross-domain pages that actually mention the candidate before changing the store.",
-  "MiMo must cite the supplied evidence indexes; DeepSeek is used only when the primary request or parse fails.",
-  "Web entries require multi-item, cross-domain evidence and retain source links, verification time and expiry state.",
-  "The console can run updates, research one term, edit sources and scope, protect fields, restore history and roll back a batch.",
-  "Manually protected fields survive future web updates.",
-  "Group messages only increment aggregate usage for known entries; raw messages and QQ identifiers are not stored.",
-  "The updater uses process and cross-process locks, failure isolation and stale expiry; DeepSeek fallback remains enabled.",
+  "The API center now provides Economy, Smart and Deep reasoning controls with per-task overrides.",
+  "Smart mode uses deterministic local rules and does not spend an extra model request.",
+  "MiMo Chat receives native thinking toggles while unsupported providers keep their defaults.",
+  "Task routing uses schema v2 with automatic legacy migration and next-request hot reload.",
+  "The protected DeepSeek group fallback remains intact and never receives MiMo-only fields.",
+  "Only final content can leave the output pipeline; private reasoning fields are permanently isolated.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

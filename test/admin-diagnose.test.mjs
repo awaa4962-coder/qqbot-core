@@ -13,13 +13,13 @@ import {
 test("reply diagnosis detects mentioned group command", () => {
   const diagnosis = buildReplyDiagnosis({
     message_type: "group",
-    group_id: 1000000002,
+    group_id: 2000000001,
     user_id: 123456,
     message: [
-      { type: "at", data: { qq: "1000000006" } },
+      { type: "at", data: { qq: "1000000001" } },
       { type: "text", data: { text: " help" } },
     ],
-    raw_message: "[CQ:at,qq=1000000006] help",
+    raw_message: "[CQ:at,qq=1000000001] help",
   });
 
   assert.equal(diagnosis.safety.callsModel, false);
@@ -39,13 +39,13 @@ test("reply diagnosis follows specialized group command routes", () => {
   for (const [text, route] of cases) {
     const diagnosis = buildReplyDiagnosis({
       message_type: "group",
-      group_id: 1000000002,
+      group_id: 2000000001,
       user_id: 123456,
       message: [
-        { type: "at", data: { qq: "1000000006" } },
+        { type: "at", data: { qq: "1000000001" } },
         { type: "text", data: { text: " " + text } },
       ],
-      raw_message: "[CQ:at,qq=1000000006] " + text,
+      raw_message: "[CQ:at,qq=1000000001] " + text,
     });
     assert.equal(diagnosis.command.route, route);
     assert.equal(diagnosis.replyPlan.action, "command_reply");
@@ -69,16 +69,16 @@ test("reply diagnosis explains non-whitelisted group block", () => {
 test("reply diagnosis allows admin private commands without friend whitelist", () => {
   const diagnosis = buildReplyDiagnosis({
     message_type: "private",
-    user_id: 1000000010,
+    user_id: 1000000002,
     text: "runtime",
   }, {
     cfg: {
-      selfUin: 1000000006,
+      selfUin: 1000000001,
       botNames: ["夜星", "QQFriend"],
       groupWhitelist: [],
       friendWhitelist: [],
       botBlacklist: [],
-      adminUins: ["1000000010"],
+      adminUins: ["1000000002"],
     },
   });
 
@@ -90,12 +90,12 @@ test("reply diagnosis allows admin private commands without friend whitelist", (
 
 test("normalizeDiagnosticEvent accepts simplified messages", () => {
   const event = normalizeDiagnosticEvent({
-    groupId: 1000000002,
+    groupId: 2000000001,
     userId: 1,
     text: "hello",
   });
   assert.equal(event.message_type, "group");
-  assert.equal(event.group_id, 1000000002);
+  assert.equal(event.group_id, 2000000001);
   assert.deepEqual(event.message, [{ type: "text", data: { text: "hello" } }]);
 });
 
@@ -103,7 +103,7 @@ test("admin diagnose route returns dry-run payload", async () => {
   const writes = [];
   const req = Readable.from([Buffer.from(JSON.stringify({
     message_type: "group",
-    group_id: 1000000002,
+    group_id: 2000000001,
     user_id: 123456,
     text: "普通聊天",
   }))]);

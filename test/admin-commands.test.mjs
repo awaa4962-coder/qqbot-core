@@ -14,11 +14,11 @@ import { VERSION } from "../bridge/version.mjs";
 
 describe("admin command parsing", () => {
   it("strips CQ at and visible bot mention", () => {
-    assert.equal(stripBotMention("[CQ:at,qq=1000000006] help", 1000000006), "help");
-    assert.equal(stripBotMention("@夜星 状态", 1000000006), "状态");
+    assert.equal(stripBotMention("[CQ:at,qq=1000000001] help", 1000000001), "help");
+    assert.equal(stripBotMention("@夜星 状态", 1000000001), "状态");
     assert.ok(CFG.botNames.length > 0);
-    assert.equal(stripBotMention("@CustomBot help", 1000000006, ["CustomBot"]), "help");
-    assert.equal(stripBotMention("@Yexing version", 1000000006, ["Yexing"]), "version");
+    assert.equal(stripBotMention("@CustomBot help", 1000000001, ["CustomBot"]), "help");
+    assert.equal(stripBotMention("@Yexing version", 1000000001, ["Yexing"]), "version");
     assert.equal(normalizeCommand(" admin   help "), "admin help");
   });
 
@@ -36,9 +36,9 @@ describe("admin command parsing", () => {
     const reply = buildGroupCommandReply({
       isAtMe: true,
       text: "help",
-      rawText: "[CQ:at,qq=1000000006] help",
+      rawText: "[CQ:at,qq=1000000001] help",
       user_id: 1,
-    }, { selfUin: 1000000006 });
+    }, { selfUin: 1000000001 });
     assert.match(reply, /夜星能力中心/);
   });
 
@@ -123,7 +123,7 @@ describe("admin command parsing", () => {
     assert.match(buildGroupCommandReply({
       isAtMe: true,
       text: "@夜星 运行状态",
-      rawText: "[CQ:at,qq=1000000006] 运行状态",
+      rawText: "[CQ:at,qq=1000000001] 运行状态",
       user_id: admin,
       group_id: 999998,
     }, { admins, runtime }), /状态：正常/);
@@ -171,7 +171,7 @@ describe("admin command parsing", () => {
         firstSeen: new Date(now - 5 * 86400000).toISOString(),
         chats: [{ group: "1", text: "sender", ts: now }],
       },
-      "1000000010": {
+      "1000000002": {
         nicknames: ["目标用户"],
         firstSeen: new Date(now - 30 * 86400000).toISOString(),
         chats: Array.from({ length: 40 }, (_, i) => ({
@@ -184,15 +184,15 @@ describe("admin command parsing", () => {
     const reply = buildGroupCommandReply({
       isAtMe: true,
       text: "好感度",
-      rawText: "[CQ:at,qq=1000000006][CQ:at,qq=1000000010] 好感度",
+      rawText: "[CQ:at,qq=1000000001][CQ:at,qq=1000000002] 好感度",
       user_id: 42,
       group_id: 1,
       mentions: [
-        { qq: "1000000006", isBot: true, isAll: false },
-        { qq: "1000000010", isBot: false, isAll: false, displayName: "群名片目标" },
+        { qq: "1000000001", isBot: true, isAll: false },
+        { qq: "1000000002", isBot: false, isAll: false, displayName: "群名片目标" },
       ],
       mentionedUsers: [
-        { qq: "1000000010", isBot: false, isAll: false, displayName: "群名片目标" },
+        { qq: "1000000002", isBot: false, isAll: false, displayName: "群名片目标" },
       ],
     }, { users, groupChats: [] });
 
@@ -244,9 +244,9 @@ describe("admin command parsing", () => {
     const noSlashReply = buildGroupCommandReply({
       isAtMe: true,
       text: "export-relationships",
-      rawText: "[CQ:at,qq=1000000006] export-relationships",
+      rawText: "[CQ:at,qq=1000000001] export-relationships",
       user_id: 1,
-    }, { selfUin: 1000000006, admins: ["1"] });
+    }, { selfUin: 1000000001, admins: ["1"] });
     assert.ok(noSlashReply.includes("reserved") || noSlashReply.includes("不会导出关系表"));
   });
 
@@ -255,9 +255,9 @@ describe("admin command parsing", () => {
       const reply = buildGroupCommandReply({
         isAtMe: true,
         text: command,
-        rawText: "[CQ:at,qq=1000000006] " + command,
+        rawText: "[CQ:at,qq=1000000001] " + command,
         user_id: 1,
-      }, { selfUin: 1000000006 });
+      }, { selfUin: 1000000001 });
       assert.match(reply, new RegExp(VERSION));
       assert.match(reply, /memory status/);
       assert.match(reply, /回复风格/);
@@ -270,15 +270,15 @@ describe("admin command parsing", () => {
     const reply = buildGroupCommandReply({
       isAtMe: true,
       text: "changelog",
-      rawText: "[CQ:at,qq=1000000006] changelog",
+      rawText: "[CQ:at,qq=1000000001] changelog",
       user_id: 1,
-    }, { selfUin: 1000000006 });
+    }, { selfUin: 1000000001 });
     assert.match(reply, new RegExp("Current version: v" + VERSION));
     assert.match(reply, /Still reserved:/);
     assert.match(reply, /export-relationships/);
-    assert.match(reply, /multi-item, cross-domain evidence/);
-    assert.match(reply, /raw messages and QQ identifiers are not stored/);
-    assert.match(reply, /DeepSeek fallback/);
+    assert.match(reply, /Economy, Smart and Deep reasoning controls/);
+    assert.match(reply, /Only final content can leave the output pipeline/);
+    assert.match(reply, /DeepSeek group fallback/);
     assert.doesNotMatch(reply, /key|token|secret/i);
   });
 

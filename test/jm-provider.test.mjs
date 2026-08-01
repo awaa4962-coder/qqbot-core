@@ -107,9 +107,9 @@ describe("jm provider", () => {
     const handled = await handlePrivateJmTransferCommand({
       text: "jm 123456",
       rawText: "jm 123456",
-      user_id: 1000000010,
+      user_id: 1000000002,
     }, {
-      userWhitelist: [1000000010],
+      userWhitelist: [1000000002],
       sender: async (userId, text) => sent.push({ userId, text }),
       runner: async (_jmId, outputDir) => {
         runnerCalled = true;
@@ -120,7 +120,7 @@ describe("jm provider", () => {
         await fsp.writeFile(zipPath, "zip", "utf8");
       },
       uploader: async (userId, filePath, name) => {
-        assert.equal(userId, 1000000010);
+        assert.equal(userId, 1000000002);
         assert.equal(name, "jm-123456.zip");
         assert.equal(fs.existsSync(filePath), true);
         return { status: "ok" };
@@ -129,7 +129,7 @@ describe("jm provider", () => {
 
     assert.equal(handled, true);
     assert.equal(runnerCalled, true);
-    assert.ok(sent.some(item => item.userId === 1000000010));
+    assert.ok(sent.some(item => item.userId === 1000000002));
   });
 
   it("accepts optional bot mention for private jm commands", async () => {
@@ -137,10 +137,10 @@ describe("jm provider", () => {
     const handled = await handlePrivateJmTransferCommand({
       text: "@QQFriend jm 123456",
       rawText: "@QQFriend jm 123456",
-      user_id: 1000000010,
+      user_id: 1000000002,
     }, {
       botNames: ["QQFriend"],
-      userWhitelist: [1000000010],
+      userWhitelist: [1000000002],
       sender: async () => {},
       runner: async (_jmId, outputDir) => {
         runnerCalled = true;
@@ -165,7 +165,7 @@ describe("jm provider", () => {
       rawText: "/jm 123456",
       user_id: 12345,
     }, {
-      userWhitelist: [1000000010],
+      userWhitelist: [1000000002],
       sender: async (userId, text) => sent.push({ userId, text }),
       runner: async () => { runnerCalled = true; },
     });
@@ -177,8 +177,8 @@ describe("jm provider", () => {
   });
 
   it("checks private jm user whitelist numerically", () => {
-    assert.equal(isJmUserAllowed("1000000010", [1000000010]), true);
-    assert.equal(isJmUserAllowed(12345, [1000000010]), false);
+    assert.equal(isJmUserAllowed("1000000002", [1000000002]), true);
+    assert.equal(isJmUserAllowed(12345, [1000000002]), false);
   });
 
   it("uploads private jm zip and keeps temp files until delayed cleanup", async () => {
@@ -188,7 +188,7 @@ describe("jm provider", () => {
 
     const result = await transferJmToPrivate({
       jmId: "123456",
-      userId: 1000000010,
+      userId: 1000000002,
       zipPassword: "FS",
       cleanupDelayMs: 60 * 60 * 1000,
       sender: async () => {},
@@ -202,7 +202,7 @@ describe("jm provider", () => {
         await fsp.writeFile(zipPath, "zip", "utf8");
       },
       uploader: async (userId, filePath, name) => {
-        assert.equal(userId, 1000000010);
+        assert.equal(userId, 1000000002);
         assert.equal(name, "jm-123456.zip");
         zipPathSeen = filePath;
         assert.equal(fs.existsSync(filePath), true);

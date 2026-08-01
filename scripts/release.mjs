@@ -39,6 +39,9 @@ const FORBIDDEN_NAMES = new Set([
   "memes.json",
   "api-providers.json",
   "api-providers.previous.json",
+  "openclaw-workspace-state.json",
+  "launcher-config.json",
+  "launcher-background.json",
   "AGENTS.md",
   "SOUL.md",
   "IDENTITY.md",
@@ -53,6 +56,9 @@ const FORBIDDEN_DIRS = new Set([
   "node_modules",
   "logs",
   "memory",
+  "backups",
+  "bin",
+  "obj",
   "NapCat",
   "tools",
   "skills",
@@ -89,8 +95,9 @@ export function isForbiddenPath(filePath) {
   if (!base) return true;
   if (normalized.includes("..")) return true;
   if (parts.includes(".qqfriend") && /^(?:memes|image-memes)(?:[.-].*)?\.json$/i.test(base)) return true;
-  if (parts.includes(".qqfriend") && /^api-providers(?:\..*)?\.json$/i.test(base)) return true;
   if (parts.includes(".qqfriend") && parts.includes("stickers")) return true;
+  if (/\.tmp(?:\.|$)/i.test(base)) return true;
+  if (parts.some(part => /\.WebView2$/i.test(part) || /^publish(?:-|$)/i.test(part))) return true;
   if (FORBIDDEN_NAMES.has(base)) return true;
   if (base.startsWith(".env_")) return true;
   if (base.startsWith("~$") && base.endsWith(".docx")) return true;
