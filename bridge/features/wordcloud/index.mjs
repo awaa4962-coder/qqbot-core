@@ -98,8 +98,8 @@ export function filterMessagesByRange(chats, parsed, now = new Date()) {
   const end = now.getTime();
   let start = end - DAY_MS;
   if (parsed.range === "yesterday") {
-    const localStart = startOfLocalDay(now);
-    return chats.filter(item => item.ts >= localStart - DAY_MS && item.ts < localStart);
+    const shanghaiStart = startOfShanghaiDay(now);
+    return chats.filter(item => item.ts >= shanghaiStart - DAY_MS && item.ts < shanghaiStart);
   }
   if (parsed.range === "days") start = end - parsed.days * DAY_MS;
   return chats.filter(item => item.ts >= start && item.ts <= end);
@@ -207,10 +207,9 @@ async function loadSharp() {
   }
 }
 
-function startOfLocalDay(now) {
-  const date = new Date(now);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
+function startOfShanghaiDay(now) {
+  const dateText = new Date(now).toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
+  return Date.parse(dateText + "T00:00:00+08:00");
 }
 
 function escapeXml(value) {
