@@ -4,12 +4,15 @@ import { log, logE } from "./logger.mjs";
 import { logGroupMsg, getUser, users, saveUsers } from "./storage.mjs";
 import { sendMsg } from "./napcat.mjs";
 import { generateProfile } from "./profile.mjs";
-import { callFallbackChat, callPrimaryChat, resolveChatVisionContext } from "./model-router.mjs";
+import {
+  buildModelFallbackHistory,
+  executeChatTask,
+  resolveChatVisionContext,
+} from "./model-router.mjs";
 import { buildSafeInterjectionReply } from "./reply-handlers.mjs";
 import { buildReplyContextPacket } from "./context/index.mjs";
 import { getPreferredDisplayName } from "./user-preferences.mjs";
 import { isSuccessfulOutbound, recordConversationTurn } from "./cognition/index.mjs";
-import { appendImageContext } from "./system-prompts/image-context.mjs";
 import { selectPersonaCue } from "./persona-style.mjs";
 import { maybeSendStickerAfterReply } from "./features/stickers/index.mjs";
 
@@ -145,7 +148,7 @@ async function resolveAiReply(ctx) {
   const visionContext = hasImages
     ? await resolveChatVisionContext(ctx.imageUrls)
     : undefined;
-  let reply = await callPrimaryChat({
+  const modelResult = await executeChatTask({
     userMsg: ctx.userMsg,
     userName: ctx.userName,
     history: ctx.fullHistory,
@@ -158,7 +161,8 @@ async function resolveAiReply(ctx) {
       ...(hasImages ? { visionContext } : {}),
     },
   });
-  if (reply) log("aiReply route: mimo");
+  let reply = modelResult.text;
+  if (reply) log("aiReply route:", modelResult.position);
 
   if (!reply && ctx.isPassiveInterjection) {
     reply = buildSafeInterjectionReply(ctx.userMsg);
@@ -170,32 +174,7 @@ async function resolveAiReply(ctx) {
     return reply;
   }
 
-  if (!reply) {
-    log("MiMo failed, fallback to DeepSeek");
-    const fallbackHistory = buildModelFallbackHistory(
-      ctx.fullHistory,
-      ctx.imageUrls,
-      visionContext
-    );
-    reply = await callFallbackChat({
-      userMsg: ctx.userMsg,
-      userName: ctx.userName,
-      history: fallbackHistory,
-      groupId: ctx.group_id,
-      isAtMe: ctx.isAtMe,
-      mood: ctx.mood,
-      options: {
-        currentUserId: ctx.uid,
-        personaCue: ctx.mimoOptions.personaCue,
-      },
-    });
-    if (reply) log("aiReply route: deepseek");
-  }
-
   return reply || "啊，我现在有点卡卡的，等我缓一下再回复你~ 🤔";
 }
 
-export function buildModelFallbackHistory(history, imageUrls, visionContext) {
-  if (!imageUrls?.length) return Array.isArray(history) ? history : [];
-  return appendImageContext(history, visionContext, { imageCount: imageUrls.length });
-}
+export { buildModelFallbackHistory };

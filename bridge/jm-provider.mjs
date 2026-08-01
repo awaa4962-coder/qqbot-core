@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { CFG } from "./config.mjs";
-import { stripBotMention } from "./admin-commands.mjs";
+import { prepareCommandText } from "./commands/normalize.mjs";
 import { isResourceGroupAllowed } from "./resource-transfer.mjs";
 import { sendMsg, sendPrivateMsg, uploadGroupFile, uploadPrivateFile } from "./napcat.mjs";
 import { log, logE } from "./logger.mjs";
@@ -24,10 +24,7 @@ const SEVEN_ZIP_COMMON_PATHS = [
 let activeJmTask = null;
 
 export function parseJmCommand(text, options = {}) {
-  const source = options.requireMention
-    ? stripBotMention(text, options.selfUin, options.botNames)
-    : String(text || "").trim();
-  const normalized = source.replace(/^[/\\]+/, "").trim();
+  const normalized = prepareCommandText(text, options);
   const match = normalized.match(JM_RE);
   if (!match) return null;
   return { ok: true, jmId: match[1] };
@@ -35,11 +32,7 @@ export function parseJmCommand(text, options = {}) {
 
 export async function handleJmTransferCommand(ctx, options = {}) {
   if (!ctx?.isAtMe) return false;
-  const parsed = parseJmCommand(ctx.text || ctx.rawText, {
-    requireMention: true,
-    selfUin: options.selfUin ?? CFG.selfUin,
-    botNames: options.botNames ?? CFG.botNames,
-  });
+  const parsed = resolveGroupJmCommand(ctx, options);
   if (!parsed) return false;
 
   const sender = options.sender || sendMsg;
@@ -68,6 +61,15 @@ export async function handleJmTransferCommand(ctx, options = {}) {
     activeJmTask = null;
   }
   return true;
+}
+
+function resolveGroupJmCommand(ctx, options) {
+  if (options.parsedCommand) return options.parsedCommand;
+  return parseJmCommand(ctx.text || ctx.rawText, {
+    requireMention: true,
+    selfUin: options.selfUin ?? CFG.selfUin,
+    botNames: options.botNames ?? CFG.botNames,
+  });
 }
 
 export async function transferJmToGroup(options) {

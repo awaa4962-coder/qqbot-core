@@ -1,5 +1,5 @@
 import { CFG } from "./config.mjs";
-import { stripBotMention } from "./admin-commands.mjs";
+import { prepareCommandText } from "./commands/normalize.mjs";
 import { log } from "./logger.mjs";
 import { groupChats } from "./storage.mjs";
 import { normalizeMsg, cleanText } from "./context/messages.mjs";
@@ -92,7 +92,7 @@ export async function handleLinkPreview(gid, rawText, isLongGroup) {
 
 export async function handleExplicitLinkPreviewCommand(ctx, options = {}) {
   if (!ctx?.isAtMe) return false;
-  const parsed = parseExplicitLinkPreviewCommand(ctx.text || ctx.rawText, {
+  const parsed = options.parsedCommand || parseExplicitLinkPreviewCommand(ctx.text || ctx.rawText, {
     selfUin: options.selfUin ?? CFG.selfUin,
     botNames: options.botNames ?? CFG.botNames,
   });
@@ -113,9 +113,10 @@ export async function handleExplicitLinkPreviewCommand(ctx, options = {}) {
 }
 
 export function parseExplicitLinkPreviewCommand(text, options = {}) {
-  const command = stripBotMention(text, options.selfUin, options.botNames)
-    .replace(/^[/\\]+/, "")
-    .trim();
+  const command = prepareCommandText(text, {
+    ...options,
+    requireMention: options.requireMention ?? true,
+  });
   const match = command.match(/^(?:preview|link preview|link|预览|链接预览)\s+(https?:\/\/\S+)/i);
   return match ? { url: match[1] } : null;
 }

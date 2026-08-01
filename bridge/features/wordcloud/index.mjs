@@ -7,7 +7,7 @@ import { CFG } from "../../config.mjs";
 import { logE } from "../../logger.mjs";
 import { sendMsg, sendMsgWithImage } from "../../napcat.mjs";
 import { groupChats } from "../../storage.mjs";
-import { stripBotMention } from "../../admin-commands.mjs";
+import { prepareCommandText } from "../../commands/normalize.mjs";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TOP_N = 48;
@@ -15,7 +15,7 @@ const MIN_TOKEN_COUNT = 2;
 
 export async function handleWordcloudCommand(ctx, options = {}) {
   if (!ctx?.isAtMe) return false;
-  const parsed = parseWordcloudCommand(ctx.text || ctx.rawText, {
+  const parsed = options.parsedCommand || parseWordcloudCommand(ctx.text || ctx.rawText, {
     selfUin: options.selfUin ?? CFG.selfUin,
     botNames: options.botNames ?? CFG.botNames,
   });
@@ -43,9 +43,10 @@ export async function handleWordcloudCommand(ctx, options = {}) {
 }
 
 export function parseWordcloudCommand(text, options = {}) {
-  const command = stripBotMention(text, options.selfUin, options.botNames)
-    .replace(/^[/\\]+/, "")
-    .trim()
+  const command = prepareCommandText(text, {
+    ...options,
+    requireMention: options.requireMention ?? true,
+  })
     .toLowerCase();
   if (!command) return null;
   if (["词云", "今日词云", "wordcloud", "word cloud"].includes(command)) return { range: "today", days: 1 };

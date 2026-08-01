@@ -15,7 +15,7 @@ import { RETRIEVAL_KEYWORD_RULES } from "./knowledge/topic-rules.mjs";
 import { buildMemorySummary, getActiveMemoryContext } from "./memory-profile.mjs";
 import { buildMemeContextBlock } from "./knowledge/memes/index.mjs";
 import { buildMentionContextBlock } from "./mentions/index.mjs";
-import { buildConversationThreadBlock, getConversationThread } from "./cognition/index.mjs";
+import { formatConversationThreadBlock, getConversationThread } from "./cognition/index.mjs";
 import {
   buildMinimalPreferenceContextBlock,
   buildPreferenceContextBlock,
@@ -43,7 +43,7 @@ export function buildLayeredReplyContext(options = {}) {
     appendMemeLayer(layers, options);
     appendInterjectionGroupLayer(layers, groupId, options);
   } else {
-    appendActiveReplyLayers(layers, { ...options, uid, groupId, userMsg });
+    appendActiveReplyLayers(layers, { ...options, uid, groupId, userMsg, thread });
   }
 
   return {
@@ -61,14 +61,18 @@ function appendInterjectionGroupLayer(layers, groupId, options) {
 }
 
 function appendActiveReplyLayers(layers, options) {
-  appendQuotedLayer(layers, options);
-  appendMentionLayer(layers, options);
-  appendThreadLayer(layers, options);
-  appendMemeLayer(layers, options);
-  appendPreferenceLayer(layers, options.uid);
-  appendMemoryLayer(layers, options.uid, options.groupId);
-  appendUserHistoryLayer(layers, options);
-  appendGroupBackgroundLayer(layers, options.groupId, options);
+  const contextOptions = {
+    ...options,
+    excludeMessageIds: conversationMessageIds(options.thread),
+  };
+  appendQuotedLayer(layers, contextOptions);
+  appendMentionLayer(layers, contextOptions);
+  appendThreadLayer(layers, contextOptions);
+  appendMemeLayer(layers, contextOptions);
+  appendPreferenceLayer(layers, contextOptions.uid);
+  appendMemoryLayer(layers, contextOptions.uid, contextOptions.groupId);
+  appendUserHistoryLayer(layers, contextOptions);
+  appendGroupBackgroundLayer(layers, contextOptions.groupId, contextOptions);
 }
 
 function appendMemeLayer(layers, options) {
@@ -91,7 +95,7 @@ function appendQuotedLayer(layers, options) {
 }
 
 function appendThreadLayer(layers, options) {
-  const threadBlock = buildConversationThreadBlock(options.uid, options.groupId);
+  const threadBlock = formatConversationThreadBlock(options.thread);
   if (threadBlock) pushLayer(layers, threadBlock, 88);
 }
 
@@ -115,6 +119,7 @@ function appendUserHistoryLayer(layers, options) {
     groupId: options.groupId,
     currentMessageId: options.currentMessageId,
     currentText: options.userMsg,
+    excludeMessageIds: options.excludeMessageIds,
   });
   if (relevant.length) {
     pushLayer(layers, "[当前发言人相关记忆]\n" + relevant.map(formatSpeakerLine).join("\n"), 70);
@@ -123,6 +128,7 @@ function appendUserHistoryLayer(layers, options) {
   const weighted = recentHistoryWeighted(options.uid, options.groupId, {
     currentMessageId: options.currentMessageId,
     currentText: options.userMsg,
+    excludeMessageIds: options.excludeMessageIds,
   });
   for (const item of weighted.history) pushLayer(layers, item.content, 60, item.role);
 }
@@ -132,6 +138,7 @@ function appendGroupBackgroundLayer(layers, groupId, options) {
   const groupRecent = recentGroupChat(groupId, 20, {
     currentMessageId: options.currentMessageId,
     currentText: options.userMsg,
+    excludeMessageIds: options.excludeMessageIds,
   });
   const groupCtx = buildGroupBackgroundBlock(groupRecent.map(function(m) { return m.content; }));
   if (groupCtx) pushLayer(layers, groupCtx, 40);
@@ -165,12 +172,24 @@ export function retrieveRelevantUserMemories(uid, query, options = {}) {
 }
 
 function isCurrentMemory(chat, options) {
+  if (hasExcludedMessageId(chat, options.excludeMessageIds)) return true;
   const currentMessageId = normalizeMessageId(options.currentMessageId);
   if (currentMessageId && normalizeMessageId(chat?.messageId) === currentMessageId) return true;
   if (!currentMessageId) return false;
   const currentText = String(options.currentText || "").replace(/\s+/g, " ").trim();
   const chatText = String(chat?.text || "").replace(/\s+/g, " ").trim();
   return Boolean(currentText && currentText === chatText && Date.now() - Number(chat?.ts || 0) < 15000);
+}
+
+function conversationMessageIds(thread) {
+  return new Set((thread?.turns || []).map(turn => normalizeMessageId(turn.messageId)).filter(Boolean));
+}
+
+function hasExcludedMessageId(message, excludedIds) {
+  if (!excludedIds?.size) return false;
+  return [message?.messageId, message?.replyToMessageId, message?.turnId]
+    .map(normalizeMessageId)
+    .some(id => id && excludedIds.has(id));
 }
 
 function normalizeMessageId(value) {

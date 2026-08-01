@@ -11,6 +11,7 @@ import {
   buildApiConfigSnapshot,
   createDefaultApiConfig,
   loadApiConfig,
+  readProviderSecret,
   saveApiProvider,
   saveApiRoutes,
   validateProviderEndpoint,
@@ -68,6 +69,24 @@ describe("API provider presets and storage", () => {
     assert.throws(() => saveApiRoutes({
       group_chat: { primary: "mimo", fallback: "deepseek", reasoning: "maximum" },
     }, { root }), /不支持的思考档位/);
+  });
+
+  it("caches runtime files without returning mutable shared config", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-api-cache-"));
+    const first = loadApiConfig({ root });
+    first.providers.mimo.model = "mutated-only-in-caller";
+    assert.equal(loadApiConfig({ root }).providers.mimo.model, "mimo-v2.5");
+
+    saveApiRoutes({
+      group_chat: { primary: "mimo", fallback: "deepseek", reasoning: "deep" },
+    }, { root });
+    assert.equal(loadApiConfig({ root }).routes.group_chat.reasoning, "deep");
+
+    const provider = loadApiConfig({ root }).providers.mimo;
+    fs.writeFileSync(path.join(root, ".env_mimo"), "test-cache-secret-one", "utf8");
+    assert.equal(readProviderSecret(provider, { root }), "test-cache-secret-one");
+    saveApiProvider({ ...provider, key: "test-cache-secret-two" }, { root, mode: "update" });
+    assert.equal(readProviderSecret(provider, { root }), "test-cache-secret-two");
   });
 
   it("stores custom keys outside the public JSON snapshot", () => {

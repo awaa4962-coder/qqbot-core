@@ -1,21 +1,16 @@
 // bridge/reply-group.mjs - group message pipeline.
 import { CFG, LONG_GROUPS } from "./config.mjs";
 import { log } from "./logger.mjs";
-import { logGroupMsg, users, groupChats } from "./storage.mjs";
-import { getLatestChangelog } from "./context/changelog.mjs";
+import { logGroupMsg } from "./storage.mjs";
 import { describeFiles, getGroupMemberInfo, sendMsg } from "./napcat.mjs";
-import { buildGroupCommandReplyAsync } from "./admin-commands.mjs";
 import {
   resolveReplyContext,
   pullRecentImages,
-  handleExplicitLinkPreviewCommand,
   handleLinkPreview,
   handleMiniApp,
   buildInterjectionDecision,
 } from "./reply-handlers.mjs";
-import { handleJmTransferCommand } from "./jm-provider.mjs";
-import { handleResourceTransferCommand } from "./resource-transfer.mjs";
-import { handleFeatureCommand } from "./features/index.mjs";
+import { dispatchGroupCommand } from "./commands/action-dispatcher.mjs";
 import { observeMemoryEvent, getActiveMemoryContext } from "./memory-profile.mjs";
 import { observeMemeUsage } from "./knowledge/memes/index.mjs";
 import { observeGroupDuplicate } from "./duplicate-message.mjs";
@@ -32,11 +27,8 @@ export async function handleGroupMessage(ctx, rawMessage) {
   ctx.duplicateInfo = logGroupMemberMessage(ctx);
   if (ctx.duplicateInfo?.duplicate && !ctx.isAtMe) return;
 
-  const replyState = await buildReplyState(ctx);
-  if (await handleJmTransferCommand(ctx, { replyToId: replyState.replyToId })) return;
-  if (await handleResourceTransferCommand(ctx, { replyToId: replyState.replyToId })) return;
-  if (await handleExplicitLinkPreviewCommand(ctx, { replyToId: replyState.replyToId })) return;
-  if (await handleFeatureCommand(ctx, { replyToId: replyState.replyToId })) return;
+  const replyState = createPendingReplyState(ctx);
+  if (await dispatchGroupCommand(ctx, { replyToId: replyState.replyToId })) return;
   if (!ctx.isAtMe) observeGroupStickerCandidates(ctx);
 
   const previewSent = await handleGroupPreviews(ctx, rawMessage);
@@ -109,10 +101,8 @@ async function handleGroupPreviews(ctx, rawMessage) {
 
 async function handleMentionedGroupMessage(ctx, replyState) {
   if (!ctx.isAtMe) return false;
+  await ensureReplyState(ctx, replyState);
   pullRecentImagesIntoContext(ctx);
-
-  if (await trySendGroupCommand(ctx, replyState.replyToId)) return true;
-  if (await trySendChangelog(ctx, replyState.replyToId)) return true;
 
   log("at detected, processing AI reply...");
   await aiReply(
@@ -130,25 +120,9 @@ async function handleMentionedGroupMessage(ctx, replyState) {
   return true;
 }
 
-async function trySendGroupCommand(ctx, replyToId) {
-  const reply = await buildGroupCommandReplyAsync(ctx, { selfUin: CFG.selfUin, users, groupChats });
-  if (!reply) return false;
-  await sendMsg(ctx.group_id, reply, replyToId);
-  logGroupMsg(ctx.group_id, "夜星", "[command]", CFG.selfUin, "assistant");
-  return true;
-}
-
 function pullRecentImagesIntoContext(ctx) {
   const recentImgs = pullRecentImages(ctx.group_id);
   if (recentImgs.length) ctx.images.push(...recentImgs);
-}
-
-async function trySendChangelog(ctx, replyToId) {
-  if (!ctx.text.includes("更新日志") && !ctx.text.includes("更新记录") && ctx.text !== "changelog") return false;
-  const cl = getLatestChangelog();
-  await sendMsg(ctx.group_id, "📋 夜星更新日志喵～\n\n" + cl, replyToId);
-  logGroupMsg(ctx.group_id, "夜星", "[changelog]", CFG.selfUin, "assistant");
-  return true;
 }
 
 async function handlePureFileMessage(ctx) {
@@ -180,6 +154,7 @@ async function handleRandomInterjection(ctx, previewSent, replyState = {}) {
     return;
   }
   log("random interjection triggered:", decision.kind);
+  await ensureReplyState(ctx, replyState);
   const text = ctx.text || (ctx.images.length ? "[图片]" : "");
   await aiReply(
     ctx.group_id,
@@ -193,6 +168,21 @@ async function handleRandomInterjection(ctx, previewSent, replyState = {}) {
     ctx.mentions,
     { messageId: ctx.message_id }
   );
+}
+
+function createPendingReplyState(ctx) {
+  return {
+    replyText: "",
+    replyToId: ctx.message_id,
+    contextResolved: false,
+  };
+}
+
+async function ensureReplyState(ctx, state) {
+  if (state.contextResolved) return state;
+  state.replyText = await resolveReplyContext(ctx);
+  state.contextResolved = true;
+  return state;
 }
 
 function requireLongGroup(groupId) {

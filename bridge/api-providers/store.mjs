@@ -17,6 +17,8 @@ const ROOT = path.resolve(
   path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..")
 );
 const ID_PATTERN = /^[a-z][a-z0-9-]{1,39}$/;
+const CONFIG_CACHE = new Map();
+const SECRET_CACHE = new Map();
 const TASK_IDS = Object.freeze([
   "group_chat",
   "interjection",
@@ -56,14 +58,21 @@ export function createDefaultApiConfig() {
 
 export function loadApiConfig(options = {}) {
   const root = options.root || ROOT;
-  const file = options.file || path.join(root, ".qqfriend", "api-providers.json");
+  const file = path.resolve(options.file || path.join(root, ".qqfriend", "api-providers.json"));
+  const stamp = fileStamp(file);
+  const cached = CONFIG_CACHE.get(file);
+  if (cached?.stamp === stamp) return cloneApiConfig(cached.value);
+
   const defaults = createDefaultApiConfig();
+  let config = defaults;
   try {
     const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
-    return normalizeStoredConfig(parsed, defaults);
+    config = normalizeStoredConfig(parsed, defaults);
   } catch {
-    return defaults;
+    // Invalid or missing runtime config falls back to the built-in routes.
   }
+  CONFIG_CACHE.set(file, { stamp, value: config });
+  return cloneApiConfig(config);
 }
 
 export function getTaskRoute(task, options = {}) {
@@ -85,11 +94,18 @@ export function readProviderSecret(provider, options = {}) {
   if (fromEnv) return fromEnv;
   if (!provider.secretFile) return "";
   const secretPath = resolveRootFile(root, provider.secretFile);
+  const stamp = fileStamp(secretPath);
+  const cached = SECRET_CACHE.get(secretPath);
+  if (cached?.stamp === stamp) return cached.value;
+
+  let secret = "";
   try {
-    return fs.readFileSync(secretPath, "utf8").trim();
+    secret = fs.readFileSync(secretPath, "utf8").trim();
   } catch {
-    return "";
+    // Missing sidecar files mean the provider is not configured yet.
   }
+  SECRET_CACHE.set(secretPath, { stamp, value: secret });
+  return secret;
 }
 
 export function buildApiConfigSnapshot(options = {}) {
@@ -367,6 +383,17 @@ function cloneRoutes(routes) {
   }));
 }
 
+function cloneApiConfig(config) {
+  return {
+    ...config,
+    providers: Object.fromEntries(Object.entries(config.providers || {}).map(([id, provider]) => [
+      id,
+      { ...provider, capabilities: [...(provider.capabilities || [])] },
+    ])),
+    routes: cloneRoutes(config.routes || {}),
+  };
+}
+
 function normalizeCapabilities(value) {
   const allowed = new Set(["text", "vision", "tools", "reasoning"]);
   const list = Array.isArray(value) ? value : [];
@@ -424,6 +451,22 @@ function atomicWriteText(file, value) {
   const tmp = file + ".tmp";
   fs.writeFileSync(tmp, value, "utf8");
   fs.renameSync(tmp, file);
+  invalidateFileCache(file);
+}
+
+function fileStamp(file) {
+  try {
+    const stat = fs.statSync(file);
+    return [stat.mtimeMs, stat.ctimeMs, stat.size].join(":");
+  } catch {
+    return "missing";
+  }
+}
+
+function invalidateFileCache(file) {
+  const resolved = path.resolve(file);
+  CONFIG_CACHE.delete(resolved);
+  SECRET_CACHE.delete(resolved);
 }
 
 function taskName(id) {

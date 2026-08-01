@@ -1,8 +1,8 @@
 // bridge/vision.mjs — 图片理解（MiMo Vision）
 import { log, logE } from './logger.mjs';
-import { miMoContent, cleanThinking, isLeakedReasoning } from './thinking.mjs';
 import { callTaskApi } from './api-providers/gateway.mjs';
 import { fetchSafeBuffer } from './safe-url.mjs';
+import { buildOutputPacket } from './output-pipeline.mjs';
 import {
   findCachedImageDescription,
   perceptualImageHash,
@@ -75,14 +75,9 @@ function readSingleImageCache(fingerprints) {
 }
 
 function sanitizeVisionResult(result) {
-  const raw = miMoContent(result.raw?.choices?.[0]?.message);
-  if (!raw) return null;
-  const clean = cleanThinking(raw);
-  if (clean && isLeakedReasoning(clean)) {
-    log('tryMiMoVision: leaked reasoning filtered');
-    return null;
-  }
-  return clean || null;
+  const packet = buildOutputPacket(result.raw, { provider: result.provider });
+  if (!packet.ok) log('tryMiMoVision: unsafe or empty model output filtered');
+  return packet.ok ? packet.text : null;
 }
 
 function rememberSingleImageDescription(fingerprints, description) {

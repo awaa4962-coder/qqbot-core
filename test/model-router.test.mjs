@@ -5,12 +5,10 @@ import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
 import {
-  MODEL_COST_TIERS,
   MODEL_PROVIDERS,
   MODEL_TASKS,
-  callChatProvider,
   callRawModelProvider,
-  getModelTaskPolicy,
+  executeChatTask,
 } from "../bridge/model-router.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -26,26 +24,46 @@ describe("model router boundaries", () => {
     assert.equal(MODEL_TASKS.RELATIONSHIP_COMMENT, "relationship_comment");
   });
 
-  it("declares task policies for cost-aware routing", () => {
-    const interjection = getModelTaskPolicy(MODEL_TASKS.INTERJECTION);
-    assert.equal(interjection.tier, MODEL_COST_TIERS.SMALL);
-    assert.equal(interjection.fallback, "local");
+  it("runs primary and fallback chat through one orchestration path", async () => {
+    let fallbackRequest = null;
+    const result = await executeChatTask({
+      userMsg: "这张图是什么",
+      userName: "测试用户",
+      history: [{ role: "user", content: "前文" }],
+      imageUrls: ["https://example.com/image.jpg"],
+      groupId: 1,
+      isAtMe: true,
+      options: {
+        currentUserId: "42",
+        personaCue: "soft",
+        visionContext: "一只猫",
+      },
+    }, {
+      primaryChat: async () => null,
+      fallbackChat: async request => {
+        fallbackRequest = request;
+        return "fallback reply";
+      },
+    });
 
-    const summary = getModelTaskPolicy(MODEL_TASKS.GROUP_SUMMARY);
-    assert.equal(summary.primary, MODEL_PROVIDERS.PRIMARY);
-    assert.equal(summary.fallback, MODEL_PROVIDERS.FALLBACK);
-    assert.equal(summary.localFirst, true);
-
-    const comment = getModelTaskPolicy(MODEL_TASKS.RELATIONSHIP_COMMENT);
-    assert.equal(comment.tier, MODEL_COST_TIERS.SMALL);
-    assert.equal(comment.cachePreferred, true);
+    assert.deepEqual(result, { text: "fallback reply", position: "fallback" });
+    assert.match(fallbackRequest.history.at(-1).content, /一只猫/);
+    assert.equal(fallbackRequest.options.currentUserId, "42");
   });
 
-  it("rejects unknown providers before touching model implementations", async () => {
-    await assert.rejects(
-      () => callChatProvider("unknown", {}),
-      /unknown model provider/
-    );
+  it("keeps passive interjection fallback local", async () => {
+    let fallbackCalled = false;
+    const result = await executeChatTask({
+      options: { replyMode: "interjection" },
+    }, {
+      primaryChat: async () => null,
+      fallbackChat: async () => {
+        fallbackCalled = true;
+        return "unexpected";
+      },
+    });
+    assert.deepEqual(result, { text: null, position: "local" });
+    assert.equal(fallbackCalled, false);
   });
 
   it("rejects unknown raw providers before touching model implementations", async () => {

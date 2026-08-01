@@ -3,6 +3,7 @@ import { parseMiMoResponse, resolveVisionContext, tryMiMo } from "./model-mimo.m
 import { tryDeepSeek } from "./model-ds.mjs";
 import { callApiProvider, callTaskApi } from "./api-providers/gateway.mjs";
 import { buildOutputPacket } from "./output-pipeline.mjs";
+import { appendImageContext } from "./system-prompts/image-context.mjs";
 
 export const MODEL_PROVIDERS = Object.freeze({
   PRIMARY: "mimo",
@@ -17,53 +18,6 @@ export const MODEL_TASKS = Object.freeze({
   GROUP_SUMMARY: "group_summary",
   RELATIONSHIP_COMMENT: "relationship_comment",
   STICKER_SELECT: "sticker_select",
-});
-
-export const MODEL_COST_TIERS = Object.freeze({
-  LOCAL: "local",
-  SMALL: "small",
-  STANDARD: "standard",
-  FALLBACK: "fallback",
-});
-
-export const TASK_MODEL_POLICY = Object.freeze({
-  [MODEL_TASKS.GROUP_CHAT]: {
-    primary: MODEL_PROVIDERS.PRIMARY,
-    fallback: MODEL_PROVIDERS.FALLBACK,
-    tier: MODEL_COST_TIERS.STANDARD,
-  },
-  [MODEL_TASKS.INTERJECTION]: {
-    primary: MODEL_PROVIDERS.PRIMARY,
-    fallback: "local",
-    tier: MODEL_COST_TIERS.SMALL,
-  },
-  [MODEL_TASKS.PRIVATE_CHAT]: {
-    primary: MODEL_PROVIDERS.FALLBACK,
-    fallback: null,
-    tier: MODEL_COST_TIERS.STANDARD,
-  },
-  [MODEL_TASKS.FILE_CHAT]: {
-    primary: MODEL_PROVIDERS.FALLBACK,
-    fallback: null,
-    tier: MODEL_COST_TIERS.STANDARD,
-  },
-  [MODEL_TASKS.GROUP_SUMMARY]: {
-    primary: MODEL_PROVIDERS.PRIMARY,
-    fallback: MODEL_PROVIDERS.FALLBACK,
-    tier: MODEL_COST_TIERS.STANDARD,
-    localFirst: true,
-  },
-  [MODEL_TASKS.RELATIONSHIP_COMMENT]: {
-    primary: MODEL_PROVIDERS.PRIMARY,
-    fallback: MODEL_PROVIDERS.FALLBACK,
-    tier: MODEL_COST_TIERS.SMALL,
-    cachePreferred: true,
-  },
-  [MODEL_TASKS.STICKER_SELECT]: {
-    primary: MODEL_PROVIDERS.PRIMARY,
-    fallback: MODEL_PROVIDERS.FALLBACK,
-    tier: MODEL_COST_TIERS.SMALL,
-  },
 });
 
 export async function callPrimaryChat(request = {}) {
@@ -101,33 +55,48 @@ export async function callFallbackChat(request = {}) {
   );
 }
 
+export async function executeChatTask(request = {}, runtime = {}) {
+  const primaryChat = runtime.primaryChat || callPrimaryChat;
+  const primaryText = await primaryChat(request);
+  if (primaryText) return { text: primaryText, position: "primary" };
+  if (request.options?.replyMode === "interjection") {
+    return { text: null, position: "local" };
+  }
+
+  const fallbackChat = runtime.fallbackChat || callFallbackChat;
+  const fallbackText = await fallbackChat(buildFallbackChatRequest(request));
+  return {
+    text: fallbackText || null,
+    position: fallbackText ? "fallback" : "unavailable",
+  };
+}
+
+function buildFallbackChatRequest(request) {
+  return {
+    userMsg: request.userMsg,
+    userName: request.userName,
+    history: buildModelFallbackHistory(
+      request.history,
+      request.imageUrls,
+      request.options?.visionContext,
+    ),
+    groupId: request.groupId,
+    isAtMe: request.isAtMe,
+    mood: request.mood,
+    options: {
+      currentUserId: request.options?.currentUserId,
+      personaCue: request.options?.personaCue,
+    },
+  };
+}
+
+export function buildModelFallbackHistory(history, imageUrls, visionContext) {
+  if (!imageUrls?.length) return Array.isArray(history) ? history : [];
+  return appendImageContext(history, visionContext, { imageCount: imageUrls.length });
+}
+
 export async function resolveChatVisionContext(imageUrls) {
   return await resolveVisionContext(imageUrls || []);
-}
-
-export async function callChatProvider(provider, request = {}) {
-  if (provider === MODEL_PROVIDERS.PRIMARY) {
-    return await callPrimaryChat({
-      ...request,
-      options: { ...(request.options || {}), providerId: provider },
-    });
-  }
-  if (provider === MODEL_PROVIDERS.FALLBACK) {
-    return await tryDeepSeek(
-      request.userMsg || "",
-      request.userName || "",
-      request.history || [],
-      request.groupId,
-      request.isAtMe,
-      request.mood || "",
-      { ...(request.options || {}), providerId: provider }
-    );
-  }
-  throw new Error("unknown model provider: " + provider);
-}
-
-export function getModelTaskPolicy(task) {
-  return TASK_MODEL_POLICY[task] || TASK_MODEL_POLICY[MODEL_TASKS.GROUP_CHAT];
 }
 
 export async function callRawModelProvider(provider, request = {}) {

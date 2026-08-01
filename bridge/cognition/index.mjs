@@ -1,6 +1,7 @@
 export {
   buildConversationThreadBlock,
   clearConversationThreads,
+  formatConversationThreadBlock,
   getCognitionStatus,
   getConversationThread,
   recordConversationTurn,

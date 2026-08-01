@@ -11,15 +11,18 @@ export function stripBotMention(text, selfUin = CFG.selfUin, botNames = CFG.botN
 }
 
 export function normalizeCommand(text, options = {}) {
-  const source = options.requireMention
-    ? stripBotMention(text, options.selfUin, options.botNames)
-    : String(text || "").trim();
-  return source
-    .replace(/^[/\\]+/, "")
+  return prepareCommandText(text, options)
     .replace(/[。.!！?？]+$/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+}
+
+export function prepareCommandText(text, options = {}) {
+  const source = options.requireMention
+    ? stripBotMention(text, options.selfUin, options.botNames)
+    : String(text || "").trim();
+  return source.replace(/^[/\\]+/, "").trim();
 }
 
 export function extractRawCommandArg(rawText, options, commandName) {

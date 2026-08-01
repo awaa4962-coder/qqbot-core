@@ -67,6 +67,10 @@ export function getConversationThread(uid, groupId, options = {}) {
 
 export function buildConversationThreadBlock(uid, groupId, options = {}) {
   const thread = getConversationThread(uid, groupId, options);
+  return formatConversationThreadBlock(thread, options);
+}
+
+export function formatConversationThreadBlock(thread, options = {}) {
   if (!thread?.turns?.length) return "";
   const turns = thread.turns.slice(-(options.limit || 4));
   const lines = [

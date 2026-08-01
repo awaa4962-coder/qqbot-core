@@ -1,5 +1,7 @@
 import { log } from "./logger.mjs";
-import { cleanThinking, isUnsafeReasoningText } from "./thinking.mjs";
+import { isUnsafeReasoningText, sanitizeAssistantReply } from "./thinking.mjs";
+
+export { sanitizeAssistantReply };
 
 const TRUNCATED_HINT = "……（这段可能被模型截断了，发“继续”我接着说）";
 const PRIVATE_REASONING_FIELDS = Object.freeze([
@@ -75,13 +77,6 @@ export function extractAssistantContent(raw, options = {}) {
   };
 }
 
-export function sanitizeAssistantReply(text, _options = {}) {
-  const cleaned = cleanThinking(text);
-  if (!cleaned) return null;
-  if (isUnsafeReasoningText(cleaned)) return null;
-  return cleaned;
-}
-
 export function detectOutputRisk(text, _options = {}) {
   const risks = [];
   if (!text || typeof text !== "string" || !text.trim()) risks.push("empty");
@@ -100,10 +95,12 @@ export function detectOutputRisk(text, _options = {}) {
 export function normalizeFinalReply(text, options = {}) {
   const cleaned = sanitizeAssistantReply(text, options);
   if (!cleaned) return null;
-  if (options.finishReason === "length" && !cleaned.endsWith(TRUNCATED_HINT)) {
-    return cleaned + "\n" + TRUNCATED_HINT;
-  }
-  return cleaned;
+  return finalizeCleanReply(cleaned, options);
+}
+
+function finalizeCleanReply(cleaned, options = {}) {
+  if (options.finishReason !== "length" || cleaned.endsWith(TRUNCATED_HINT)) return cleaned;
+  return cleaned + "\n" + TRUNCATED_HINT;
 }
 
 export function buildOutputPacket(raw, options = {}) {
@@ -141,7 +138,7 @@ export function buildOutputPacket(raw, options = {}) {
     };
   }
 
-  const finalText = normalizeFinalReply(cleaned, { ...options, finishReason: meta.finishReason });
+  const finalText = finalizeCleanReply(cleaned, { ...options, finishReason: meta.finishReason });
   lengths.final = finalText ? finalText.length : 0;
   return {
     ok: Boolean(finalText),

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { CFG } from "./config.mjs";
-import { stripBotMention } from "./admin-commands.mjs";
+import { prepareCommandText } from "./commands/normalize.mjs";
 import { fetchSafeResponse, validateSafeUrl } from "./safe-url.mjs";
 import { sendMsg, uploadGroupFile } from "./napcat.mjs";
 import { log, logE } from "./logger.mjs";
@@ -16,10 +16,7 @@ export function isResourceGroupAllowed(groupId, whitelist = CFG.resourceGroupWhi
 }
 
 export function parseResourceTransferCommand(text, options = {}) {
-  const source = options.requireMention
-    ? stripBotMention(text, options.selfUin, options.botNames)
-    : String(text || "").trim();
-  const normalized = source.replace(/^[/\\]+/, "").trim();
+  const normalized = prepareCommandText(text, options);
   const match = normalized.match(COMMAND_RE);
   if (!match) return null;
 
@@ -33,7 +30,7 @@ export function parseResourceTransferCommand(text, options = {}) {
 
 export async function handleResourceTransferCommand(ctx, options = {}) {
   if (!ctx?.isAtMe) return false;
-  const parsed = parseResourceTransferCommand(ctx.text || ctx.rawText, {
+  const parsed = options.parsedCommand || parseResourceTransferCommand(ctx.text || ctx.rawText, {
     requireMention: true,
     selfUin: options.selfUin ?? CFG.selfUin,
     botNames: options.botNames ?? CFG.botNames,

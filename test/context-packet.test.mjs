@@ -123,4 +123,76 @@ describe("reply context packet", () => {
     assert.equal(packet.thread.turnCount, 1);
     assert.equal(Object.prototype.hasOwnProperty.call(packet.thread, "turns"), false);
   });
+
+  it("does not repeat completed thread turns in history or group background", () => {
+    const now = Date.now();
+    users["42"] = {
+      uid: "42",
+      nicknames: ["Alice"],
+      chats: [
+        {
+          group: "1",
+          nickname: "Alice",
+          text: "JM CTX_DEDUPE_USER_MARKER",
+          messageId: "previous",
+          ts: now - 1000,
+        },
+        {
+          group: "1",
+          nickname: "Alice",
+          text: "OLDER_RELEVANT_CONTEXT",
+          messageId: "older",
+          ts: now - 2000,
+        },
+      ],
+    };
+    groupChats["1"] = [
+      {
+        uid: "99",
+        nickname: "Bob",
+        text: "OLDER_GROUP_BACKGROUND",
+        role: "member",
+        messageId: "background",
+        ts: now - 3000,
+      },
+      {
+        uid: "42",
+        nickname: "Alice",
+        text: "JM CTX_DEDUPE_USER_MARKER",
+        role: "member",
+        messageId: "previous",
+        ts: now - 1000,
+      },
+      {
+        uid: "bot",
+        nickname: "NightStar",
+        text: "CTX_DEDUPE_ASSISTANT_MARKER",
+        role: "assistant",
+        turnId: "previous",
+        ts: now - 900,
+      },
+    ];
+    recordConversationTurn({
+      uid: "42",
+      groupId: "1",
+      messageId: "previous",
+      userText: "JM CTX_DEDUPE_USER_MARKER",
+      assistantText: "CTX_DEDUPE_ASSISTANT_MARKER",
+      now: now - 900,
+    }, { save: false });
+
+    const packet = buildReplyContextPacket({
+      uid: "42",
+      groupId: "1",
+      userName: "Alice",
+      userMsg: "continue with the previous result",
+      currentMessageId: "current",
+      mode: "group-at",
+    });
+    const joined = packet.messages.map(item => item.content).join("\n");
+
+    assert.equal(joined.split("CTX_DEDUPE_USER_MARKER").length - 1, 1);
+    assert.equal(joined.split("CTX_DEDUPE_ASSISTANT_MARKER").length - 1, 1);
+    assert.match(joined, /OLDER_GROUP_BACKGROUND/);
+  });
 });

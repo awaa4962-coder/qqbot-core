@@ -59,12 +59,20 @@ function collectWeightedUserChats(chats, currentGroup, options) {
 }
 
 function isExcludedMessage(message, options = {}) {
+  if (hasExcludedMessageId(message, options.excludeMessageIds)) return true;
   const currentMessageId = normalizeMessageId(options.currentMessageId);
   if (currentMessageId && normalizeMessageId(message?.messageId) === currentMessageId) return true;
   const currentText = String(options.currentText || "").replace(/\s+/g, " ").trim();
   if (!currentMessageId || !currentText) return false;
   const messageText = String(message?.text || "").replace(/\s+/g, " ").trim();
   return messageText === currentText && Date.now() - Number(message?.ts || 0) < 15000;
+}
+
+function hasExcludedMessageId(message, excludedIds) {
+  if (!excludedIds?.size) return false;
+  return [message?.messageId, message?.replyToMessageId, message?.turnId]
+    .map(normalizeMessageId)
+    .some(id => id && excludedIds.has(id));
 }
 
 function normalizeMessageId(value) {
