@@ -3,6 +3,13 @@
 import { CFG } from "../../config.mjs";
 
 const DEFAULT_TIMEOUT_MS = 15000;
+const RKEY_REFRESH_MARGIN_MS = 30 * 1000;
+const QQ_MEDIA_HOSTS = new Set([
+  "multimedia.nt.qq.com.cn",
+  "multimedia.nt.qq.com",
+]);
+const rkeyCache = new Map();
+let rkeyRefreshPromise = null;
 
 export async function detectStickerCapabilities(options = {}) {
   const fetchImpl = options.fetchImpl || fetch;
@@ -76,6 +83,41 @@ export async function setCustomFaceDescription(item = {}, description = "", opti
   return { ok: response.ok, data: response.data, error: response.error };
 }
 
+export function isExpiringNapCatMediaUrl(value) {
+  try {
+    const url = value instanceof URL ? value : new URL(String(value || ""));
+    return url.protocol === "https:" &&
+      QQ_MEDIA_HOSTS.has(url.hostname.toLowerCase()) &&
+      url.pathname === "/download" &&
+      Boolean(url.searchParams.get("fileid"));
+  } catch {
+    return false;
+  }
+}
+
+export async function refreshNapCatMediaUrl(value, options = {}) {
+  if (!isExpiringNapCatMediaUrl(value)) {
+    return { ok: false, url: "", error: "不是可续签的 QQ 临时图片地址" };
+  }
+  const type = String(options.type || "group").trim().toLowerCase();
+  const signed = await resolveNapCatRkey(type, options);
+  if (!signed.ok) return { ok: false, url: "", error: signed.error };
+
+  const url = new URL(String(value));
+  url.searchParams.set("rkey", signed.rkey);
+  return {
+    ok: true,
+    url: url.href,
+    type,
+    expiresAt: signed.expiresAt,
+  };
+}
+
+export function resetNapCatRkeyCacheForTest() {
+  rkeyCache.clear();
+  rkeyRefreshPromise = null;
+}
+
 export async function postNapCat(action, params = {}, options = {}) {
   const fetchImpl = options.fetchImpl || fetch;
   try {
@@ -102,6 +144,55 @@ function normalizeNapCatResponse(action, response, payload) {
     status: response.status,
     retcode,
   };
+}
+
+async function resolveNapCatRkey(type, options) {
+  const now = Number(options.now || Date.now());
+  const cached = rkeyCache.get(type);
+  if (!options.forceRefresh && cached?.expiresAt > now) return { ok: true, ...cached };
+
+  const pending = rkeyRefreshPromise || postNapCat("get_rkey", {}, options);
+  rkeyRefreshPromise = pending;
+  let response;
+  try {
+    response = await pending;
+  } finally {
+    if (rkeyRefreshPromise === pending) rkeyRefreshPromise = null;
+  }
+  if (!response.ok || !Array.isArray(response.data)) {
+    return { ok: false, error: response.error || "NapCat 未返回图片续签凭据" };
+  }
+
+  cacheNapCatRkeys(response.data, now);
+  const resolved = rkeyCache.get(type);
+  return resolved
+    ? { ok: true, ...resolved }
+    : { ok: false, error: "NapCat 未返回 " + type + " 图片续签凭据" };
+}
+
+function cacheNapCatRkeys(items, now) {
+  for (const item of items) {
+    const type = String(item?.type || "").trim().toLowerCase();
+    const rkey = extractRkey(item?.rkey);
+    if (!type || !rkey) continue;
+    const ttlMs = Math.max(60 * 1000, Number(item?.ttl || 300) * 1000);
+    rkeyCache.set(type, {
+      rkey,
+      expiresAt: now + Math.max(30 * 1000, ttlMs - RKEY_REFRESH_MARGIN_MS),
+    });
+  }
+}
+
+function extractRkey(value) {
+  const source = String(value || "").trim();
+  if (!source) return "";
+  const match = source.match(/(?:^|[?&])rkey=([^&]+)/i);
+  if (!match) return source;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
 }
 
 export function normalizeFavoritePayload(value) {

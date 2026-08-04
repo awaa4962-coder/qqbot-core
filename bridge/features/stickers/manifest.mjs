@@ -12,6 +12,7 @@ export const STICKER_MODULE_MANIFEST = Object.freeze({
     "perceptual deduplication",
     "salted sender deduplication",
     "temporary upload cleanup",
+    "in-memory QQ preview URL renewal",
     "incremental vision labels",
     "context selection",
     "group and private sending",

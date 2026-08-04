@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { Buffer } from "node:buffer";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -117,4 +118,65 @@ test("admin route returns 403 for non-local requests", async () => {
   });
   assert.equal(handled, true);
   assert.equal(writes[0].statusCode, 403);
+});
+
+test("local sticker preview route streams an image by opaque catalog id", async () => {
+  const response = { statusCode: 0, headers: {}, body: null };
+  const req = {
+    method: "GET",
+    url: "/admin/stickers/image?id=sticker-a",
+    socket: { remoteAddress: "127.0.0.1" },
+    headers: {},
+  };
+  const res = {
+    writeHead(statusCode, headers) {
+      response.statusCode = statusCode;
+      response.headers = headers;
+    },
+    end(body) {
+      response.body = body;
+    },
+  };
+  const handled = await handleAdminApiRequest(req, res, {
+    pathname: "/admin/stickers/image",
+    url: new URL("http://localhost/admin/stickers/image?id=sticker-a"),
+    sendJson() {
+      assert.fail("image response should not use JSON");
+    },
+    loadStickerPreview: async id => {
+      assert.equal(id, "sticker-a");
+      return { ok: true, buffer: Buffer.from("image"), mimeType: "image/png" };
+    },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.headers["Content-Type"], "image/png");
+  assert.equal(response.headers["X-Content-Type-Options"], "nosniff");
+  assert.equal(response.body.toString(), "image");
+});
+
+test("sticker preview route rejects non-local requests before loading the catalog", async () => {
+  const writes = [];
+  let loads = 0;
+  const handled = await handleAdminApiRequest({
+    method: "GET",
+    url: "/admin/stickers/image?id=sticker-a",
+    socket: { remoteAddress: "10.0.0.8" },
+    headers: {},
+  }, {}, {
+    pathname: "/admin/stickers/image",
+    url: new URL("http://localhost/admin/stickers/image?id=sticker-a"),
+    sendJson(_res, statusCode, payload) {
+      writes.push({ statusCode, payload });
+    },
+    loadStickerPreview: async () => {
+      loads++;
+      return { ok: false };
+    },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(writes[0].statusCode, 403);
+  assert.equal(loads, 0);
 });

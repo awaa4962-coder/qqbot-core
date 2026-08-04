@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, it } from "node:test";
 import { setImmediate } from "node:timers";
+import { URL } from "node:url";
 
 import { CFG } from "../bridge/config.mjs";
 import {
@@ -18,12 +19,16 @@ import {
   createCandidateQueue,
   detectStickerCapabilities,
   evaluateStickerPolicy,
+  listSelectableStickers,
+  loadStickerPreview,
   markCapturedStickerCloudResult,
   maybeSendStickerAfterReply,
   normalizeFavoritePayload,
   observeGroupStickerCandidates,
   processCandidate,
   recordStickerCooldown,
+  refreshNapCatMediaUrl,
+  resetNapCatRkeyCacheForTest,
   resetStickerCaptureForTest,
   resetStickerCatalogForTest,
   resetStickerPolicyForTest,
@@ -44,6 +49,7 @@ afterEach(() => {
   resetStickerCatalogForTest();
   resetStickerPolicyForTest();
   resetStickerCaptureForTest();
+  resetNapCatRkeyCacheForTest();
   for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -469,6 +475,129 @@ describe("收藏表情模块", () => {
 
     assert.equal(removals, 0);
     assert.equal(result.cloud.reason, "not_bot_managed");
+  });
+  it("renews expiring QQ media URLs and caches the current group rkey", async () => {
+    const original = "https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=file-a&rkey=expired";
+    let calls = 0;
+    const options = {
+      now: 1000,
+      fetchImpl: async url => {
+        calls++;
+        assert.match(String(url), /\/get_rkey$/);
+        return {
+          ok: true,
+          status: 200,
+          async json() {
+            return {
+              status: "ok",
+              retcode: 0,
+              data: [
+                { type: "private", rkey: "&rkey=private-current", ttl: 120 },
+                { type: "group", rkey: "&rkey=group-current", ttl: 120 },
+              ],
+            };
+          },
+        };
+      },
+    };
+
+    const [first, second] = await Promise.all([
+      refreshNapCatMediaUrl(original, options),
+      refreshNapCatMediaUrl(original, { ...options, now: 2000 }),
+    ]);
+
+    assert.equal(first.ok, true);
+    assert.equal(new URL(first.url).searchParams.get("fileid"), "file-a");
+    assert.equal(new URL(first.url).searchParams.get("rkey"), "group-current");
+    assert.equal(second.url, first.url);
+    assert.equal(calls, 1);
+  });
+
+  it("streams sticker previews through renewed URLs without writing image files", async () => {
+    const original = "https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=file-b&rkey=expired";
+    const refreshed = original.replace("expired", "current");
+    const seen = [];
+    const result = await loadStickerPreview("sticker-a", {
+      getEntry: () => ({ id: "sticker-a", url: original }),
+      refreshUrl: async (_url, options) => {
+        assert.equal(options.type, "group");
+        return { ok: true, url: refreshed };
+      },
+      fetchImage: async url => {
+        seen.push(url);
+        return { buffer: Buffer.from("image"), mimeType: "image/png; charset=binary" };
+      },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.refreshed, true);
+    assert.equal(result.mimeType, "image/png");
+    assert.deepEqual(seen, [refreshed]);
+  });
+
+  it("rejects non-image sticker preview responses", async () => {
+    const result = await loadStickerPreview("sticker-b", {
+      getEntry: () => ({ id: "sticker-b", url: "https://example.com/not-an-image" }),
+      fetchImage: async () => ({ buffer: Buffer.from("html"), mimeType: "text/html" }),
+    });
+
+    assert.deepEqual(result, { ok: false, reason: "unavailable" });
+  });
+
+  it("forces one fresh rkey lookup after a renewed preview still fails", async () => {
+    const original = "https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=file-c&rkey=expired";
+    const first = original.replace("expired", "first");
+    const second = original.replace("expired", "second");
+    let refreshes = 0;
+    const result = await loadStickerPreview("sticker-c", {
+      getEntry: () => ({ id: "sticker-c", url: original }),
+      refreshUrl: async (_url, options) => {
+        refreshes++;
+        assert.equal(options.forceRefresh, refreshes === 2);
+        return { ok: true, url: refreshes === 1 ? first : second };
+      },
+      fetchImage: async url => {
+        if (url === first) throw new Error("expired during fetch");
+        if (url === second) return { buffer: Buffer.from("image"), mimeType: "image/gif" };
+        return null;
+      },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.refreshed, true);
+    assert.equal(refreshes, 2);
+  });
+
+  it("counts analyzed capture candidates separately from sendable stickers", () => {
+    useTempCatalog();
+    const candidate = upsertCapturedSticker({
+      url: "https://example.com/candidate.gif",
+      fingerprint: "1111111111111111",
+      classification: "sticker",
+      confidence: 0.9,
+      description: "candidate",
+      tags: ["other"],
+    }, { groupId: 123, senderId: 456, now: 1000 }).entry;
+    const active = upsertCapturedSticker({
+      url: "https://example.com/active.gif",
+      fingerprint: "2222222222222222",
+      classification: "sticker",
+      confidence: 0.9,
+      description: "active",
+      tags: ["other"],
+    }, { groupId: 123, senderId: 789, now: 2000 }).entry;
+    markCapturedStickerCloudResult(active.id, {
+      ok: true,
+      created: true,
+      item: { url: "https://example.com/cloud.gif", resId: "cloud-a" },
+    }, { now: 3000 });
+
+    const snapshot = buildStickerCatalogSnapshot();
+    assert.equal(snapshot.counts.indexed, 2);
+    assert.equal(snapshot.counts.sendable, 1);
+    assert.equal(snapshot.entries.find(entry => entry.id === candidate.id).sendable, false);
+    assert.equal(snapshot.entries.find(entry => entry.id === active.id).sendable, true);
+    assert.deepEqual(listSelectableStickers().map(entry => entry.id), [active.id]);
   });
 });
 

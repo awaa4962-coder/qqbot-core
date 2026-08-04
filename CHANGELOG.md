@@ -1,6 +1,10 @@
 # 夜星桥接器更新日志
 
 ## v1.3.4-reasoning-control - 2026-08-01 - 思考强度与结果隔离
+- 修复控制台批量表情预览：过期的 QQ 临时图片地址会通过 NapCat `get_rkey` 在内存中续签，再由仅限本机的 `/admin/stickers/image` 安全转发；不保存图片文件，也不向前端暴露续签凭据。
+- 表情目录区分“已分析”和“可发送”：群聊采集候选不再误算为可发送表情，控制台默认只展示真正可用的目录项，并可单独查看候选记录。
+- 缩略图改为懒加载并提供统一失败占位；并发预览共享一次续签请求，单张失败会强制刷新一次凭据，不影响其他图片和 Bridge 主链路。
+- 验收：`npm ci` 通过，`npm run lint` 0 errors / 0 warnings，`npm test` 518/518 pass，`npm run release:check` pass，控制台构建 0 warnings / 0 errors，生产依赖审计 0 vulnerabilities。
 - API 中心新增“省额度 / 智能 / 深度”三档快捷控制，并允许群聊、私聊、文件、日报、关系短评、表情选择、识图、画像和搜索总结分别设置。
 - “智能”档使用本地确定性规则判断短聊和复杂任务，不额外调用一次模型；MiMo Chat 最终映射为真实的 `thinking.type=disabled/enabled`。
 - API 路由配置升级到 schema v2，旧配置自动补齐任务默认档位；保存后从下一次模型请求热生效，DeepSeek 群聊兜底仍受保护。

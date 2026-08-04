@@ -52,8 +52,12 @@ export {
   fetchFavoriteStickers,
   normalizeFavoritePayload,
   postNapCat,
+  isExpiringNapCatMediaUrl,
+  refreshNapCatMediaUrl,
+  resetNapCatRkeyCacheForTest,
   setCustomFaceDescription,
 } from "./napcat-adapter.mjs";
+export { loadStickerPreview } from "./preview.mjs";
 export {
   addBufferToCloudFavorites,
   cleanupTemporaryStickerFiles,
@@ -82,6 +86,7 @@ export {
   selectSticker,
 } from "./selector.mjs";
 export { buildStickerSegment, sendStickerDecision } from "./sender.mjs";
+export { isStickerEntrySendable } from "./schema.mjs";
 export {
   getStickerSyncStatus,
   initializeStickerSystem,

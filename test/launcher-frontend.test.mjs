@@ -115,6 +115,7 @@ test('launcher frontend separates daily work into focused views', async () => {
   assert.match(html, /id="stickerCaptureStatus"/);
   assert.match(html, /data-capture-mode="auto"/);
   assert.match(html, /id="stickerFilter"/);
+  assert.match(html, /<option value="sendable">/);
   assert.match(html, /id="removeCapturedStickerButton"/);
   assert.match(html, /Key 只写入本机，不会回显/);
   assert.match(html, /host-client\.js/);
@@ -131,6 +132,12 @@ test('launcher frontend separates daily work into focused views', async () => {
   assert.match(app, /function renderStickerCaptureStatus/);
   assert.match(app, /setStickerCaptureMode/);
   assert.match(app, /removeCapturedSticker/);
+  assert.match(app, /counts\.sendable/);
+  assert.match(app, /\/admin\/stickers\/image/);
+  assert.match(app, /data-lazy="true"/);
+  assert.match(app, /IntersectionObserver/);
+  assert.match(app, /加载中/);
+  assert.match(app, /function bindStickerImageFallbacks/);
   assert.match(app, /entry\.source !== "group-capture"/);
   assert.match(app, /apiEditorMode = item\.id \? "edit" : "create"/);
   assert.match(app, /新增不会覆盖原实例/);

@@ -9,6 +9,7 @@ import {
   normalizeStickerTags,
   normalizeNumberList,
   publicStickerEntry,
+  isStickerEntrySendable,
 } from "./schema.mjs";
 
 let catalogPath = CFG.stickerCatalogFile;
@@ -176,8 +177,7 @@ export function listPendingStickerAnalysis(options = {}) {
 export function listSelectableStickers(options = {}) {
   const groupId = Number(options.groupId || 0);
   return getStickerCatalog().entries
-    .filter(entry => entry.enabled && entry.indexed && entry.description)
-    .filter(entry => entry.source !== "group-capture" || entry.captureState === "active")
+    .filter(isStickerEntrySendable)
     .filter(entry => !groupId || !entry.allowedGroups.length || entry.allowedGroups.includes(groupId))
     .map(entry => ({ ...entry, tags: [...entry.tags], allowedGroups: [...entry.allowedGroups] }));
 }
@@ -289,6 +289,7 @@ export function buildStickerCatalogSnapshot() {
       total: entries.length,
       enabled: entries.filter(entry => entry.enabled).length,
       indexed: entries.filter(entry => entry.indexed).length,
+      sendable: entries.filter(entry => entry.sendable).length,
       pending: entries.filter(entry => !entry.indexed).length,
       captured: entries.filter(entry => entry.source === "group-capture").length,
       activeCaptured: entries.filter(entry => entry.source === "group-capture" && entry.captureState === "active").length,

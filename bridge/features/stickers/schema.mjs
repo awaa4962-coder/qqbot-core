@@ -136,7 +136,14 @@ export function publicStickerEntry(entry) {
   return {
     ...safe,
     key: normalized.key ? "configured" : "",
+    sendable: isStickerEntrySendable(normalized),
   };
+}
+
+export function isStickerEntrySendable(entry) {
+  if (!entry || entry.enabled === false || entry.indexed !== true) return false;
+  if (!String(entry.description || "").trim()) return false;
+  return entry.source !== "group-capture" || entry.captureState === "active";
 }
 
 function normalizeMode(value) {

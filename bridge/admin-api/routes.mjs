@@ -1,6 +1,6 @@
 // bridge/admin-api/routes.mjs - local management routes.
 
-import { isAuthorizedAdminRequest, adminForbiddenPayload } from "./auth.mjs";
+import { isAuthorizedAdminRequest, adminForbiddenPayload, isLoopbackAddress } from "./auth.mjs";
 import { buildAuditStatus, recordAdminAudit } from "./audit-log.mjs";
 import { applyApiProviderAction, buildApiProviderManagerSnapshot } from "./api-provider-manager.mjs";
 import { buildBackupRestorePlan, createSafeBackup, listSafeBackups } from "./backup-manager.mjs";
@@ -15,6 +15,7 @@ import { buildModuleCatalog } from "./module-catalog.mjs";
 import { buildPluginCatalog } from "./plugin-catalog.mjs";
 import { buildRuntimeStatus } from "./runtime-status.mjs";
 import { applyStickerManagerAction, buildStickerManagerSnapshot } from "./sticker-manager.mjs";
+import { loadStickerPreview } from "../features/stickers/index.mjs";
 import { buildProjectSelfDescription, buildWorkflowDescription } from "../self-description.mjs";
 import { getMemeStore } from "../knowledge/memes/index.mjs";
 
@@ -45,6 +46,8 @@ const POST_ROUTES = new Map([
   ["/admin/backups", handleBackupsPostRoute],
 ]);
 
+const STICKER_PREVIEW_PATH = "/admin/stickers/image";
+
 export async function handleAdminApiRequest(req, res, context = {}) {
   const pathname = context.pathname || "/";
   const url = context.url || new URL(req.url || "/", "http://localhost");
@@ -52,12 +55,43 @@ export async function handleAdminApiRequest(req, res, context = {}) {
   if (!sendJson) throw new Error("sendJson is required");
 
   if (!pathname.startsWith("/admin/")) return false;
+  if (pathname === STICKER_PREVIEW_PATH) {
+    // WebView image tags cannot attach the admin token. Keep this opaque-ID route loopback-only.
+    if (!isLoopbackAddress(req.socket?.remoteAddress)) {
+      sendJson(res, 403, adminForbiddenPayload());
+      return true;
+    }
+    await handleStickerPreviewRoute(req, res, { ...context, pathname, url, sendJson });
+    return true;
+  }
   if (!isAuthorizedAdminRequest(req)) {
     sendJson(res, 403, adminForbiddenPayload());
     return true;
   }
 
   return await handleAuthorizedAdminRoute(req, res, { pathname, url, sendJson });
+}
+
+async function handleStickerPreviewRoute(req, res, context) {
+  if (req.method !== "GET") {
+    context.sendJson(res, 405, { error: "method not allowed" });
+    return;
+  }
+  const preview = await (context.loadStickerPreview || loadStickerPreview)(
+    context.url.searchParams.get("id") || ""
+  );
+  if (!preview.ok) {
+    context.sendJson(res, 404, { error: "sticker preview unavailable" });
+    return;
+  }
+  res.writeHead(200, {
+    "Cache-Control": "private, max-age=300",
+    "Content-Length": String(preview.buffer.length),
+    "Content-Type": preview.mimeType,
+    "Cross-Origin-Resource-Policy": "cross-origin",
+    "X-Content-Type-Options": "nosniff",
+  });
+  res.end(preview.buffer);
 }
 
 async function handleAuthorizedAdminRoute(req, res, context) {

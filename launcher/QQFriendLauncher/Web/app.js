@@ -21,7 +21,8 @@ let memeEditingOriginalName = "";
 let stickersLoaded = false;
 let stickerSnapshot = { entries: [], settings: {}, counts: {}, stats: {} };
 let selectedStickerId = "";
-let stickerFilter = "all";
+let stickerFilter = "sendable";
+const stickerImageObservers = new WeakMap();
 let logFollow = false;
 let lastBridgeOnline = null;
 let bridgeIntentionallyStopped = false;
@@ -1012,14 +1013,14 @@ function renderStickers(snapshot, options = {}) {
   document.querySelector(".sticker-workbench")?.classList.toggle("empty", !selectedStickerId);
   $("stickerDetailPanel").hidden = !selectedStickerId;
 
-  $("stickerNavCount").textContent = String(counts.indexed ?? entries.filter((entry) => entry.indexed).length);
+  $("stickerNavCount").textContent = String(counts.sendable ?? entries.filter((entry) => entry.sendable).length);
   $("stickerListCount").textContent = entries.length === allEntries.length
     ? `${entries.length} 张`
     : `${entries.length} / ${allEntries.length} 张`;
   $("stickerSummary").innerHTML = [
-    ["已同步", counts.total || 0],
-    ["可发送", counts.indexed || 0],
-    ["待分析", counts.pending || 0],
+    ["目录记录", counts.total || 0],
+    ["可发送", counts.sendable || 0],
+    ["候选", counts.candidates || 0],
     ["已发送", stickerSnapshot.stats?.sent || 0],
   ].map(([label, value]) => `<div><span>${label}</span><b>${fmt.format(value)}</b></div>`).join("");
 
@@ -1042,10 +1043,11 @@ function renderStickers(snapshot, options = {}) {
   $("stickerGrid").innerHTML = entries.length
     ? entries.map((entry) => `
       <button type="button" class="sticker-tile${entry.id === selectedStickerId ? " active" : ""}${entry.enabled ? "" : " disabled"}" data-sticker-id="${escapeHtml(entry.id)}" title="${escapeHtml(entry.description || "待分析")}">
-        <img src="${escapeHtml(entry.url)}" alt="">
-        <span>${entry.indexed ? escapeHtml(entry.tags?.[0] || "已分析") : "待分析"}</span>
+        <span class="sticker-tile-media">${stickerImageMarkup(entry, "")}</span>
+        <span class="sticker-tile-label">${entry.indexed ? escapeHtml(entry.tags?.[0] || "已分析") : "待分析"}</span>
       </button>`).join("")
     : '<div class="empty-state"><b>还没有同步收藏表情</b><span>点右上角“同步收藏”。</span></div>';
+  bindStickerImageFallbacks($("stickerGrid"));
 
   fillStickerDetail(entries.find((entry) => entry.id === selectedStickerId));
   const syncLabel = stickerSnapshot.sync?.syncing
@@ -1069,9 +1071,10 @@ function fillStickerDetail(entry) {
   $("stickerTags").value = Array.isArray(entry?.tags) ? entry.tags.join(" ") : "";
   $("stickerAllowedGroups").value = Array.isArray(entry?.allowedGroups) ? entry.allowedGroups.join(" ") : "";
   $("stickerEntryEnabled").checked = entry?.enabled !== false;
-  $("stickerPreview").innerHTML = entry?.url
-    ? `<img src="${escapeHtml(entry.url)}" alt="选中的收藏表情">`
+  $("stickerPreview").innerHTML = entry?.id
+    ? stickerImageMarkup(entry, "选中的收藏表情", false)
     : "<span>选择一张表情</span>";
+  bindStickerImageFallbacks($("stickerPreview"));
   $("stickerEntryMeta").textContent = stickerEntryMeta(entry);
   $("removeCapturedStickerButton").hidden = entry?.source !== "group-capture";
 }
@@ -1139,6 +1142,7 @@ function stickerModeLabel(mode) {
 }
 
 function filterStickerEntries(entries, filter) {
+  if (filter === "sendable") return entries.filter((entry) => entry.sendable === true);
   if (filter === "qq-favorite") return entries.filter((entry) => entry.source === "qq-favorite");
   if (filter === "group-capture") return entries.filter((entry) => entry.source === "group-capture");
   if (filter === "candidate") {
@@ -1147,6 +1151,67 @@ function filterStickerEntries(entries, filter) {
       ["candidate", "cloud-failed", "pending-cloud"].includes(entry.captureState));
   }
   return entries;
+}
+
+function stickerImageMarkup(entry, alt, lazy = true) {
+  const lazyAttribute = lazy ? ' data-lazy="true"' : "";
+  return [
+    `<img data-sticker-preview data-state="loading" data-src="${escapeHtml(stickerPreviewUrl(entry))}" alt="${escapeHtml(alt)}" decoding="async" referrerpolicy="no-referrer"${lazyAttribute}>`,
+    '<span class="sticker-image-fallback">加载中</span>',
+  ].join("");
+}
+
+function stickerPreviewUrl(entry) {
+  const configuredPort = Number(lastStatus?.config?.listenPort || 16789);
+  const port = Number.isSafeInteger(configuredPort) && configuredPort > 0 && configuredPort <= 65535
+    ? configuredPort
+    : 16789;
+  const version = Number(entry?.lastSeenAt || entry?.analyzedAt || 0);
+  return `http://127.0.0.1:${port}/admin/stickers/image?id=${encodeURIComponent(entry?.id || "")}&v=${version}`;
+}
+
+function bindStickerImageFallbacks(root) {
+  if (!root) return;
+  stickerImageObservers.get(root)?.disconnect();
+  const images = [...root.querySelectorAll("img[data-sticker-preview]")];
+  const loadImage = (image) => {
+    if (!image.src && image.dataset.src) image.src = image.dataset.src;
+  };
+  images.forEach((image) => {
+    const fallback = image.nextElementSibling;
+    image.addEventListener("load", () => {
+      image.dataset.state = "ready";
+      image.hidden = false;
+      fallback?.setAttribute("hidden", "");
+    }, { once: true });
+    const showFallback = () => {
+      image.dataset.state = "failed";
+      image.hidden = true;
+      if (fallback) {
+        fallback.textContent = "预览暂不可用";
+        fallback.removeAttribute("hidden");
+      }
+    };
+    image.addEventListener("error", showFallback, { once: true });
+    if (image.dataset.lazy !== "true") loadImage(image);
+  });
+  const lazyImages = images.filter((image) => image.dataset.lazy === "true");
+  if (!lazyImages.length) return;
+  if (!("IntersectionObserver" in window)) {
+    lazyImages.forEach(loadImage);
+    return;
+  }
+  const observer = new IntersectionObserver((records) => {
+    records.filter(record => record.isIntersecting).forEach((record) => {
+      observer.unobserve(record.target);
+      loadImage(record.target);
+    });
+  }, {
+    root: root.id === "stickerGrid" ? root : null,
+    rootMargin: "180px 0px",
+  });
+  stickerImageObservers.set(root, observer);
+  lazyImages.forEach(image => observer.observe(image));
 }
 
 function stickerEntryMeta(entry) {
