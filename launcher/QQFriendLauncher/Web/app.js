@@ -963,7 +963,7 @@ function moduleLabel(name) {
 }
 
 function modelLabel(name) {
-  return ({ mimo: "MiMo 主模型", deepseek: "DeepSeek 兜底", doubao: "豆包视觉", tavily: "联网搜索" })[name] || name;
+  return ({ mimo: "MiMo", deepseek: "DeepSeek V4 Flash", doubao: "豆包视觉", tavily: "联网搜索" })[name] || name;
 }
 
 function setOutput(id, value, expanded = true) {

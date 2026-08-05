@@ -4,26 +4,28 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.3.4-reasoning-control";
-export const VERSION_NAME = "reasoning-control";
+export const VERSION = "1.3.5-summary-analysis";
+export const VERSION_NAME = "summary-analysis";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "控制台 API 中心新增省额度、智能、深度三档思考控制，并支持按功能单独设置。",
-  "智能档使用本地规则区分短聊与复杂任务，不会为了判断档位额外调用模型。",
-  "MiMo Chat 使用真实 thinking 开关；不支持可控档位的模型继续跟随供应商默认行为。",
-  "任务路由配置升级为 schema v2，旧配置自动迁移，保存后从下一次请求热生效。",
-  "DeepSeek 群聊兜底继续固定保留，不会被注入 MiMo 专用参数。",
-  "输出管线只允许最终正文外发，reasoning_content、analysis、thinking 等内部推理字段永久隔离。",
+  "群日报改由 DeepSeek V4 Flash 主分析，MiMo 作为备用，本地事实摘要继续提供最终保障。",
+  "V4 Flash 日报默认关闭隐藏长推理，把输出预算完整留给正文；控制台仍可按功能调整思考档位。",
+  "日报生成器按主插槽和备用插槽调用并记录真实模型，不再把插槽名称硬编码成供应商名称。",
+  "新增证据预处理，机器人消息、命令、纯符号和短时间复读不再污染主题与参与统计。",
+  "日报改为经过、结果、状态三层事实分析；没有证据的结论会明确标记为未形成结论。",
+  "发送给模型前会隐藏 QQ 号、网络地址、链接和凭据，图片无文字证据时禁止猜测内容。",
+  "QQ 输出移除 Markdown 装饰、主观人物称号和强制卖萌栏目，保留简明的纯文本层级。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "The API center now provides Economy, Smart and Deep reasoning controls with per-task overrides.",
-  "Smart mode uses deterministic local rules and does not spend an extra model request.",
-  "MiMo Chat receives native thinking toggles while unsupported providers keep their defaults.",
-  "Task routing uses schema v2 with automatic legacy migration and next-request hot reload.",
-  "The protected DeepSeek group fallback remains intact and never receives MiMo-only fields.",
-  "Only final content can leave the output pipeline; private reasoning fields are permanently isolated.",
+  "Group summaries now use DeepSeek V4 Flash as primary, MiMo as backup, and a local factual fallback.",
+  "V4 Flash summaries reserve their output budget for final text by default, while per-task reasoning remains configurable.",
+  "Summary calls are slot-based and report the provider that actually generated the output.",
+  "Bot messages, commands, symbol-only noise and short-window repeats are removed from semantic evidence.",
+  "Reports distinguish process, result and status, and explicitly mark conclusions that were not established.",
+  "QQ identifiers, network addresses, links and credentials are redacted before model analysis.",
+  "QQ output uses clean plain text without Markdown decoration, invented titles or forced persona filler.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

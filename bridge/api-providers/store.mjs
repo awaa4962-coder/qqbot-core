@@ -38,14 +38,14 @@ export function createDefaultApiConfig() {
     revision: 1,
     providers: {
       mimo: defaultProvider("mimo", "MiMo 主力", "mimo-official", ".env_mimo"),
-      deepseek: defaultProvider("deepseek", "DeepSeek 兜底", "deepseek-official", ".env_ds", true),
+      deepseek: defaultProvider("deepseek", "DeepSeek V4 Flash", "deepseek-official", ".env_ds", true),
     },
     routes: {
       group_chat: route("mimo", "deepseek", "group_chat"),
       interjection: route("mimo", null, "interjection"),
       private_chat: route("deepseek", null, "private_chat"),
       file_chat: route("deepseek", null, "file_chat"),
-      group_summary: route("mimo", "deepseek", "group_summary"),
+      group_summary: route("deepseek", "mimo", "group_summary"),
       relationship_comment: route("mimo", "deepseek", "relationship_comment"),
       sticker_select: route("mimo", "deepseek", "sticker_select"),
       vision: route("mimo", null, "vision"),
@@ -164,7 +164,7 @@ export function saveApiRoutes(routesPayload, options = {}) {
 export function deleteApiProvider(providerId, options = {}) {
   const root = options.root || ROOT;
   const id = String(providerId || "");
-  if (id === "mimo" || id === "deepseek") throw new Error("内置主力和 DeepSeek 兜底不能删除");
+  if (id === "mimo" || id === "deepseek") throw new Error("内置 MiMo 和 DeepSeek 节点不能删除");
   const config = loadApiConfig({ root });
   if (!config.providers[id]) throw new Error("API 实例不存在");
   if (Object.values(config.routes).some(item => item.primary === id || item.fallback === id)) {

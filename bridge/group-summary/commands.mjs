@@ -42,8 +42,8 @@ export async function buildGroupSummaryCommandReply(cmd, options = {}) {
     groupWhitelist: options.groupWhitelist,
     messages: options.summaryMessages,
     digest: options.summaryDigest,
-    callMiMoSummary: options.callMiMoSummary,
-    callDeepSeekSummary: options.callDeepSeekSummary,
+    callPrimarySummary: options.callPrimarySummary,
+    callFallbackSummary: options.callFallbackSummary,
     sendGroupMessage: options.sendGroupMessage,
   });
 

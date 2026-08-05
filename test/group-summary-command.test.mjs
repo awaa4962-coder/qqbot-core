@@ -22,7 +22,7 @@ function sampleMessages(count = 8) {
   return Array.from({ length: count }, (_, index) => ({
     uid: String(index + 1),
     nickname: "user" + (index + 1),
-    text: index % 2 ? "jm 下载和资源测试" : "夜星 bot 自动回复修复",
+    text: index % 2 ? `讨论 jm 下载和资源测试 ${index}` : `夜星 bot 自动回复修复 ${index}`,
     ts: base + index * 60000,
   }));
 }
@@ -65,7 +65,7 @@ describe("group summary commands", () => {
     assert.match(reply, /日报预览完成/);
     assert.match(reply, /local-low-data/);
     assert.match(reply, /2000000002/);
-    assert.match(reply, /群聊小报/);
+    assert.match(reply, /群聊日报/);
   });
 
   it("sends summary to whitelisted target group", async () => {
@@ -75,7 +75,7 @@ describe("group summary commands", () => {
       admins: ["42"],
       groupWhitelist: [2000000002],
       summaryMessages: sampleMessages(8),
-      callMiMoSummary: async () => ({ choices: [{ message: { content: "模型日报正文" }, finish_reason: "stop" }] }),
+      callPrimarySummary: async () => ({ provider: "deepseek", choices: [{ message: { content: "模型日报正文" }, finish_reason: "stop" }] }),
       sendGroupMessage: async (groupId, text) => {
         sends.push({ groupId, text });
         return { status: "ok" };
@@ -85,7 +85,7 @@ describe("group summary commands", () => {
     assert.equal(sends[0].groupId, 2000000002);
     assert.equal(sends[0].text, "模型日报正文");
     assert.match(reply, /日报已发送/);
-    assert.match(reply, /mimo/);
+    assert.match(reply, /deepseek/);
   });
 
   it("does not report or mark a failed outbound summary as sent", async () => {
@@ -94,7 +94,7 @@ describe("group summary commands", () => {
       dateText: "2026-06-26",
       groupWhitelist: [2000000002],
       messages: sampleMessages(8),
-      callMiMoSummary: async () => ({ choices: [{ message: { content: "模型日报正文" } }] }),
+      callPrimarySummary: async () => ({ provider: "deepseek", choices: [{ message: { content: "模型日报正文" } }] }),
       sendGroupMessage: async () => null,
     });
     assert.equal(result.ok, false);
@@ -150,11 +150,24 @@ describe("group summary commands", () => {
   it("exposes provider metadata from summary generation", async () => {
     const result = await generateGroupSummaryResult(sampleMessages(8), {
       dateText: "2026-06-26",
-      callMiMoSummary: async () => ({ choices: [{ message: { content: "" } }] }),
-      callDeepSeekSummary: async () => null,
+      callPrimarySummary: async () => ({ choices: [{ message: { content: "" } }] }),
+      callFallbackSummary: async () => null,
     });
     assert.equal(result.provider, "local-fallback");
-    assert.match(result.text, /群聊小报/);
+    assert.match(result.text, /群聊日报/);
     assert.ok(result.digest);
+  });
+
+  it("reports the real provider when the fallback slot generates the summary", async () => {
+    const result = await generateGroupSummaryResult(sampleMessages(8), {
+      dateText: "2026-06-26",
+      callPrimarySummary: async () => null,
+      callFallbackSummary: async () => ({
+        provider: "mimo-25-pro",
+        choices: [{ message: { content: "备用模型日报" } }],
+      }),
+    });
+    assert.equal(result.provider, "mimo-25-pro");
+    assert.equal(result.text, "备用模型日报");
   });
 });

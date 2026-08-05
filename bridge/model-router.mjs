@@ -108,8 +108,12 @@ export async function callRawModelProvider(provider, request = {}) {
 }
 
 export async function callTaskRawProvider(task, position, request = {}) {
-  const result = await callTaskApi(task, position, buildRawRequest(request));
+  const result = await callTaskProviderResult(task, position, request);
   return result.ok ? result.raw : null;
+}
+
+export async function callTaskProviderResult(task, position, request = {}) {
+  return await callTaskApi(task, position, buildRawRequest(request));
 }
 
 export async function callRelationshipCommentPrimary(prompt) {

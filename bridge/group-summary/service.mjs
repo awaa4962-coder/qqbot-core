@@ -20,8 +20,7 @@ export async function sendGroupSummaryForDate(options = {}) {
 async function buildSummaryServiceResult(options) {
   const dateText = options.dateText || formatDate();
   const groupId = Number(options.groupId || DEFAULT_SUMMARY_GROUP_ID);
-  const groupName = options.groupName ||
-    (groupId === DEFAULT_SUMMARY_GROUP_ID ? DEFAULT_SUMMARY_GROUP_NAME : "QQ群 " + groupId);
+  const groupName = options.groupName || DEFAULT_SUMMARY_GROUP_NAME;
   const style = getSummaryStyle(options.style);
   if (options.requireWhitelisted !== false && !isAllowedSummaryGroup(groupId, options.groupWhitelist)) {
     return {
@@ -47,9 +46,11 @@ async function buildSummaryServiceResult(options) {
     };
   }
 
-  const digest = options.digest || buildSummaryDigest(messages);
+  const analysisOptions = buildAnalysisOptions(options);
+  const digest = options.digest || buildSummaryDigest(messages, analysisOptions);
   const generated = await generateGroupSummaryResult(messages, {
     ...options,
+    ...analysisOptions,
     dateText,
     groupName,
     label: dateLabel(dateText),
@@ -101,4 +102,11 @@ async function buildSummaryServiceResult(options) {
 
 function isAllowedSummaryGroup(groupId, whitelist = CFG.summaryGroupWhitelist) {
   return (whitelist || []).map(Number).includes(Number(groupId));
+}
+
+function buildAnalysisOptions(options) {
+  return {
+    selfUin: options.selfUin ?? CFG.selfUin,
+    botNames: options.botNames ?? CFG.botNames,
+  };
 }

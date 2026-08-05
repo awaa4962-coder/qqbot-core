@@ -35,7 +35,7 @@ describe("API provider presets and storage", () => {
     assert.equal(JSON.stringify(presets).includes("apiKey"), false);
   });
 
-  it("keeps DeepSeek as the protected group fallback", () => {
+  it("uses DeepSeek V4 Flash for summaries while protecting the group-chat fallback", () => {
     const config = createDefaultApiConfig();
     assert.equal(config.schemaVersion, 2);
     assert.equal(config.routes.group_chat.primary, "mimo");
@@ -43,6 +43,11 @@ describe("API provider presets and storage", () => {
     assert.equal(config.routes.group_chat.reasoning, "auto");
     assert.equal(config.routes.interjection.reasoning, "economy");
     assert.equal(config.routes.private_chat.primary, "deepseek");
+    assert.equal(config.routes.group_summary.primary, "deepseek");
+    assert.equal(config.routes.group_summary.fallback, "mimo");
+    assert.equal(config.routes.group_summary.reasoning, "economy");
+    assert.equal(config.providers.deepseek.name, "DeepSeek V4 Flash");
+    assert.equal(config.providers.deepseek.model, "deepseek-v4-flash");
   });
 
   it("migrates legacy routes to task reasoning defaults", () => {
@@ -56,7 +61,7 @@ describe("API provider presets and storage", () => {
     const migrated = loadApiConfig({ root });
     assert.equal(migrated.schemaVersion, 2);
     assert.equal(migrated.routes.group_chat.reasoning, "auto");
-    assert.equal(migrated.routes.group_summary.reasoning, "deep");
+    assert.equal(migrated.routes.group_summary.reasoning, "economy");
     assert.equal(migrated.routes.sticker_select.reasoning, "economy");
   });
 
@@ -189,7 +194,7 @@ describe("API provider presets and storage", () => {
 });
 
 describe("API protocol adapters", () => {
-  it("applies task reasoning before calling MiMo and not DeepSeek fallback", async () => {
+  it("applies task reasoning to both MiMo and DeepSeek", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-api-gateway-"));
     saveApiRoutes({
       group_chat: { primary: "mimo", fallback: "deepseek", reasoning: "deep" },
@@ -209,9 +214,28 @@ describe("API protocol adapters", () => {
     const primary = await callTaskApi("group_chat", "primary", basicRequest(), { root });
     const fallback = await callTaskApi("group_chat", "fallback", basicRequest(), { root });
     assert.deepEqual(bodies[0].thinking, { type: "enabled" });
-    assert.equal(Object.prototype.hasOwnProperty.call(bodies[1], "thinking"), false);
+    assert.deepEqual(bodies[1].thinking, { type: "enabled" });
     assert.equal(primary.reasoningPolicy.effectiveMode, "deep");
-    assert.equal(fallback.reasoningPolicy.applied, false);
+    assert.equal(fallback.reasoningPolicy.applied, true);
+  });
+
+  it("keeps the default DeepSeek summary budget for final text", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-api-summary-reasoning-"));
+    fs.writeFileSync(path.join(root, ".env_ds"), "sk-test-ds-key", "utf8");
+    let body = null;
+    globalThis.fetch = async (_url, options) => {
+      body = JSON.parse(options.body);
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ choices: [{ message: { content: "日报正文" } }] }),
+      };
+    };
+
+    const result = await callTaskApi("group_summary", "primary", basicRequest(), { root });
+    assert.deepEqual(body.thinking, { type: "disabled" });
+    assert.equal(result.reasoningPolicy.effectiveMode, "economy");
+    assert.equal(result.reasoningPolicy.applied, true);
   });
 
   it("normalizes Responses output into the shared output pipeline", async () => {

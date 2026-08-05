@@ -1,21 +1,24 @@
 export const SUMMARY_STYLES = Object.freeze({
   casual: {
     id: "casual",
-    label: "轻松版",
-    length: "300-500 字",
-    prompt: "语气轻松，像群友在发小报，可以有一点可爱但不要太油。",
+    label: "标准分析",
+    length: "450-800 字",
+    maxTopics: 3,
+    prompt: "优先呈现事实、讨论结果和未解决事项，语言自然但不进行娱乐化扩写。",
   },
   short: {
     id: "short",
-    label: "简短版",
-    length: "120-220 字",
-    prompt: "写得短一点，保留数据、主题、活跃之星和一句收尾。",
+    label: "简明分析",
+    length: "200-400 字",
+    maxTopics: 2,
+    prompt: "只保留最重要的讨论及其结果；信息不足时宁可明确说未形成结论。",
   },
   technical: {
     id: "technical",
-    label: "技术版",
-    length: "250-420 字",
-    prompt: "更关注机器人、代码、日志、资源、问题推进，但仍然保持群聊小报口吻。",
+    label: "技术分析",
+    length: "500-900 字",
+    maxTopics: 4,
+    prompt: "优先说明故障现象、排查过程、已验证结果、剩余风险和下一步，但不得补写记录中不存在的结论。",
   },
 });
 

@@ -284,7 +284,11 @@ npm.cmd run check:jm:install
 ## API Quick Swap
 
 The Windows console includes an `API` page for model-provider presets and task
-routing. The current defaults remain MiMo as primary and DeepSeek as fallback.
+routing. Defaults are task-specific: group chat keeps MiMo as primary with the
+protected DeepSeek backup, while group summaries use DeepSeek V4 Flash as the
+primary analyst, MiMo as backup, and a local factual summary as the final guard.
+The summary route defaults to the economy reasoning mode so its token budget is
+reserved for the report body; the console can still change reasoning per task.
 
 Supported protocol families:
 

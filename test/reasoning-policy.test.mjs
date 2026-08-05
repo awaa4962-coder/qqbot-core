@@ -13,14 +13,14 @@ describe("reasoning policy", () => {
   it("uses task-aware defaults", () => {
     assert.equal(defaultReasoningMode("group_chat"), "auto");
     assert.equal(defaultReasoningMode("interjection"), "economy");
-    assert.equal(defaultReasoningMode("group_summary"), "deep");
+    assert.equal(defaultReasoningMode("group_summary"), "economy");
     assert.equal(normalizeReasoningMode("invalid", "sticker_select"), "economy");
   });
 
   it("resolves auto without another model request", () => {
     assert.equal(resolveAutomaticMode("group_chat", request("你好")), "economy");
     assert.equal(resolveAutomaticMode("group_chat", request("请详细分析这个报错为什么发生，并给出修复方案")), "deep");
-    assert.equal(resolveAutomaticMode("group_summary", request("短文本")), "deep");
+    assert.equal(resolveAutomaticMode("group_summary", request("短文本")), "economy");
     assert.equal(resolveAutomaticMode("interjection", request("请详细分析")), "economy");
     assert.equal(resolveAutomaticMode("group_chat", {
       ...request("[图片]"),
@@ -45,7 +45,7 @@ describe("reasoning policy", () => {
     assert.deepEqual(complex.request.thinking, { type: "enabled" });
   });
 
-  it("maps Responses providers to effort and leaves DeepSeek untouched", () => {
+  it("maps Responses effort and DeepSeek thinking controls", () => {
     const responses = provider({ protocol: "openai-responses", presetId: "openai-responses" });
     const high = applyReasoningPolicy(responses, request("分析"), { task: "group_chat", mode: "deep" });
     assert.deepEqual(high.request.reasoning, { effort: "high" });
@@ -55,10 +55,10 @@ describe("reasoning policy", () => {
       presetId: "deepseek-official",
       endpoint: "https://api.deepseek.com/v1/chat/completions",
     });
-    const untouched = applyReasoningPolicy(deepseek, request("分析"), { task: "group_chat", mode: "deep" });
-    assert.equal(Object.prototype.hasOwnProperty.call(untouched.request, "thinking"), false);
-    assert.equal(untouched.meta.applied, false);
-    assert.equal(getProviderReasoningControl(deepseek).configurable, false);
+    const controlled = applyReasoningPolicy(deepseek, request("分析"), { task: "group_chat", mode: "deep" });
+    assert.deepEqual(controlled.request.thinking, { type: "enabled" });
+    assert.equal(controlled.meta.applied, true);
+    assert.equal(getProviderReasoningControl(deepseek).configurable, true);
 
     const genericChat = applyReasoningPolicy(provider(), request("分析"), {
       task: "group_chat",

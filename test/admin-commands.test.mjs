@@ -276,9 +276,9 @@ describe("admin command parsing", () => {
     assert.match(reply, new RegExp("Current version: v" + VERSION));
     assert.match(reply, /Still reserved:/);
     assert.match(reply, /export-relationships/);
-    assert.match(reply, /Economy, Smart and Deep reasoning controls/);
-    assert.match(reply, /Only final content can leave the output pipeline/);
-    assert.match(reply, /DeepSeek group fallback/);
+    assert.match(reply, /DeepSeek V4 Flash as primary/);
+    assert.match(reply, /short-window repeats/);
+    assert.match(reply, /clean plain text/);
     assert.doesNotMatch(reply, /key|token|secret/i);
   });
 
