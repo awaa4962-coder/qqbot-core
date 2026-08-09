@@ -4,26 +4,26 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.3.6-smart-link-preview";
-export const VERSION_NAME = "smart-link-preview";
+export const VERSION = "1.3.7-github-preview";
+export const VERSION_NAME = "github-preview";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "自动链接预览改为智能筛选：只处理单个公开网页；@机器人、多链接、文件直链、QQ 媒体地址和长群会安静跳过。",
-  "同一群 30 分钟内不重复预览等价链接，常见跟踪参数不会绕过去重。",
-  "网页只读取 HTML 类内容，并使用最终跳转地址；回复固定显示实际域名，避免网页自报来源造成误导。",
-  "预览图经过安全重定向检查后在内存中转为图片发送，不写入本地，获取失败时自动退回文字。",
-  "普通图片不再被误发成闪照；含链接的普通消息即使跳过预览，也不会触发随机插话。",
-  "控制台新增智能跳过与重复拦截计数，明确区分主动克制和网络错误。",
+  "GitHub 公开仓库链接新增专用卡片，展示简介、主语言、Stars、Forks、许可证、主题、更新时间和仓库状态。",
+  "仓库内的代码、Issue、PR 等子页面会归一到同一仓库，并使用 15 分钟元数据缓存减少 GitHub 请求。",
+  "公开仓库走 GitHub 官方 REST API，无需额外凭据；限流、仓库不存在或接口失败时自动退回通用网页预览。",
+  "GitHub 社交封面继续经过安全重定向和内存图片代理，不在本地保存文件，图片失败时只发文字。",
+  "B站专用解析和智能自动预览策略保持不变，@机器人、多链接、文件直链和重复链接仍按原规则处理。",
+  "控制台链接状态新增 GitHub 命中计数，可与通用网页和 B站解析区分。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Automatic previews now handle one useful public page only; mentions, multi-link posts, direct files, QQ media and long groups stay quiet.",
-  "Equivalent links are deduplicated per group for 30 minutes after common tracking parameters are removed.",
-  "Only page MIME types are read, final redirect URLs are used, and replies always show the actual domain.",
-  "Preview images are validated and converted in memory, with a text fallback and no local image files.",
-  "Normal images are no longer sent as flash photos, and skipped URL messages cannot trigger random interjections.",
-  "The console reports smart skips and duplicate suppression separately from network errors.",
+  "Public GitHub repositories now receive dedicated cards with description, language, stars, forks, license, topics and status.",
+  "Code, issue and pull-request pages are normalized to their repository and share a 15-minute metadata cache.",
+  "Public metadata uses GitHub's official REST API without extra credentials, with automatic generic-page fallback.",
+  "GitHub social images still pass redirect validation and the in-memory image proxy, with a text-only fallback.",
+  "Bilibili parsing and the smart automatic-preview policy keep their existing behavior.",
+  "The console now reports GitHub preview hits separately from generic and Bilibili previews.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

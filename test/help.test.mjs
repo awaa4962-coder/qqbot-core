@@ -42,9 +42,9 @@ describe("help text", () => {
 
     const en = buildChangelogText("en");
     assert.match(en, new RegExp("Current version: v" + VERSION));
-    assert.match(en, /one useful public page only/);
-    assert.match(en, /deduplicated per group/);
-    assert.match(en, /actual domain/);
+    assert.match(en, /dedicated cards/);
+    assert.match(en, /official REST API/);
+    assert.match(en, /Bilibili parsing/);
     assert.match(en, /Still reserved:/);
   });
 });

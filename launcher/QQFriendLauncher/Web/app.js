@@ -565,6 +565,7 @@ function renderConfig(status, configSnapshot) {
     ["链接预览", [
       linkPreview.enabled ? (linkPreview.mode === "smart" ? "智能模式" : "已启用") : "已关闭",
       `成功 ${linkPreview.hits || 0}`,
+      `GitHub ${linkPreview.githubHits || 0}`,
       `跳过 ${linkPreview.skips || 0}`,
       `重复 ${linkPreview.duplicateSkips || 0}`,
       `错误 ${linkPreview.errors || 0}`,

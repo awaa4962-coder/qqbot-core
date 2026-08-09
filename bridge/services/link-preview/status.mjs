@@ -4,6 +4,7 @@ const state = {
   misses: 0,
   errors: 0,
   bilibiliHits: 0,
+  githubHits: 0,
   genericHits: 0,
   skips: 0,
   duplicateSkips: 0,
@@ -26,6 +27,7 @@ export function recordLinkPreview(kind, result, error = "") {
   }
   state.hits++;
   if (kind === "bilibili") state.bilibiliHits++;
+  else if (kind === "github") state.githubHits++;
   else state.genericHits++;
 }
 
@@ -43,6 +45,7 @@ export function getLinkPreviewStatus(options = {}) {
     misses: state.misses,
     errors: state.errors,
     bilibiliHits: state.bilibiliHits,
+    githubHits: state.githubHits,
     genericHits: state.genericHits,
     skips: state.skips,
     duplicateSkips: state.duplicateSkips,
@@ -59,6 +62,7 @@ export function resetLinkPreviewStatus() {
   state.misses = 0;
   state.errors = 0;
   state.bilibiliHits = 0;
+  state.githubHits = 0;
   state.genericHits = 0;
   state.skips = 0;
   state.duplicateSkips = 0;

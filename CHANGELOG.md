@@ -1,5 +1,16 @@
 # 夜星桥接器更新日志
 
+## v1.3.7-github-preview - 2026-08-10 - GitHub 仓库专用预览
+- 新增独立 `bridge/services/link-preview/github.mjs`，识别 GitHub 公开仓库主页以及仓库内的代码、Issue、PR、Release 等子页面，并统一归一到仓库级元数据。
+- 通过 GitHub 官方 `GET /repos/{owner}/{repo}` 读取公开仓库，无需新增 Token 或密钥配置；只保留公开简介、语言、Stars、Forks、许可证、主题、更新时间和仓库状态。
+- GitHub 首页、搜索、Topics、Marketplace、登录页和非 GitHub 主域不会被误判成仓库链接；私有仓库元数据不会进入预览结果。
+- 仓库元数据加入 15 分钟、最多 100 项的内存缓存；同仓库不同子页面复用缓存，并继续受群级 30 分钟链接去重约束。
+- GitHub API 限流、返回异常、仓库不存在或响应格式不符时自动退回通用网页预览，不影响消息发送链路。
+- 仓库社交封面使用 GitHub 官方图片地址，仍由共享安全重定向和内存图片代理处理；不写本地图片，失败时发送纯文字卡片。
+- 统一链接状态新增 `githubHits`，桌面控制台可单独查看 GitHub 专用解析命中数；B站专用解析及原有智能预览规则保持不变。
+- 新增 GitHub URL 边界、导航页排除、公开字段格式化、私有数据隔离、缓存、专用路由与通用回退测试。
+- 验收：`npm ci` 通过，`npm run lint` 0 errors / 0 warnings，`npm test` 543/543 pass，`npm run release:check` pass，控制台构建 0 warnings / 0 errors，生产依赖审计 0 vulnerabilities。
+
 ## v1.3.6-smart-link-preview - 2026-08-10 - 智能链接预览
 - 自动链接预览新增独立策略层：只处理单个公开网页；@机器人、多链接、长消息、文件直链、QQ 媒体地址、长群和不安全地址均安静跳过。
 - 同一群对等价链接执行 30 分钟内存去重；`utm_*`、`spm`、`from`、`ref`、分享标识和时间戳等跟踪参数不会绕过去重。
