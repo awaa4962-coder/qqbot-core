@@ -13,7 +13,15 @@ import {
   sendMsg,
   sendMsgWithImage,
 } from "./napcat.mjs";
-import { extractLinkPreview } from "./search.mjs";
+import { isSuccessfulOutbound } from "./cognition/outcome.mjs";
+import {
+  extractLinkPreview,
+  inspectAutoPreview,
+  markAutoPreviewSent,
+  previewAddsValue,
+  recordLinkPreviewSkip,
+  resolvePreviewImage,
+} from "./services/link-preview/index.mjs";
 import {
   buildInterjectionFallback,
   buildInterjectionDecision as buildInterjectionDecisionByPolicy,
@@ -79,15 +87,40 @@ export function pullRecentImages(groupId) {
   return urls;
 }
 
-export async function handleLinkPreview(gid, rawText, isLongGroup) {
-  if (isLongGroup) return { sent: false, isBili: false };
-  if (typeof rawText !== "string" || !rawText) return { sent: false, isBili: false };
+export async function handleLinkPreview(gid, rawText, isLongGroup, options = {}) {
+  const decision = inspectAutoPreview(rawText, {
+    groupId: gid,
+    isLongGroup,
+    isAtMe: options.isAtMe,
+    now: options.now,
+    dedupeWindowMs: options.dedupeWindowMs,
+  });
+  if (!decision.ok) {
+    if (decision.hadLink) recordLinkPreviewSkip(decision.reason);
+    return previewResult(false, false, decision.hadLink, decision.reason);
+  }
 
-  const biliResult = await sendFirstBilibiliPreview(gid, rawText);
-  if (biliResult.sent) return biliResult;
+  const previewer = options.previewer || extractLinkPreview;
+  let preview = null;
+  try {
+    preview = await previewer(decision.candidate.url);
+  } catch {}
+  if (!preview) {
+    recordLinkPreviewSkip("unavailable");
+    return previewResult(false, false, true, "unavailable");
+  }
+  if (!previewAddsValue(preview, rawText, decision.candidate)) {
+    recordLinkPreviewSkip("low_value");
+    return previewResult(false, Boolean(preview.bvid), true, "low_value");
+  }
 
-  const genericSent = await sendFirstGenericPreview(gid, rawText);
-  return { sent: genericSent, isBili: false };
+  const sendResult = await sendPreview(gid, preview, options);
+  const sent = isSuccessfulOutbound(sendResult);
+  if (sent) {
+    markAutoPreviewSent(gid, decision.candidate, options);
+    log(preview.bvid ? "bili preview sent" : "generic link preview sent", decision.candidate.host);
+  }
+  return previewResult(sent, Boolean(preview.bvid), true, sent ? "sent" : "send_failed");
 }
 
 export async function handleExplicitLinkPreviewCommand(ctx, options = {}) {
@@ -100,15 +133,13 @@ export async function handleExplicitLinkPreviewCommand(ctx, options = {}) {
 
   const previewer = options.previewer || extractLinkPreview;
   const sender = options.sender || sendMsg;
-  const imageSender = options.imageSender || sendMsgWithImage;
   const preview = await previewer(parsed.url);
   if (!preview) {
-    await sender(ctx.group_id, "Link preview failed or was blocked.", options.replyToId);
+    await sender(ctx.group_id, "链接预览失败，网页不可访问或被安全规则拦截。", options.replyToId);
     return true;
   }
 
-  if (preview.image) await imageSender(ctx.group_id, preview.text, preview.image);
-  else await sender(ctx.group_id, preview.text, options.replyToId);
+  await sendPreview(ctx.group_id, preview, options);
   return true;
 }
 
@@ -119,34 +150,6 @@ export function parseExplicitLinkPreviewCommand(text, options = {}) {
   });
   const match = command.match(/^(?:preview|link preview|link|预览|链接预览)\s+(https?:\/\/\S+)/i);
   return match ? { url: match[1] } : null;
-}
-
-async function sendFirstBilibiliPreview(gid, rawText) {
-  const biliRegex = /https?:\/\/(?:www\.)?bilibili\.com\/video\/BV[a-zA-Z0-9]+|https?:\/\/b23\.tv\/[a-zA-Z0-9]+/g;
-  const matches = rawText.match(biliRegex) || [];
-  for (const url of matches) {
-    const preview = await extractLinkPreview(url);
-    if (preview) {
-      await sendMsgWithImage(gid, preview.text, preview.image);
-      log("bili preview sent for", preview.bvid || url);
-      return { sent: true, isBili: true };
-    }
-  }
-  return { sent: false, isBili: false };
-}
-
-async function sendFirstGenericPreview(gid, rawText) {
-  const urls = rawText.match(/https?:\/\/[^\s]+/g) || [];
-  for (const url of urls) {
-    if (url.includes("bilibili.com") || url.includes("b23.tv")) continue;
-    const preview = await extractLinkPreview(url);
-    if (preview) {
-      await sendMsgWithImage(gid, preview.text, preview.image);
-      log("generic link preview sent");
-      return true;
-    }
-  }
-  return false;
 }
 
 export async function handleMiniApp(message, gid, isLongGroup) {
@@ -194,7 +197,7 @@ async function sendMiniAppPreview(detail, gid) {
   if (url && (url.includes("bilibili.com") || url.includes("b23.tv"))) {
     const bili = await extractLinkPreview(url);
     if (bili) {
-      await (bili.image ? sendMsgWithImage(gid, bili.text, bili.image) : sendMsg(gid, bili.text));
+      await sendPreview(gid, bili);
       log("miniApp bili preview sent");
       return true;
     }
@@ -203,6 +206,19 @@ async function sendMiniAppPreview(detail, gid) {
   await sendMsg(gid, formatMiniAppReply(detail, url));
   log("miniApp preview sent");
   return true;
+}
+
+async function sendPreview(groupId, preview, options = {}) {
+  const sender = options.sender || sendMsg;
+  const imageSender = options.imageSender || sendMsgWithImage;
+  const imageResolver = options.imageResolver || resolvePreviewImage;
+  const image = preview.image ? await imageResolver(preview.image) : null;
+  if (image) return imageSender(groupId, preview.text, image);
+  return sender(groupId, preview.text, options.replyToId);
+}
+
+function previewResult(sent, isBili, hadLink, reason) {
+  return { sent, isBili, hadLink, reason };
 }
 
 export function shouldInterject(text, ctxOrIsAtMe, previewSent) {

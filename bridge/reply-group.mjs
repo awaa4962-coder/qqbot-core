@@ -31,13 +31,13 @@ export async function handleGroupMessage(ctx, rawMessage) {
   if (await dispatchGroupCommand(ctx, { replyToId: replyState.replyToId })) return;
   if (!ctx.isAtMe) observeGroupStickerCandidates(ctx);
 
-  const previewSent = await handleGroupPreviews(ctx, rawMessage);
+  const previewState = await handleGroupPreviews(ctx, rawMessage);
 
-  if (previewSent && !ctx.isAtMe) return;
+  if (previewState.sent && !ctx.isAtMe) return;
   if (await handleMentionedGroupMessage(ctx, replyState)) return;
   if (await handlePureFileMessage(ctx)) return;
 
-  await handleRandomInterjection(ctx, previewSent, replyState);
+  await handleRandomInterjection(ctx, previewState.suppressInterjection, replyState);
 }
 
 export async function buildReplyState(ctx, resolveContext = resolveReplyContext) {
@@ -95,8 +95,14 @@ function logGroupMemberMessage(ctx) {
 
 async function handleGroupPreviews(ctx, rawMessage) {
   const isLong = requireLongGroup(ctx.group_id);
-  const { sent: biliSent } = await handleLinkPreview(ctx.group_id, ctx.rawText, isLong);
-  return biliSent || await handleMiniApp(rawMessage, ctx.group_id, isLong);
+  const link = await handleLinkPreview(ctx.group_id, ctx.rawText, isLong, { isAtMe: ctx.isAtMe });
+  const miniAppSent = !ctx.isAtMe && !link.sent
+    ? await handleMiniApp(rawMessage, ctx.group_id, isLong)
+    : false;
+  return {
+    sent: link.sent || miniAppSent,
+    suppressInterjection: link.hadLink || miniAppSent,
+  };
 }
 
 async function handleMentionedGroupMessage(ctx, replyState) {

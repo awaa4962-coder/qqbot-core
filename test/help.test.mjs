@@ -42,9 +42,9 @@ describe("help text", () => {
 
     const en = buildChangelogText("en");
     assert.match(en, new RegExp("Current version: v" + VERSION));
-    assert.match(en, /DeepSeek V4 Flash as primary/);
-    assert.match(en, /short-window repeats/);
-    assert.match(en, /credentials are redacted/);
+    assert.match(en, /one useful public page only/);
+    assert.match(en, /deduplicated per group/);
+    assert.match(en, /actual domain/);
     assert.match(en, /Still reserved:/);
   });
 });

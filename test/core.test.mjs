@@ -318,7 +318,17 @@ describe("outbound long text", () => {
     }, async () => sendMsgWithImage(789, "丙。".repeat(1500), "https://example.com/a.jpg"));
     assert.ok(calls.length > 1);
     assert.ok(calls[0].message.some(m => m.type === "image"));
+    assert.equal(calls[0].message.find(m => m.type === "image").data.type, undefined);
     assert.ok(!calls[1].message.some(m => m.type === "image"));
+  });
+
+  it("sendMsgWithImage 只有显式要求时才发送闪照", async () => {
+    let payload = null;
+    await withMockFetch(async (url, options) => {
+      payload = JSON.parse(options.body);
+      return { json: async () => ({ status: "ok" }) };
+    }, async () => sendMsgWithImage(789, "测试", "base64://aW1hZ2U=", { flash: true }));
+    assert.equal(payload.message[0].data.type, "flash");
   });
 });
 
@@ -916,7 +926,7 @@ describe("normalizePageMeta", () => {
     assert.equal(result.siteName, "Example Site");
     assert.equal(result.url, "https://example.com/article");
     assert.equal(result.favicon, "https://example.com/favicon.ico");
-    assert.ok(result.text.includes("Site: Example Site"));
+    assert.ok(result.text.includes("来源：Example Site · example.com"));
   });
 
   it("falls back to hostname and blocks unsafe canonical urls", () => {

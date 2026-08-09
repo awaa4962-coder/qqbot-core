@@ -246,20 +246,22 @@ export async function getGroupMemberInfo(groupId, userId) {
   return null;
 }
 
-export async function sendMsgWithImage(groupId, text, imageUrl) {
+export async function sendMsgWithImage(groupId, text, imageUrl, options = {}) {
   if (!imageUrl) return sendMsg(groupId, text);
+  const imageData = { file: imageUrl };
+  if (options.flash === true) imageData.type = 'flash';
   const chunks = splitLongText(text);
   if (!chunks.length) {
     return sendGroupMessagePayload({
       group_id: groupId,
-      message: [{ type: 'image', data: { file: imageUrl, type: 'flash' } }],
+      message: [{ type: 'image', data: imageData }],
     }, 'sendMsgWithImage');
   }
   try {
     const firstPayload = {
       group_id: groupId,
       message: [
-        { type: 'image', data: { file: imageUrl, type: 'flash' } },
+        { type: 'image', data: imageData },
         { type: 'text', data: { text: chunks[0] } },
       ],
     };

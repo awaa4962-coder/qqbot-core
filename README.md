@@ -176,6 +176,14 @@ Capability discovery is generated from the shared catalog:
 - `@夜星 帮助 JM` / `@夜星 JM怎么用` / `@夜星 能识图吗` looks up a specific capability.
 - Availability reflects the current group or private whitelist, configured dependencies and runtime mode without exposing identifiers or keys.
 
+Link preview behavior:
+
+- A normal group message may receive one automatic preview only when it contains one useful public webpage.
+- Messages that mention the bot, contain several links, point directly to files or QQ media, or repeat a recently previewed link do not receive an automatic card.
+- URL messages that are skipped by the preview policy cannot trigger a random interjection.
+- `@夜星 preview https://example.com` explicitly requests a preview and bypasses the automatic usefulness and dedupe policy; URL safety rules still apply.
+- Page redirects and preview-image redirects are checked at every hop. Images are proxied in memory and fall back to text without writing image files locally.
+
 User commands:
 
 - `@夜星 help` / `@夜星 帮助`

@@ -59,7 +59,7 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
     id: "group.link-preview",
     category: "group",
     name: "链接预览",
-    summary: "读取公开网页的标题和摘要，内网地址会被拦截。",
+    summary: "智能读取单个公开网页的标题、实际来源和摘要，重复或低价值链接会安静跳过。",
     scopes: ["group"],
     examples: ["@夜星 preview https://example.com"],
     keywords: ["链接", "预览", "网址", "preview"],
@@ -338,7 +338,7 @@ function resolveAvailability(item, options, cfg) {
 function resolveAccessAvailability(item, options, cfg) {
   if (item.access === "link-preview") {
     return cfg.linkPreviewEnabled
-      ? makeAvailability("available", "可用", "仅访问经过安全检查的公开链接")
+      ? makeAvailability("available", "可用", "自动预览会去重和筛选，也可用 preview 命令明确请求")
       : makeAvailability("unavailable", "已关闭", "链接预览当前已关闭");
   }
   if (item.access === "meme-mode") {

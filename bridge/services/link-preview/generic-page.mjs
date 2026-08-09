@@ -1,4 +1,4 @@
-import { safeFetch } from "./safe-fetch.mjs";
+import { safeFetchPage } from "./safe-fetch.mjs";
 import { validateSafeUrl } from "../../safe-url.mjs";
 
 const MAX_TITLE_LENGTH = 180;
@@ -68,7 +68,14 @@ function extractSiteName(html, baseUrl) {
 
 function extractCanonicalUrl(html, baseUrl) {
   const canonical = firstLink(html, ["canonical", "alternate"]);
-  return normalizeSafeLink(canonical, baseUrl) || normalizeSafeLink(baseUrl, "");
+  const fallback = normalizeSafeLink(baseUrl, "");
+  const normalized = normalizeSafeLink(canonical, baseUrl);
+  if (!normalized || !fallback) return fallback;
+  try {
+    return new URL(normalized).hostname === new URL(fallback).hostname ? normalized : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 function extractFavicon(html, baseUrl) {
@@ -133,10 +140,13 @@ function clipText(text, maxLength) {
 }
 
 function buildPreviewText(meta) {
-  const parts = ["Link: " + meta.title];
-  if (meta.siteName) parts.push("Site: " + meta.siteName);
+  const parts = ["链接：" + meta.title];
+  const source = [meta.siteName, meta.host]
+    .filter(Boolean)
+    .filter((value, index, values) => values.indexOf(value) === index)
+    .join(" · ");
+  if (source) parts.push("来源：" + source);
   if (meta.description) parts.push(meta.description);
-  if (meta.url) parts.push(meta.url);
   return parts.join("\n");
 }
 
@@ -147,14 +157,16 @@ export function normalizePageMeta(html, options = {}) {
   const description = clipText(extractDescription(html), MAX_DESC_LENGTH);
   const siteName = clipText(extractSiteName(html, options.baseUrl), 80);
   const url = extractCanonicalUrl(html, options.baseUrl);
+  const host = readableHost(options.baseUrl);
 
   return {
-    text: buildPreviewText({ title, siteName, description, url }),
+    text: buildPreviewText({ title, siteName, host, description }),
     image: normalizeSafeImageUrl(extractImage(html), options.baseUrl),
     favicon: extractFavicon(html, options.baseUrl),
     title,
     description,
     siteName,
+    host,
     url,
   };
 }
@@ -162,8 +174,16 @@ export function normalizePageMeta(html, options = {}) {
 export async function fetchPageMeta(url) {
   if (isBilibiliLink(url)) return null;
 
-  const html = await safeFetch(url);
-  if (!html) return null;
+  const page = await safeFetchPage(url);
+  if (!page) return null;
 
-  return normalizePageMeta(html, { baseUrl: url });
+  return normalizePageMeta(page.html, { baseUrl: page.url });
+}
+
+function readableHost(value) {
+  try {
+    return new URL(value || "").hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "";
+  }
 }

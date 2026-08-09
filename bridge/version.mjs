@@ -4,28 +4,26 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.3.5-summary-analysis";
-export const VERSION_NAME = "summary-analysis";
+export const VERSION = "1.3.6-smart-link-preview";
+export const VERSION_NAME = "smart-link-preview";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "群日报改由 DeepSeek V4 Flash 主分析，MiMo 作为备用，本地事实摘要继续提供最终保障。",
-  "V4 Flash 日报默认关闭隐藏长推理，把输出预算完整留给正文；控制台仍可按功能调整思考档位。",
-  "日报生成器按主插槽和备用插槽调用并记录真实模型，不再把插槽名称硬编码成供应商名称。",
-  "新增证据预处理，机器人消息、命令、纯符号和短时间复读不再污染主题与参与统计。",
-  "日报改为经过、结果、状态三层事实分析；没有证据的结论会明确标记为未形成结论。",
-  "发送给模型前会隐藏 QQ 号、网络地址、链接和凭据，图片无文字证据时禁止猜测内容。",
-  "QQ 输出移除 Markdown 装饰、主观人物称号和强制卖萌栏目，保留简明的纯文本层级。",
+  "自动链接预览改为智能筛选：只处理单个公开网页；@机器人、多链接、文件直链、QQ 媒体地址和长群会安静跳过。",
+  "同一群 30 分钟内不重复预览等价链接，常见跟踪参数不会绕过去重。",
+  "网页只读取 HTML 类内容，并使用最终跳转地址；回复固定显示实际域名，避免网页自报来源造成误导。",
+  "预览图经过安全重定向检查后在内存中转为图片发送，不写入本地，获取失败时自动退回文字。",
+  "普通图片不再被误发成闪照；含链接的普通消息即使跳过预览，也不会触发随机插话。",
+  "控制台新增智能跳过与重复拦截计数，明确区分主动克制和网络错误。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Group summaries now use DeepSeek V4 Flash as primary, MiMo as backup, and a local factual fallback.",
-  "V4 Flash summaries reserve their output budget for final text by default, while per-task reasoning remains configurable.",
-  "Summary calls are slot-based and report the provider that actually generated the output.",
-  "Bot messages, commands, symbol-only noise and short-window repeats are removed from semantic evidence.",
-  "Reports distinguish process, result and status, and explicitly mark conclusions that were not established.",
-  "QQ identifiers, network addresses, links and credentials are redacted before model analysis.",
-  "QQ output uses clean plain text without Markdown decoration, invented titles or forced persona filler.",
+  "Automatic previews now handle one useful public page only; mentions, multi-link posts, direct files, QQ media and long groups stay quiet.",
+  "Equivalent links are deduplicated per group for 30 minutes after common tracking parameters are removed.",
+  "Only page MIME types are read, final redirect URLs are used, and replies always show the actual domain.",
+  "Preview images are validated and converted in memory, with a text fallback and no local image files.",
+  "Normal images are no longer sent as flash photos, and skipped URL messages cannot trigger random interjections.",
+  "The console reports smart skips and duplicate suppression separately from network errors.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

@@ -562,7 +562,13 @@ function renderConfig(status, configSnapshot) {
       `${Number(cognition.privateThreads || 0)} 个私聊线程`,
       cognition.privatePersistence ? "私聊会保存" : "私聊不落盘",
     ], "services"],
-    ["链接预览", [linkPreview.enabled ? "已启用" : "已关闭", `成功 ${linkPreview.hits || 0}`, `失败 ${linkPreview.errors || 0}`], "logs"],
+    ["链接预览", [
+      linkPreview.enabled ? (linkPreview.mode === "smart" ? "智能模式" : "已启用") : "已关闭",
+      `成功 ${linkPreview.hits || 0}`,
+      `跳过 ${linkPreview.skips || 0}`,
+      `重复 ${linkPreview.duplicateSkips || 0}`,
+      `错误 ${linkPreview.errors || 0}`,
+    ], "logs"],
     ["群词云", [wordcloud.enabled ? "已启用" : "已关闭", `${Array.isArray(wordcloud.groups) ? wordcloud.groups.length : 0} 个群`, `最多 ${wordcloud.maxMessages || 0} 条消息`], "configuration"],
     ["梗库", [
       memeKnowledge.enabled ? "已启用" : "已关闭",
