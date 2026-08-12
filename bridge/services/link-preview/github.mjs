@@ -93,7 +93,7 @@ export async function fetchGitHubRepositoryInfo(value, options = {}) {
 export function normalizeGitHubRepository(data, repository) {
   if (!data || data.private === true || !repository) return null;
   const fullName = cleanText(data.full_name) || repository.fullName;
-  const description = clipText(data.description, 180) || "暂无仓库简介";
+  const description = clipText(data.description, 120);
   const details = [
     cleanText(data.language),
     "Stars " + formatCount(data.stargazers_count),
@@ -101,19 +101,23 @@ export function normalizeGitHubRepository(data, repository) {
   ].filter(Boolean);
   const meta = [];
   const license = normalizeLicense(data.license);
-  if (license) meta.push("许可证 " + license);
+  if (license) meta.push(license + " 许可证");
+  meta.push(...normalizeTraits(data));
   const updated = formatDate(data.updated_at || data.pushed_at);
-  if (updated) meta.push("更新 " + updated);
+  if (updated) meta.push("更新于 " + updated);
 
-  const lines = ["GitHub：" + fullName, description, details.join(" · ")];
-  if (meta.length) lines.push(meta.join(" · "));
+  const body = [details.join(" · "), meta.join(" · ")].filter(Boolean);
   const topics = normalizeTopics(data.topics);
-  if (topics.length) lines.push("主题：" + topics.join(" / "));
-  const states = normalizeStates(data);
-  if (states.length) lines.push("状态：" + states.join("、"));
+  if (topics.length) body.push(topics.map(topic => "#" + topic).join("  "));
+
+  const lines = ["GitHub · " + fullName];
+  if (description) lines.push(description);
+  if (body.length) lines.push("", ...body);
+  const stateWarning = buildStateWarning(data);
+  if (stateWarning) lines.push("", stateWarning);
 
   return {
-    text: lines.filter(Boolean).join("\n"),
+    text: lines.join("\n"),
     image: buildSocialImage(repository),
     title: fullName,
     description,
@@ -188,7 +192,10 @@ function isControlCharacter(character) {
 
 function clipText(value, maxLength) {
   const text = cleanText(value);
-  return text.length > maxLength ? text.slice(0, maxLength - 1).trimEnd() + "..." : text;
+  const characters = [...text];
+  return characters.length > maxLength
+    ? characters.slice(0, maxLength - 3).join("").trimEnd() + "..."
+    : text;
 }
 
 function formatCount(value) {
@@ -215,16 +222,24 @@ function formatDate(value) {
 
 function normalizeTopics(topics) {
   if (!Array.isArray(topics)) return [];
-  return topics.map(cleanText).filter(Boolean).slice(0, 5);
+  return topics
+    .map(topic => cleanText(topic).replace(/\s+/g, "-"))
+    .filter(Boolean)
+    .slice(0, 3);
 }
 
-function normalizeStates(data) {
-  const states = [];
-  if (data.archived) states.push("已归档");
-  if (data.disabled) states.push("已停用");
-  if (data.is_template) states.push("模板仓库");
-  if (data.fork) states.push("派生仓库");
-  return states;
+function normalizeTraits(data) {
+  const traits = [];
+  if (data.is_template) traits.push("模板仓库");
+  if (data.fork) traits.push("Fork");
+  return traits;
+}
+
+function buildStateWarning(data) {
+  if (data.archived && data.disabled) return "注意：该仓库已归档并停用。";
+  if (data.archived) return "注意：该仓库已归档。";
+  if (data.disabled) return "注意：该仓库已停用。";
+  return "";
 }
 
 function readCache(key, now) {

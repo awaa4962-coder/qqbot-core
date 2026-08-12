@@ -1,5 +1,13 @@
 # 夜星桥接器更新日志
 
+## v1.3.8-github-card - 2026-08-13 - GitHub 卡片排版优化
+- GitHub 仓库预览重排为“仓库名与简介、核心数据、补充信息”三层，减少原先逐项罗列字段带来的杂乱感。
+- 仓库简介限制为 120 字；没有简介时直接省略占位文案，避免无意义信息挤占群聊空间。
+- 主题最多展示 3 个并改用 `#topic` 标签；模板仓库与 Fork 属性并入许可证和更新时间所在的补充信息行。
+- 只有“已归档”或“已停用”会另起状态提醒，正常仓库不再显示多余状态行。
+- GitHub 官方 API、15 分钟缓存、安全图片代理、失败回退、B站专用解析和链接去重策略均保持不变。
+- 验收：`npm ci` 通过，`npm run lint` 0 errors / 0 warnings，`npm test` 545/545 pass，`npm run release:check` pass，生产依赖审计 0 vulnerabilities，`/health` 返回 ok，NapCat WebSocket 已连接。
+
 ## v1.3.7-github-preview - 2026-08-10 - GitHub 仓库专用预览
 - 新增独立 `bridge/services/link-preview/github.mjs`，识别 GitHub 公开仓库主页以及仓库内的代码、Issue、PR、Release 等子页面，并统一归一到仓库级元数据。
 - 通过 GitHub 官方 `GET /repos/{owner}/{repo}` 读取公开仓库，无需新增 Token 或密钥配置；只保留公开简介、语言、Stars、Forks、许可证、主题、更新时间和仓库状态。

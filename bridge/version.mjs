@@ -4,26 +4,24 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.3.7-github-preview";
-export const VERSION_NAME = "github-preview";
+export const VERSION = "1.3.8-github-card";
+export const VERSION_NAME = "github-card";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "GitHub 公开仓库链接新增专用卡片，展示简介、主语言、Stars、Forks、许可证、主题、更新时间和仓库状态。",
-  "仓库内的代码、Issue、PR 等子页面会归一到同一仓库，并使用 15 分钟元数据缓存减少 GitHub 请求。",
-  "公开仓库走 GitHub 官方 REST API，无需额外凭据；限流、仓库不存在或接口失败时自动退回通用网页预览。",
-  "GitHub 社交封面继续经过安全重定向和内存图片代理，不在本地保存文件，图片失败时只发文字。",
-  "B站专用解析和智能自动预览策略保持不变，@机器人、多链接、文件直链和重复链接仍按原规则处理。",
-  "控制台链接状态新增 GitHub 命中计数，可与通用网页和 B站解析区分。",
+  "GitHub 仓库卡片重排为仓库标题、简短描述和核心数据三层，减少接口字段堆叠感。",
+  "仓库简介限制为 120 字；未填写简介时直接省略，不再显示无信息量的占位文案。",
+  "主题最多展示 3 个并改为标签形式，模板和 Fork 属性并入补充信息行。",
+  "只有归档或停用状态会单独提醒，Stars、Forks、许可证和更新时间仍完整保留。",
+  "GitHub 官方 API、15 分钟缓存、安全图片代理、通用网页回退及 B站解析行为保持不变。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Public GitHub repositories now receive dedicated cards with description, language, stars, forks, license, topics and status.",
-  "Code, issue and pull-request pages are normalized to their repository and share a 15-minute metadata cache.",
-  "Public metadata uses GitHub's official REST API without extra credentials, with automatic generic-page fallback.",
-  "GitHub social images still pass redirect validation and the in-memory image proxy, with a text-only fallback.",
-  "Bilibili parsing and the smart automatic-preview policy keep their existing behavior.",
-  "The console now reports GitHub preview hits separately from generic and Bilibili previews.",
+  "GitHub cards now use a clearer title, short description and core-stat hierarchy.",
+  "Descriptions are capped at 120 characters and empty descriptions no longer produce placeholder copy.",
+  "Topics are limited to three tags, while template and fork traits share the metadata row.",
+  "Only archived or disabled repositories receive a separate state warning.",
+  "The official API, cache, safe image proxy, generic fallback and Bilibili behavior remain unchanged.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

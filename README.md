@@ -183,7 +183,7 @@ Link preview behavior:
 - URL messages that are skipped by the preview policy cannot trigger a random interjection.
 - `@夜星 preview https://example.com` explicitly requests a preview and bypasses the automatic usefulness and dedupe policy; URL safety rules still apply.
 - Page redirects and preview-image redirects are checked at every hop. Images are proxied in memory and fall back to text without writing image files locally.
-- Public GitHub repository links use the official repository API to show description, language, Stars, Forks, license, topics, update date and repository state. Nested code, issue and pull-request links map back to the repository.
+- Public GitHub repository links use a compact three-level card for the repository name, short description and core metadata. Descriptions are capped at 120 characters, topics at three tags, and only archived or disabled repositories receive a separate warning. Nested code, issue and pull-request links map back to the repository.
 - GitHub metadata is cached for 15 minutes and requires no token. API limits, missing repositories and request failures fall back to the generic page preview.
 
 User commands:

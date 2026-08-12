@@ -49,14 +49,42 @@ describe("GitHub repository metadata", () => {
   it("formats a compact Chinese repository card", () => {
     const repository = parseGitHubRepositoryUrl("https://github.com/octocat/Hello-World");
     const preview = normalizeGitHubRepository(sampleRepository(), repository);
-    assert.match(preview.text, /GitHub：octocat\/Hello-World/);
-    assert.match(preview.text, /Stars 1\.2k/);
-    assert.match(preview.text, /Forks 56/);
-    assert.match(preview.text, /许可证 MIT/);
-    assert.match(preview.text, /主题：example \/ api/);
-    assert.match(preview.text, /状态：模板仓库/);
+    assert.equal(preview.text, [
+      "GitHub · octocat/Hello-World",
+      "A small example repository.",
+      "",
+      "JavaScript · Stars 1.2k · Forks 56",
+      "MIT 许可证 · 模板仓库 · 更新于 2026-08-09",
+      "#example  #api",
+    ].join("\n"));
     assert.equal(preview.image, "https://opengraph.githubassets.com/1/octocat/Hello-World");
     assert.equal(preview.githubRepository, "octocat/Hello-World");
+  });
+
+  it("omits empty descriptions and limits topics to three", () => {
+    const repository = parseGitHubRepositoryUrl("https://github.com/octocat/Hello-World");
+    const preview = normalizeGitHubRepository({
+      ...sampleRepository(),
+      description: null,
+      topics: ["one", "two words", "three", "four"],
+      is_template: false,
+      fork: true,
+    }, repository);
+    assert.match(preview.text, /^GitHub · octocat\/Hello-World\n\nJavaScript/);
+    assert.match(preview.text, /MIT 许可证 · Fork · 更新于 2026-08-09/);
+    assert.match(preview.text, /#one {2}#two-words {2}#three$/);
+    assert.doesNotMatch(preview.text, /暂无|#four/);
+    assert.equal(preview.description, "");
+  });
+
+  it("separates only important repository state warnings", () => {
+    const repository = parseGitHubRepositoryUrl("https://github.com/octocat/Hello-World");
+    const preview = normalizeGitHubRepository({
+      ...sampleRepository(),
+      archived: true,
+      disabled: true,
+    }, repository);
+    assert.match(preview.text, /\n\n注意：该仓库已归档并停用。$/);
   });
 
   it("does not expose private repository metadata", () => {
