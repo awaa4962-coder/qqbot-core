@@ -130,11 +130,12 @@ internal sealed class BridgeAdminClient
             foreach (var module in modules.EnumerateArray())
             {
                 builder.AppendLine("[" + ReadString(module, "category", "-") + "] " + ReadString(module, "name", "-") + " (" + ReadString(module, "id", "-") + ")");
-                builder.AppendLine("  enabled: " + BoolStatus(module, "enabled") + " / risk: " + ReadString(module, "riskLevel", "-"));
+                builder.AppendLine("  enabled: " + BoolStatus(module, "enabled") + " / runtime: " + ReadString(module, "health", "unknown") + " / risk: " + ReadString(module, "riskLevel", "-"));
                 builder.AppendLine("  entrypoints: " + ArrayToText(module, "entrypoints"));
                 builder.AppendLine("  commands: " + ValueOrDash(ArrayToText(module, "commands")));
                 builder.AppendLine("  editable config: " + ValueOrDash(ArrayToText(module, "editableConfigFields")));
-                builder.AppendLine("  health: " + ValueOrDash(ArrayToText(module, "healthChecks")));
+                builder.AppendLine("  checks: " + ValueOrDash(ArrayToText(module, "healthChecks")));
+                builder.AppendLine("  issues: " + ValueOrDash(ArrayToText(module, "healthReasons")));
                 builder.AppendLine("  diagnostics: " + ValueOrDash(ArrayToText(module, "diagnostics")));
                 builder.AppendLine("  privacy: " + ReadString(module, "privacy", "-"));
                 builder.AppendLine();

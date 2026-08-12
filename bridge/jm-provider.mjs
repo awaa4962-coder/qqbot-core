@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -22,6 +22,10 @@ const SEVEN_ZIP_COMMON_PATHS = [
   "7za",
 ];
 let activeJmTask = null;
+let jmHealthCache = null;
+let jmHealthExpiresAt = 0;
+let jmHealthPromise = null;
+const JM_HEALTH_CACHE_MS = 5 * 60 * 1000;
 
 export function parseJmCommand(text, options = {}) {
   const normalized = prepareCommandText(text, options);
@@ -276,6 +280,137 @@ export function buildJmDownloadEnv(baseEnv = process.env) {
   };
 }
 
+export function getJmRuntimeHealth(options = {}) {
+  const now = Number(options.now || Date.now());
+  if (!options.force && jmHealthCache && jmHealthExpiresAt > now) return { ...jmHealthCache };
+  if (isUnforcedTestProbe(options)) return buildTestJmHealth(now);
+  if (options.force || options.runner) return cacheJmHealth(runJmHealthProbe(options), now);
+  refreshJmRuntimeHealth({ now }).catch(error => logE("jm health refresh failed:", error.message));
+  if (jmHealthCache) return { ...jmHealthCache, stale: true };
+  return buildPendingJmHealth(now);
+}
+
+export async function refreshJmRuntimeHealth(options = {}) {
+  const now = Number(options.now || Date.now());
+  if (!options.force && jmHealthCache && jmHealthExpiresAt > now) return { ...jmHealthCache };
+  if (jmHealthPromise) return await jmHealthPromise;
+  jmHealthPromise = runJmHealthProbeAsync(options)
+    .then(result => cacheJmHealth(result, now))
+    .finally(() => { jmHealthPromise = null; });
+  return await jmHealthPromise;
+}
+
+function isUnforcedTestProbe(options) {
+  return process.env.NODE_ENV === "test" && !options.force && !options.runner;
+}
+
+function buildTestJmHealth(now) {
+  return {
+    health: "ready",
+    dependencyReady: true,
+    pythonReady: true,
+    sevenZipReady: true,
+    checkedAt: new Date(now).toISOString(),
+    reason: "test_mode",
+  };
+}
+
+function buildPendingJmHealth(now) {
+  const sevenZipReady = Boolean(CFG.jmSevenZipPath || getBundledSevenZipPath());
+  return {
+    health: "degraded",
+    dependencyReady: false,
+    pythonReady: Boolean(CFG.jmPython),
+    sevenZipReady,
+    checkedAt: new Date(now).toISOString(),
+    source: CFG.jmcomicSrc ? "configured" : "not_configured",
+    reason: "checking",
+  };
+}
+
+function runJmHealthProbe(options) {
+  const runner = options.runner || spawnSync;
+  const script = path.resolve("scripts", "jm_download_once.py");
+  return runner(CFG.jmPython, [script, "--check"], {
+    cwd: path.resolve("."),
+    encoding: "utf8",
+    timeout: Number(options.timeoutMs || 8000),
+    windowsHide: true,
+    env: { ...buildJmDownloadEnv(), QQBOT_JM_AUTO_INSTALL: "0" },
+  });
+}
+
+async function runJmHealthProbeAsync(options) {
+  if (options.runner) return await options.runner();
+  const script = path.resolve("scripts", "jm_download_once.py");
+  return await spawnHealthProbe(CFG.jmPython, [script, "--check"], {
+    cwd: path.resolve("."),
+    encoding: "utf8",
+    timeout: Number(options.timeoutMs || 8000),
+    windowsHide: true,
+    env: { ...buildJmDownloadEnv(), QQBOT_JM_AUTO_INSTALL: "0" },
+  });
+}
+
+function spawnHealthProbe(command, args, options) {
+  return new Promise(resolve => {
+    const child = spawn(command, args, options);
+    let stdout = "";
+    let settled = false;
+    const finish = result => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish({ status: null, stdout, error: new Error("timeout") });
+    }, options.timeout);
+    timer.unref?.();
+    child.stdout.on("data", chunk => { stdout += chunk.toString("utf8"); });
+    child.on("error", error => finish({ status: null, stdout, error }));
+    child.on("close", status => finish({ status, stdout }));
+  });
+}
+
+function cacheJmHealth(result, now) {
+  const value = buildJmHealthValue(result, now);
+  jmHealthCache = value;
+  jmHealthExpiresAt = now + JM_HEALTH_CACHE_MS;
+  return { ...value };
+}
+
+function buildJmHealthValue(result, now) {
+  const parsed = parseHealthResult(result?.stdout);
+  const pythonReady = !result?.error && result?.status !== null;
+  const dependencyReady = result?.status === 0 && parsed?.ok === true;
+  const sevenZipReady = Boolean(CFG.jmSevenZipPath || getBundledSevenZipPath());
+  const health = dependencyReady && sevenZipReady ? "ready" : "degraded";
+  const value = {
+    health,
+    dependencyReady,
+    pythonReady,
+    sevenZipReady,
+    checkedAt: new Date(now).toISOString(),
+    source: parsed?.source || (CFG.jmcomicSrc ? "configured" : "not_configured"),
+    reason: resolveJmHealthReason({ dependencyReady, sevenZipReady, parsed, result }),
+  };
+  return value;
+}
+
+function resolveJmHealthReason({ dependencyReady, sevenZipReady, parsed, result }) {
+  if (dependencyReady) return sevenZipReady ? "runtime_ok" : "7zip_missing";
+  if (parsed?.reason) return parsed.reason;
+  return result?.error ? "python_unavailable" : "dependency_missing";
+}
+
+export function resetJmRuntimeHealthCache() {
+  jmHealthCache = null;
+  jmHealthExpiresAt = 0;
+  jmHealthPromise = null;
+}
+
 export function jmErrorText(reason) {
   if (reason === "missing_jmcomic_source") return "JM 运行依赖不完整，缺少 jmcomic 源码文件，已停止任务，没有保存文件。";
   if (reason === "missing_python_dependency") return "JM Python 依赖缺失或安装失败，已停止任务，没有保存文件。";
@@ -345,6 +480,17 @@ function parseRunnerResult(stdout, stderr, code) {
   const stderrTail = stderr.slice(-500);
   log("jm runner exit:", code, "stdout_last_lines:", stdoutTail, "stderr:", stderrTail);
   return { ok: false, reason: code === 0 ? "download_failed" : "missing_dependency" };
+}
+
+function parseHealthResult(stdout) {
+  const line = String(stdout || "").split(/\r?\n/).reverse()
+    .find(item => item.startsWith(RESULT_PREFIX));
+  if (!line) return null;
+  try {
+    return JSON.parse(line.slice(RESULT_PREFIX.length));
+  } catch {
+    return null;
+  }
 }
 
 function getJmZipPassword(options) {

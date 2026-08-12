@@ -55,12 +55,34 @@ export async function callFallbackChat(request = {}) {
   );
 }
 
+export async function callInterjectionFallback(request = {}) {
+  return await tryMiMo(
+    request.userMsg || "",
+    request.userName || "",
+    request.history || [],
+    request.imageUrls || [],
+    request.groupId,
+    request.isAtMe,
+    request.mood || "",
+    {
+      ...(request.options || {}),
+      task: MODEL_TASKS.INTERJECTION,
+      position: "fallback",
+    }
+  );
+}
+
 export async function executeChatTask(request = {}, runtime = {}) {
   const primaryChat = runtime.primaryChat || callPrimaryChat;
   const primaryText = await primaryChat(request);
   if (primaryText) return { text: primaryText, position: "primary" };
   if (request.options?.replyMode === "interjection") {
-    return { text: null, position: "local" };
+    const fallbackChat = runtime.interjectionFallback || runtime.fallbackChat || callInterjectionFallback;
+    const fallbackText = await fallbackChat(request);
+    return {
+      text: fallbackText || null,
+      position: fallbackText ? "fallback" : "local",
+    };
   }
 
   const fallbackChat = runtime.fallbackChat || callFallbackChat;

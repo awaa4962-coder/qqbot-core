@@ -54,4 +54,48 @@ describe("outbound message", () => {
       assert.ok(calls.every(call => call.body.user_id === 456));
     }, () => sendTextToPrivate({ userId: 456, text: "丁。".repeat(1500) }));
   });
+
+  it("retries a failed NapCat response and then succeeds", async () => {
+    const oldFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async () => ({
+      json: async () => (++calls === 1
+        ? { status: "failed", retcode: 100, message: "busy" }
+        : { status: "ok", retcode: 0, data: { message_id: 1 } }),
+    });
+    try {
+      const result = await sendTextToGroup({
+        groupId: 123,
+        text: "重试一次",
+        maxAttempts: 2,
+        retryDelayMs: 0,
+      });
+      assert.equal(calls, 2);
+      assert.equal(result.status, "ok");
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
+  });
+
+  it("stops long-message delivery after a chunk persistently fails", async () => {
+    const oldFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return { json: async () => ({ status: "failed", retcode: 100, message: "busy" }) };
+    };
+    try {
+      const result = await sendTextToGroup({
+        groupId: 123,
+        text: "戊。".repeat(1500),
+        maxAttempts: 2,
+        retryDelayMs: 0,
+      });
+      assert.equal(calls, 2);
+      assert.equal(Array.isArray(result), false);
+      assert.equal(result.status, "failed");
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
+  });
 });

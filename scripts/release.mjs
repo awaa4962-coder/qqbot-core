@@ -7,9 +7,17 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST_DIR = "dist";
 const DEV_TOOLS = ["debug_bridge.mjs", "search_comp.mjs", "test_server.mjs"];
+const PUBLIC_QQFRIEND_FILES = new Set([
+  ".qqfriend/architecture.json",
+  ".qqfriend/commands.json",
+  ".qqfriend/diagnostics.json",
+  ".qqfriend/index.json",
+  ".qqfriend/modules.json",
+  ".qqfriend/workflows.json",
+]);
 const RELEASE_ROOTS = [
   "bridge",
-  ".qqfriend",
+  ...PUBLIC_QQFRIEND_FILES,
   "test",
   "scripts",
   ".github/workflows/ci.yml",
@@ -94,8 +102,7 @@ export function isForbiddenPath(filePath) {
 
   if (!base) return true;
   if (normalized.includes("..")) return true;
-  if (parts.includes(".qqfriend") && /^(?:memes|image-memes)(?:[.-].*)?\.json$/i.test(base)) return true;
-  if (parts.includes(".qqfriend") && parts.includes("stickers")) return true;
+  if (parts[0] === ".qqfriend" && !PUBLIC_QQFRIEND_FILES.has(normalized)) return true;
   if (/\.tmp(?:\.|$)/i.test(base)) return true;
   if (parts.some(part => /\.WebView2$/i.test(part) || /^publish(?:-|$)/i.test(part))) return true;
   if (FORBIDDEN_NAMES.has(base)) return true;

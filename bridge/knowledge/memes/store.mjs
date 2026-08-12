@@ -40,6 +40,7 @@ let state = createEmptyMemeStore(CFG.memeLearningMode);
 let dirty = false;
 let saveTimer = null;
 
+cleanupStaleMemeTempFiles();
 loadMemeStore();
 
 export function getMemeStore() {
@@ -92,6 +93,31 @@ export function flushMemeStoreSync() {
     logE("save meme store failed:", error.message);
     return false;
   }
+}
+
+export function cleanupStaleMemeTempFiles(options = {}) {
+  const now = Number(options.now || Date.now());
+  const maxAgeMs = Math.max(0, Number(options.maxAgeMs ?? 24 * 60 * 60 * 1000));
+  const directory = path.dirname(storePath);
+  const prefix = path.basename(storePath) + ".tmp.";
+  let removed = 0;
+  let files = [];
+  try {
+    files = fs.readdirSync(directory, { withFileTypes: true });
+  } catch {
+    return { removed: 0 };
+  }
+  for (const file of files) {
+    if (!file.isFile() || !file.name.startsWith(prefix)) continue;
+    const target = path.join(directory, file.name);
+    try {
+      if (now - fs.statSync(target).mtimeMs < maxAgeMs) continue;
+      fs.rmSync(target, { force: true });
+      removed++;
+    } catch {}
+  }
+  if (removed) log("meme stale temp cleaned:", removed);
+  return { removed };
 }
 
 export function setMemeMode(mode) {

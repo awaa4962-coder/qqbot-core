@@ -10,7 +10,7 @@ import { processEvent } from "./reply.mjs";
 import { generateProfile } from "./profile.mjs";
 import { cleanText } from "./context/messages.mjs";
 import { VERSION } from "./version.mjs";
-import { cleanupExpiredJmTempDirs } from "./jm-provider.mjs";
+import { cleanupExpiredJmTempDirs, refreshJmRuntimeHealth } from "./jm-provider.mjs";
 import { cleanupExpiredMemoryProfiles, flushMemoryProfilesSync } from "./memory-profile.mjs";
 import { flushImageContextCacheSync } from "./knowledge/memes/image-context.mjs";
 import {
@@ -241,6 +241,9 @@ server.listen(CFG.listenPort, function() {
   log('Users loaded:', Object.keys(users).length);
   log('Group chats loaded:', Object.keys(groupChats).length);
   cleanupExpiredJmTempDirs().catch(error => logE('jm expired temp cleanup failed:', error.message));
+  refreshJmRuntimeHealth().then(status => {
+    log('jm runtime health:', status.health, status.reason);
+  }).catch(error => logE('jm runtime health failed:', error.message));
   cleanupExpiredMemoryProfiles();
   const memeDecay = initializeMemeKnowledge();
   log('meme knowledge ready:', JSON.stringify(memeDecay));

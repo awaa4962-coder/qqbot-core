@@ -42,6 +42,8 @@ export {
   markStickerCaptureRejected,
   getStickerCaptureQuota,
   retireStaleCapturedStickers,
+  retireExhaustedStickerCandidates,
+  pruneRetiredCapturedStickers,
   removeStickerEntry,
 } from "./catalog-store.mjs";
 export {
@@ -129,12 +131,23 @@ export async function simulateStickerSelection(context = {}, options = {}) {
 
 export function getStickerRuntimeStatus() {
   const snapshot = buildStickerCatalogSnapshot();
+  const sync = getStickerSyncStatus();
+  const degradedReasons = [];
+  if (snapshot.counts.pending > 0 && Number(sync.lastAnalysis?.failed || 0) > 0) {
+    degradedReasons.push("analysis_failures");
+  }
+  if (sync.supported === false) degradedReasons.push("napcat_sync_unavailable");
+  const health = snapshot.settings.mode === "off"
+    ? "disabled"
+    : degradedReasons.length ? "degraded" : "ready";
   return {
     enabled: snapshot.settings.mode !== "off",
+    health,
+    degradedReasons,
     mode: snapshot.settings.mode,
     counts: snapshot.counts,
     stats: snapshot.stats,
-    sync: getStickerSyncStatus(),
+    sync,
     capture: getStickerCaptureStatus(),
     storesImages: false,
   };

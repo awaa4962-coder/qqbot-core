@@ -4,24 +4,24 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.3.8-github-card";
-export const VERSION_NAME = "github-card";
+export const VERSION = "1.3.9-module-resilience";
+export const VERSION_NAME = "module-resilience";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "GitHub 仓库卡片重排为仓库标题、简短描述和核心数据三层，减少接口字段堆叠感。",
-  "仓库简介限制为 120 字；未填写简介时直接省略，不再显示无信息量的占位文案。",
-  "主题最多展示 3 个并改为标签形式，模板和 Fork 属性并入补充信息行。",
-  "只有归档或停用状态会单独提醒，Stars、Forks、许可证和更新时间仍完整保留。",
-  "GitHub 官方 API、15 分钟缓存、安全图片代理、通用网页回退及 B站解析行为保持不变。",
+  "表情分析会续签过期 QQ 图片地址；反复失效的群采集候选会自动退役，不再永久占用目录和额度。",
+  "群聊与私聊发送失败会短暂重试；长消息某段持续失败时立即停止后续分段，避免只发出残缺尾句。",
+  "识图主模型返回空正文或不安全内容时会尝试视觉备用模型；随机插话也会使用配置的备用插槽。",
+  "JM 下载依赖改为锁定版本并完成实机安装，启动时后台自检，不阻塞 Bridge；失败会在控制台真实显示降级。",
+  "控制台接入模块实时健康状态；重复日报调度已收敛，过期梗库临时文件会自动清理。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "GitHub cards now use a clearer title, short description and core-stat hierarchy.",
-  "Descriptions are capped at 120 characters and empty descriptions no longer produce placeholder copy.",
-  "Topics are limited to three tags, while template and fork traits share the metadata row.",
-  "Only archived or disabled repositories receive a separate state warning.",
-  "The official API, cache, safe image proxy, generic fallback and Bilibili behavior remain unchanged.",
+  "Sticker analysis now renews expired QQ media URLs and retires repeatedly unavailable captured candidates.",
+  "Group and private sends retry transient failures, while long-message delivery stops after a persistent chunk failure.",
+  "Vision falls back when the primary returns no safe final content, and interjections use their configured fallback slot.",
+  "JM dependencies are pinned and verified in the background without blocking the Bridge event loop.",
+  "The console now reports live module health; duplicate summary scheduling and stale meme temp files are cleaned up.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

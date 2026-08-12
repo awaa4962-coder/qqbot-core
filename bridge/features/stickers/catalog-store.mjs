@@ -131,12 +131,46 @@ export function getStickerCaptureQuota(options = {}) {
   const dayStart = new Date(now);
   dayStart.setHours(0, 0, 0, 0);
   const captured = store.entries.filter(entry => entry.source === "group-capture");
+  const liveCaptured = captured.filter(entry => entry.enabled && entry.captureState !== "retired");
   return {
-    todayAdded: captured.filter(entry => entry.cloudAddedAt >= dayStart.getTime()).length,
-    capturedTotal: captured.length,
+    todayAdded: liveCaptured.filter(entry => entry.cloudAddedAt >= dayStart.getTime()).length,
+    capturedTotal: liveCaptured.length,
+    storedTotal: captured.length,
+    retiredTotal: captured.length - liveCaptured.length,
     dailyLimit: store.settings.captureDailyLimit,
     catalogLimit: store.settings.captureCatalogLimit,
   };
+}
+
+export function retireExhaustedStickerCandidates(options = {}) {
+  const store = getStickerCatalog();
+  const minAttempts = Math.max(1, Number(options.minAttempts || 6));
+  const now = Number(options.now || Date.now());
+  let retired = 0;
+  for (const entry of store.entries) {
+    if (!isRetirableAnalysisCandidate(entry, minAttempts)) continue;
+    retireAnalysisCandidate(store, entry, now);
+    retired++;
+  }
+  if (retired) persistCatalog();
+  return { retired };
+}
+
+export function pruneRetiredCapturedStickers(options = {}) {
+  const store = getStickerCatalog();
+  const now = Number(options.now || Date.now());
+  const minAgeMs = Math.max(0, Number(options.minAgeMs ?? 7 * 24 * 60 * 60 * 1000));
+  const maxRetained = Math.max(0, Number(options.maxRetained ?? 50));
+  const retired = store.entries
+    .filter(entry => entry.source === "group-capture" && entry.captureState === "retired")
+    .sort((a, b) => Number(b.lastSeenAt || b.firstSeenAt) - Number(a.lastSeenAt || a.firstSeenAt));
+  const removable = new Set(retired
+    .filter((entry, index) => index >= maxRetained || now - Number(entry.lastSeenAt || entry.firstSeenAt) >= minAgeMs)
+    .map(entry => entry.id));
+  if (!removable.size) return { removed: 0 };
+  store.entries = store.entries.filter(entry => !removable.has(entry.id));
+  persistCatalog();
+  return { removed: removable.size };
 }
 
 export function retireStaleCapturedStickers(options = {}) {
@@ -229,12 +263,17 @@ export function applyStickerAnalysis(id, analysis = {}, options = {}) {
 }
 
 export function markStickerAnalysisFailure(id, error, options = {}) {
-  const entry = getStickerCatalog().entries.find(item => item.id === String(id || ""));
+  const store = getStickerCatalog();
+  const entry = store.entries.find(item => item.id === String(id || ""));
   if (!entry) return null;
   const now = Number(options.now || Date.now());
   entry.analysisAttempts = Math.min(100, Number(entry.analysisAttempts || 0) + 1);
-  entry.nextAnalysisAt = now + Math.min(24 * 60 * 60 * 1000, 5 * 60 * 1000 * (2 ** Math.min(6, entry.analysisAttempts - 1)));
   entry.lastError = String(error?.message || error || "分析失败").slice(0, 160);
+  if (isRetirableAnalysisCandidate(entry, Number(options.maxAttempts || 6))) {
+    retireAnalysisCandidate(store, entry, now);
+  } else {
+    entry.nextAnalysisAt = now + Math.min(24 * 60 * 60 * 1000, 5 * 60 * 1000 * (2 ** Math.min(6, entry.analysisAttempts - 1)));
+  }
   persistCatalog();
   return { ...entry };
 }
@@ -290,10 +329,11 @@ export function buildStickerCatalogSnapshot() {
       enabled: entries.filter(entry => entry.enabled).length,
       indexed: entries.filter(entry => entry.indexed).length,
       sendable: entries.filter(entry => entry.sendable).length,
-      pending: entries.filter(entry => !entry.indexed).length,
+      pending: entries.filter(entry => entry.enabled && !entry.indexed).length,
       captured: entries.filter(entry => entry.source === "group-capture").length,
       activeCaptured: entries.filter(entry => entry.source === "group-capture" && entry.captureState === "active").length,
       candidates: entries.filter(entry => entry.source === "group-capture" && entry.captureState === "candidate").length,
+      retired: entries.filter(entry => entry.source === "group-capture" && entry.captureState === "retired").length,
     },
     stats: { ...store.stats },
     entries,
@@ -450,6 +490,22 @@ function applyCloudFailure(store, entry, result) {
   entry.captureState = "cloud-failed";
   entry.lastError = firstText(result.error, "添加 QQ 云收藏失败").slice(0, 160);
   store.stats.cloudFailures++;
+}
+
+function isRetirableAnalysisCandidate(entry, minAttempts) {
+  if (entry.source !== "group-capture" || entry.captureState !== "candidate") return false;
+  if (entry.indexed || entry.enabled === false) return false;
+  if (Number(entry.analysisAttempts || 0) < minAttempts) return false;
+  return /下载失败|安全策略|不可用|unavailable|download/i.test(String(entry.lastError || ""));
+}
+
+function retireAnalysisCandidate(store, entry, now) {
+  entry.enabled = false;
+  entry.captureState = "retired";
+  entry.nextAnalysisAt = 0;
+  entry.lastError = String(entry.lastError || "分析资源已失效").slice(0, 160);
+  entry.analyzedAt = Math.max(Number(entry.analyzedAt || 0), now);
+  store.stats.analysisRetired = Number(store.stats.analysisRetired || 0) + 1;
 }
 
 function mergeAnalyzedDuplicate(duplicate, target, now) {

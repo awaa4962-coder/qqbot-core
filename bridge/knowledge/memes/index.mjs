@@ -9,6 +9,7 @@ export {
   getMemeCandidate,
   getMemeStore,
   getMemeStorePath,
+  cleanupStaleMemeTempFiles,
   getMemeHistory,
   removeMemeCandidate,
   resetMemeStoreForTest,

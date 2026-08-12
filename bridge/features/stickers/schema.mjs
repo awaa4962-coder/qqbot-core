@@ -39,6 +39,7 @@ export function createEmptyStickerCatalog(settings = {}) {
       captureRejected: 0,
       cloudAdded: 0,
       cloudFailures: 0,
+      analysisRetired: 0,
     },
   };
 }

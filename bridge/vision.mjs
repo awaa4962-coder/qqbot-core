@@ -1,8 +1,7 @@
 // bridge/vision.mjs — 图片理解（MiMo Vision）
 import { log, logE } from './logger.mjs';
-import { callTaskApi } from './api-providers/gateway.mjs';
 import { fetchSafeBuffer } from './safe-url.mjs';
-import { buildOutputPacket } from './output-pipeline.mjs';
+import { callVisionText } from './vision-provider.mjs';
 import {
   findCachedImageDescription,
   perceptualImageHash,
@@ -44,10 +43,12 @@ export async function tryMiMoVision(imageUrls) {
       temperature: 0.7,
       timeoutMs: 30000,
     };
-    let result = await callTaskApi("vision", "primary", request);
-    if (!result.ok) result = await callTaskApi("vision", "fallback", request);
-    if (!result.ok) return null;
-    const clean = sanitizeVisionResult(result);
+    const result = await callVisionText(request);
+    if (!result.ok) {
+      log('tryMiMoVision: no usable provider output');
+      return null;
+    }
+    const clean = result.text;
     rememberSingleImageDescription(downloaded.fingerprints, clean);
     return clean || null;
   } catch (e) { logE('tryMiMoVision error: ' + e.message); return null; }
@@ -72,12 +73,6 @@ function readSingleImageCache(fingerprints) {
   const cached = findCachedImageDescription(fingerprints[0]);
   if (cached) log('tryMiMoVision: reused cached image description');
   return cached;
-}
-
-function sanitizeVisionResult(result) {
-  const packet = buildOutputPacket(result.raw, { provider: result.provider });
-  if (!packet.ok) log('tryMiMoVision: unsafe or empty model output filtered');
-  return packet.ok ? packet.text : null;
 }
 
 function rememberSingleImageDescription(fingerprints, description) {

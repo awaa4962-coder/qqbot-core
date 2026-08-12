@@ -36,6 +36,8 @@ function makeTempProject() {
     ".qqfriend/index.json": "{\"safe\":true}\n",
     ".qqfriend/api-providers.json": "{\"runtime\":true}\n",
     ".qqfriend/api-providers.previous.json": "{\"runtime\":true}\n",
+    ".qqfriend/api-providers.pre-release.json": "{\"runtime\":true}\n",
+    ".qqfriend/future-runtime-state.json": "{\"runtime\":true}\n",
     ".qqfriend/memes.json": "{\"contexts\":[\"private runtime data\"]}\n",
     ".qqfriend/memes.json.tmp.1234": "{\"runtime\":true}\n",
     ".qqfriend/image-memes.json": "{\"entries\":[{\"description\":\"runtime\"}]}\n",
@@ -62,6 +64,9 @@ describe("release forbidden paths", () => {
     assert.equal(isForbiddenPath(".qqfriend/memes.json"), true);
     assert.equal(isForbiddenPath(".qqfriend/memes.json.tmp.1234"), true);
     assert.equal(isForbiddenPath(".qqfriend/api-providers.json"), true);
+    assert.equal(isForbiddenPath(".qqfriend/api-providers.pre-release.json"), true);
+    assert.equal(isForbiddenPath(".qqfriend/future-runtime-state.json"), true);
+    assert.equal(isForbiddenPath(".qqfriend/index.json"), false);
     assert.equal(isForbiddenPath("launcher/App/bin/Release/app.dll"), true);
     assert.equal(isForbiddenPath("launcher/App.exe.WebView2/Default/Cookies"), true);
     assert.equal(isForbiddenPath(".qqfriend/stickers/catalog.json"), true);
@@ -86,6 +91,8 @@ describe("collectReleaseFiles", () => {
     assert.equal(files.includes(".qqfriend/index.json"), true);
     assert.equal(files.includes(".qqfriend/api-providers.json"), false);
     assert.equal(files.includes(".qqfriend/api-providers.previous.json"), false);
+    assert.equal(files.includes(".qqfriend/api-providers.pre-release.json"), false);
+    assert.equal(files.includes(".qqfriend/future-runtime-state.json"), false);
     assert.equal(files.includes(".qqfriend/memes.json"), false);
     assert.equal(files.includes(".qqfriend/memes.json.tmp.1234"), false);
     assert.equal(files.includes(".qqfriend/image-memes.json"), false);

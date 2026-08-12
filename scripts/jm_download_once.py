@@ -14,6 +14,7 @@ JM_DEPENDENCIES = [
     "Pillow",
     "pycryptodome",
 ]
+JM_REQUIREMENTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "requirements-jm.txt")
 JM_REQUIRED_SOURCE_FILES = [
     "jm_config.py",
     "jm_plugin.py",
@@ -73,8 +74,11 @@ def install_jm_dependencies():
         "pip",
         "install",
         "--disable-pip-version-check",
-        *JM_DEPENDENCIES,
     ]
+    if os.path.isfile(JM_REQUIREMENTS_FILE):
+        command.extend(["--requirement", JM_REQUIREMENTS_FILE])
+    else:
+        command.extend(JM_DEPENDENCIES)
     subprocess.check_call(command)
 
 

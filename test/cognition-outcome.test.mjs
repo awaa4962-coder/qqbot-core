@@ -10,6 +10,7 @@ describe("cognition outcome", () => {
     assert.equal(isSuccessfulOutbound([{ status: "ok" }, { retcode: 0 }]), true);
     assert.equal(isSuccessfulOutbound([{ status: "ok" }, null]), false);
     assert.equal(isSuccessfulOutbound(undefined), false);
+    assert.equal(isSuccessfulOutbound({ status: "failed", retcode: null }), false);
     assert.equal(isSuccessfulOutbound({ status: "failed", retcode: 1 }), false);
   });
 });

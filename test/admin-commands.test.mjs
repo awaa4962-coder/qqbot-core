@@ -276,10 +276,10 @@ describe("admin command parsing", () => {
     assert.match(reply, new RegExp("Current version: v" + VERSION));
     assert.match(reply, /Still reserved:/);
     assert.match(reply, /export-relationships/);
-    assert.match(reply, /clearer title/);
-    assert.match(reply, /120 characters/);
-    assert.match(reply, /generic fallback/);
-    assert.match(reply, /Bilibili behavior/);
+    assert.match(reply, /live module health/);
+    assert.match(reply, /Sticker analysis/);
+    assert.match(reply, /Vision falls back/);
+    assert.match(reply, /without blocking/);
     assert.doesNotMatch(reply, /key|token|secret/i);
   });
 

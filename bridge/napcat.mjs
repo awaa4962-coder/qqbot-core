@@ -5,6 +5,7 @@ import { normalizeMsg, cleanText } from './context/messages.mjs';
 import { fetchSafeText, validateSafeUrl } from './safe-url.mjs';
 import {
   normalizeOutboundText,
+  isOutboundPayloadSuccessful,
   sendGroupMessagePayload,
   sendPrivateMessagePayload,
   sendTextToGroup,
@@ -266,12 +267,15 @@ export async function sendMsgWithImage(groupId, text, imageUrl, options = {}) {
       ],
     };
     const results = [await sendGroupMessagePayload(firstPayload, 'sendMsgWithImage')];
+    if (!isOutboundPayloadSuccessful(results[0])) return results[0];
     for (let i = 1; i < chunks.length; i++) {
       await new Promise(resolve => setTimeout(resolve, 300));
-      results.push(await sendGroupMessagePayload({
+      const result = await sendGroupMessagePayload({
         group_id: groupId,
         message: [{ type: 'text', data: { text: chunks[i] } }],
-      }, 'sendMsgWithImage'));
+      }, 'sendMsgWithImage');
+      results.push(result);
+      if (!isOutboundPayloadSuccessful(result)) break;
     }
     return results.length <= 1 ? results[0] : results;
   } catch (e) {

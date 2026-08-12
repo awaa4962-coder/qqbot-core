@@ -1,8 +1,7 @@
-import { callTaskApi } from "../../api-providers/gateway.mjs";
 import { perceptualImageHash } from "../../knowledge/memes/image-context.mjs";
 import { log, logE } from "../../logger.mjs";
-import { buildOutputPacket } from "../../output-pipeline.mjs";
 import { fetchSafeBuffer } from "../../safe-url.mjs";
+import { callVisionText } from "../../vision-provider.mjs";
 import {
   applyStickerAnalysis,
   findStickerByFingerprint,
@@ -10,6 +9,7 @@ import {
   markStickerAnalysisFailure,
 } from "./catalog-store.mjs";
 import { normalizeStickerTags } from "./schema.mjs";
+import { loadStickerPreview } from "./preview.mjs";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 let analysisPromise = null;
@@ -23,9 +23,11 @@ export async function analyzePendingStickers(options = {}) {
 }
 
 export async function analyzeStickerEntry(entry, options = {}) {
-  const download = options.download || downloadSticker;
+  const download = options.download
+    ? () => options.download(entry.url)
+    : () => downloadStickerEntry(entry);
   const describe = options.describe || describeStickerWithVision;
-  const data = await download(entry.url);
+  const data = await download();
   const fingerprint = await perceptualImageHash(data.buffer);
   const existing = findStickerByFingerprint(fingerprint, entry.id);
   if (existing) {
@@ -109,13 +111,14 @@ async function runPendingAnalysis(options) {
   return { requested: entries.length, analyzed, reused, failed };
 }
 
-async function downloadSticker(url) {
-  const data = await fetchSafeBuffer(url, {
+async function downloadStickerEntry(entry) {
+  const preview = await loadStickerPreview(entry.id, {
     timeoutMs: 12000,
     maxBytes: MAX_IMAGE_BYTES,
+    fetchImage: fetchSafeBuffer,
   });
-  if (!data) throw new Error("表情图片下载失败或被安全策略拦截");
-  return data;
+  if (!preview.ok) throw new Error("表情图片下载失败或被安全策略拦截");
+  return preview;
 }
 
 async function describeStickerWithVision(image) {
@@ -142,12 +145,9 @@ async function describeStickerWithVision(image) {
     thinking: { type: "disabled" },
     tools: [],
   };
-  let result = await callTaskApi("vision", "primary", request);
-  if (!result.ok) result = await callTaskApi("vision", "fallback", request);
-  if (!result.ok) throw new Error(result.error || "视觉模型不可用");
-  const packet = buildOutputPacket(result.raw, { provider: result.provider });
-  if (!packet.ok) throw new Error("视觉模型输出不可用");
-  return packet.text;
+  const result = await callVisionText(request);
+  if (!result.ok) throw new Error("视觉模型输出不可用");
+  return result.text;
 }
 
 function parseJsonObject(text) {

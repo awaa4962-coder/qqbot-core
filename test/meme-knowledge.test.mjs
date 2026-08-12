@@ -11,8 +11,10 @@ import {
   buildMemeContextBlock,
   buildMemeSearchReply,
   buildMemeStatusReply,
+  cleanupStaleMemeTempFiles,
   flushMemeStoreSync,
   getMemeStore,
+  getMemeStorePath,
   matchMemes,
   observeMemeUsage,
   resetMemeStoreForTest,
@@ -40,6 +42,26 @@ describe("meme knowledge", () => {
     assert.match(block, /梗库语境提示/);
     assert.match(block, /只帮助理解/);
     assert.match(block, /不要求主动复读梗/);
+  });
+
+  it("cleans only stale atomic-save temp files", () => {
+    const storeFile = getMemeStorePath();
+    const directory = path.dirname(storeFile);
+    const stale = storeFile + ".tmp.stale";
+    const fresh = storeFile + ".tmp.fresh";
+    const unrelated = path.join(directory, "unrelated.tmp");
+    fs.writeFileSync(stale, "stale");
+    fs.writeFileSync(fresh, "fresh");
+    fs.writeFileSync(unrelated, "keep");
+    const now = Date.now();
+    const old = new Date(now - 2 * 24 * 60 * 60 * 1000);
+    fs.utimesSync(stale, old, old);
+
+    const result = cleanupStaleMemeTempFiles({ now, maxAgeMs: 24 * 60 * 60 * 1000 });
+    assert.equal(result.removed, 1);
+    assert.equal(fs.existsSync(stale), false);
+    assert.equal(fs.existsSync(fresh), true);
+    assert.equal(fs.existsSync(unrelated), true);
   });
 
   it("does not turn unknown group fragments into candidates", () => {

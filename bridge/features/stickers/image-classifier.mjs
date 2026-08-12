@@ -1,8 +1,7 @@
 import crypto from "node:crypto";
 import sharp from "sharp";
-import { callTaskApi } from "../../api-providers/gateway.mjs";
 import { perceptualImageHash } from "../../knowledge/memes/image-context.mjs";
-import { buildOutputPacket } from "../../output-pipeline.mjs";
+import { callVisionText } from "../../vision-provider.mjs";
 import { inferStickerTags } from "./analyzer.mjs";
 import { normalizeStickerTags } from "./schema.mjs";
 
@@ -95,12 +94,9 @@ async function classifyWithVision(image) {
     thinking: { type: "disabled" },
     tools: [],
   };
-  let result = await callTaskApi("vision", "primary", request);
-  if (!result.ok) result = await callTaskApi("vision", "fallback", request);
-  if (!result.ok) throw new Error(result.error || "视觉分类不可用");
-  const packet = buildOutputPacket(result.raw, { provider: result.provider });
-  if (!packet.ok) throw new Error("视觉分类输出不可用");
-  return packet.text;
+  const result = await callVisionText(request);
+  if (!result.ok) throw new Error("视觉分类输出不可用");
+  return result.text;
 }
 
 function hardRejectReason(metadata) {

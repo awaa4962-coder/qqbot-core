@@ -51,7 +51,7 @@ describe("model router boundaries", () => {
     assert.equal(fallbackRequest.options.currentUserId, "42");
   });
 
-  it("keeps passive interjection fallback local", async () => {
+  it("uses the configured interjection fallback before staying silent", async () => {
     let fallbackCalled = false;
     const result = await executeChatTask({
       options: { replyMode: "interjection" },
@@ -59,11 +59,21 @@ describe("model router boundaries", () => {
       primaryChat: async () => null,
       fallbackChat: async () => {
         fallbackCalled = true;
-        return "unexpected";
+        return "fallback reply";
       },
     });
+    assert.deepEqual(result, { text: "fallback reply", position: "fallback" });
+    assert.equal(fallbackCalled, true);
+  });
+
+  it("keeps passive interjection local when both model slots are unavailable", async () => {
+    const result = await executeChatTask({
+      options: { replyMode: "interjection" },
+    }, {
+      primaryChat: async () => null,
+      interjectionFallback: async () => null,
+    });
     assert.deepEqual(result, { text: null, position: "local" });
-    assert.equal(fallbackCalled, false);
   });
 
   it("rejects unknown raw providers before touching model implementations", async () => {

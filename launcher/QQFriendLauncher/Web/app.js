@@ -394,6 +394,8 @@ function renderStatus(status) {
   const process = status.process || {};
   const storm = status.storm || {};
   const cognition = status.modules?.cognition || {};
+  const moduleHealth = status.moduleHealth || {};
+  const degradedModules = Array.isArray(moduleHealth.degraded) ? moduleHealth.degraded : [];
   const ok = status.status === "ok";
   const stopped = !ok && bridgeIntentionallyStopped;
   lastBridgeOnline = ok;
@@ -437,6 +439,10 @@ function renderStatus(status) {
     notice.innerHTML = stopped
       ? "<strong>Bridge 已停止</strong><span>启动全部后会自动恢复状态。</span>"
       : "<strong>Bridge 当前不可用</strong><span>前往服务页启动或重启，再运行一次健康检查。</span>";
+  } else if (degradedModules.length > 0) {
+    const names = degradedModules.map(moduleLabel).join("、");
+    notice.classList.add("warn");
+    notice.innerHTML = `<strong>部分模块需要处理</strong><span>${escapeHtml(names)} 当前处于降级状态，可到“服务”或“诊断”页查看详情。</span>`;
   } else if (dropped > 0) {
     notice.classList.add("warn");
     notice.innerHTML = `<strong>消息保护已介入</strong><span>本轮丢弃 ${fmt.format(dropped)} 个事件，可到日志页查看原因。</span>`;
@@ -555,7 +561,9 @@ function renderConfig(status, configSnapshot) {
     ["日报群", config.summaryGroupWhitelist || [], "configuration"],
     ["资源 / JM 群", config.resourceGroupWhitelist || [], "configuration"],
     ["管理员", config.adminUins || [], "configuration"],
-    ["功能模块", Object.entries(modules).filter(([, item]) => item && item.enabled).map(([name]) => moduleLabel(name)), "services"],
+    ["功能模块", Object.entries(modules)
+      .filter(([, item]) => item && item.enabled)
+      .map(([name, item]) => moduleStatusLabel(name, item)), "services"],
     ["短期上下文", [
       cognition.enabled === false ? "未启用" : "已启用",
       `${Number(cognition.groupThreads || 0)} 个群线程`,
@@ -956,6 +964,7 @@ function removeListEditorValue(editor, value) {
 
 function moduleLabel(name) {
   return ({
+    commands: "命令中心",
     cognition: "短期上下文",
     groupSummary: "每日群报",
     jm: "JM 下载",
@@ -965,8 +974,17 @@ function moduleLabel(name) {
     stickers: "收藏表情",
     memory: "用户画像",
     relationship: "互动熟悉度",
+    resourceTransfer: "资源转发",
+    apiProviders: "模型路由",
+    outputSafety: "输出安全",
     wordcloud: "群词云",
   })[name] || name;
+}
+
+function moduleStatusLabel(name, module) {
+  const label = moduleLabel(name);
+  if (module?.health === "degraded") return `${label}（需处理）`;
+  return label;
 }
 
 function modelLabel(name) {

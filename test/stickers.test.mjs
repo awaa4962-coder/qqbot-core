@@ -21,6 +21,9 @@ import {
   evaluateStickerPolicy,
   listSelectableStickers,
   loadStickerPreview,
+  getStickerCaptureQuota,
+  listPendingStickerAnalysis,
+  markStickerAnalysisFailure,
   markCapturedStickerCloudResult,
   maybeSendStickerAfterReply,
   normalizeFavoritePayload,
@@ -598,6 +601,33 @@ describe("收藏表情模块", () => {
     assert.equal(snapshot.entries.find(entry => entry.id === candidate.id).sendable, false);
     assert.equal(snapshot.entries.find(entry => entry.id === active.id).sendable, true);
     assert.deepEqual(listSelectableStickers().map(entry => entry.id), [active.id]);
+  });
+
+  it("retires repeatedly unavailable captured candidates and frees live quota", () => {
+    useTempCatalog();
+    const candidate = upsertCapturedSticker({
+      url: "https://example.com/dead.gif",
+      fingerprint: "4444444444444444",
+      classification: "sticker",
+      confidence: 0.9,
+    }, { groupId: 123, senderId: 456, now: 1000 }).entry;
+
+    for (let attempt = 0; attempt < 6; attempt++) {
+      markStickerAnalysisFailure(candidate.id, "表情图片下载失败或被安全策略拦截", {
+        now: 2000 + attempt,
+      });
+    }
+
+    const snapshot = buildStickerCatalogSnapshot();
+    const retired = snapshot.entries.find(entry => entry.id === candidate.id);
+    const quota = getStickerCaptureQuota({ now: 10000 });
+    assert.equal(retired.captureState, "retired");
+    assert.equal(retired.enabled, false);
+    assert.equal(snapshot.counts.pending, 0);
+    assert.equal(snapshot.stats.analysisRetired, 1);
+    assert.equal(quota.capturedTotal, 0);
+    assert.equal(quota.retiredTotal, 1);
+    assert.deepEqual(listPendingStickerAnalysis({ now: 10000 }), []);
   });
 });
 

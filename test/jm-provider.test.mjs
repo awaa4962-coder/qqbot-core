@@ -13,9 +13,12 @@ import {
   cleanupExpiredJmTempDirs,
   handleJmTransferCommand,
   handlePrivateJmTransferCommand,
+  getJmRuntimeHealth,
   isJmUserAllowed,
   jmErrorText,
   parseJmCommand,
+  refreshJmRuntimeHealth,
+  resetJmRuntimeHealthCache,
   transferJmToPrivate,
   transferJmToGroup,
   zipDirectory,
@@ -286,6 +289,42 @@ describe("jm provider", () => {
       assert.equal(fs.existsSync(unrelatedDir), true);
     } finally {
       await fsp.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reports real JM dependency health without exposing runtime output", () => {
+    const health = getJmRuntimeHealth({
+      force: true,
+      now: 1000,
+      runner: () => ({
+        status: 0,
+        stdout: 'QQFRIEND_JM_RESULT {"ok":true,"source":"installed"}\n',
+      }),
+    });
+    assert.equal(health.health, "ready");
+    assert.equal(health.dependencyReady, true);
+    assert.equal(health.reason, "runtime_ok");
+    assert.equal("stdout" in health, false);
+  });
+
+  it("refreshes JM dependency health asynchronously for the runtime dashboard", async () => {
+    resetJmRuntimeHealthCache();
+    const health = await refreshJmRuntimeHealth({
+      force: true,
+      now: 2000,
+      runner: async () => ({
+        status: 0,
+        stdout: 'QQFRIEND_JM_RESULT {"ok":true,"source":"installed"}\n',
+      }),
+    });
+    assert.equal(health.health, "ready");
+    assert.equal(getJmRuntimeHealth({ now: 2001 }).reason, "runtime_ok");
+  });
+
+  it("pins the JM Python dependency set used by auto-install", () => {
+    const requirements = fs.readFileSync(path.resolve("scripts", "requirements-jm.txt"), "utf8");
+    for (const dependency of ["jmcomic", "curl_cffi", "PyYAML", "Pillow", "pycryptodome"]) {
+      assert.match(requirements, new RegExp("^" + dependency + "==", "mi"));
     }
   });
 

@@ -2,23 +2,28 @@
 
 import { CFG, LONG_GROUPS } from "../config.mjs";
 import { MODULE_DEFINITIONS } from "../modules/manifest.mjs";
+import { buildRuntimeStatus } from "./runtime-status.mjs";
 
 export function buildModuleCatalog(options = {}) {
   const cfg = options.cfg || CFG;
   const longGroups = options.longGroups || LONG_GROUPS;
-  const modules = MODULE_DEFINITIONS.map(module => buildModuleView(module, cfg, longGroups));
+  const runtimeModules = options.runtimeModules || buildRuntimeStatus().modules;
+  const modules = MODULE_DEFINITIONS.map(module => buildModuleView(module, cfg, longGroups, runtimeModules));
   return {
     count: modules.length,
     modules,
   };
 }
 
-function buildModuleView(module, cfg, longGroups) {
+function buildModuleView(module, cfg, longGroups, runtimeModules) {
+  const runtime = runtimeModuleFor(module.id, runtimeModules);
   return {
     id: module.id,
     name: module.name,
     category: module.category,
-    enabled: Boolean(module.enabled),
+    enabled: runtime ? Boolean(runtime.enabled) : Boolean(module.enabled),
+    health: runtime?.health || (module.enabled ? "ready" : "disabled"),
+    healthReasons: runtimeHealthReasons(runtime),
     riskLevel: module.riskLevel,
     entrypoints: [...module.entrypoints],
     commands: [...module.commands],
@@ -29,6 +34,25 @@ function buildModuleView(module, cfg, longGroups) {
     tests: [...module.tests],
     privacy: module.privacy,
   };
+}
+
+function runtimeHealthReasons(runtime) {
+  if (!runtime || runtime.health !== "degraded") return [];
+  const reasons = runtime.degradedReasons || runtime.issues;
+  if (Array.isArray(reasons)) return [...reasons];
+  return runtime.reason ? [String(runtime.reason)] : [];
+}
+
+function runtimeModuleFor(id, modules) {
+  const key = ({
+    "group-summary": "groupSummary",
+    "meme-knowledge": "memeKnowledge",
+    "resource-transfer": "resourceTransfer",
+    "link-preview": "linkPreview",
+    "api-providers": "apiProviders",
+    "output-safety": "outputSafety",
+  })[id] || id;
+  return modules?.[key] || null;
 }
 
 function buildModuleConfigSummary(module, cfg, longGroups) {

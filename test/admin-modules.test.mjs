@@ -31,12 +31,17 @@ test("module catalog is safe and includes health metadata", () => {
       jmSevenZipPath: "C:/7z.exe",
     },
     longGroups: ["2000000005"],
+    runtimeModules: {
+      jm: { health: "degraded", degradedReasons: ["dependency_missing"] },
+    },
   });
 
   assert.equal(catalog.count, catalog.modules.length);
   const jm = catalog.modules.find(module => module.id === "jm");
   assert.ok(jm);
   assert.equal(jm.riskLevel, "high");
+  assert.equal(jm.health, "degraded");
+  assert.deepEqual(jm.healthReasons, ["dependency_missing"]);
   assert.ok(jm.healthChecks.length >= 1);
   assert.equal(JSON.stringify(catalog).includes("FS"), false);
   assert.equal(JSON.stringify(catalog).includes("C:/7z.exe"), false);

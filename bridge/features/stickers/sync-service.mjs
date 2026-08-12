@@ -3,6 +3,8 @@ import { log, logE } from "../../logger.mjs";
 import { analyzePendingStickers } from "./analyzer.mjs";
 import {
   retireStaleCapturedStickers,
+  retireExhaustedStickerCandidates,
+  pruneRetiredCapturedStickers,
   upsertFavoriteStickers,
 } from "./catalog-store.mjs";
 import {
@@ -30,6 +32,7 @@ const status = {
   lastSyncAt: null,
   lastError: "",
   lastResult: null,
+  lastAnalysis: null,
   capabilities: null,
 };
 
@@ -56,10 +59,15 @@ export function initializeStickerSystem(options = {}) {
   }, CFG.stickerSyncIntervalMs);
   syncTimer.unref?.();
   analysisTimer = setInterval(() => {
-    analyzePendingStickers({ limit: 4 }).catch(error => logE("sticker analysis schedule failed:", error.message));
+    runScheduledAnalysis().catch(error => logE("sticker analysis schedule failed:", error.message));
   }, 5 * 60 * 1000);
   analysisTimer.unref?.();
   detectCapabilities(options).catch(error => logE("sticker capability detection failed:", error.message));
+  const exhausted = retireExhaustedStickerCandidates();
+  const pruned = pruneRetiredCapturedStickers();
+  if (exhausted.retired || pruned.removed) {
+    log("sticker stale candidates cleaned:", exhausted.retired, "retired,", pruned.removed, "removed");
+  }
   retireStaleCapturedStickers();
   return getStickerSyncStatus();
 }
@@ -98,6 +106,7 @@ export function resetStickerSyncForTest() {
   status.lastSyncAt = null;
   status.lastError = "";
   status.lastResult = null;
+  status.lastAnalysis = null;
   status.capabilities = null;
   syncPromise = null;
 }
@@ -129,6 +138,7 @@ async function runSync(options) {
     status.lastSyncAt = new Date(Number(options.now || Date.now())).toISOString();
     status.lastError = "";
     status.lastResult = result;
+    status.lastAnalysis = { ...analysis, at: new Date(Number(options.now || Date.now())).toISOString() };
     log("sticker favorites synced:", remote.items.length, "items,", merged.added, "new");
     return result;
   } catch (error) {
@@ -138,6 +148,12 @@ async function runSync(options) {
   } finally {
     status.syncing = false;
   }
+}
+
+async function runScheduledAnalysis() {
+  const analysis = await analyzePendingStickers({ limit: 4 });
+  status.lastAnalysis = { ...analysis, at: new Date().toISOString() };
+  return analysis;
 }
 
 async function fetchBestFavoriteSource(options = {}) {
