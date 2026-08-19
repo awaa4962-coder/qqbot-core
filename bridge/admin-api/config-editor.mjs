@@ -2,10 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { CFG, LONG_GROUPS } from "../config.mjs";
-
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const EDITABLE_FILES = Object.freeze({
   botNames: ".env_bot_names",
@@ -35,7 +32,7 @@ const NUMBER_LIST_FIELDS = new Set([
 export function buildEditableConfigSnapshot(options = {}) {
   const cfg = options.cfg || CFG;
   const longGroups = options.longGroups || LONG_GROUPS;
-  const root = options.root || ROOT;
+  const root = options.root || CFG.configRoot;
   return {
     editable: {
       botNames: [...cfg.botNames],
@@ -80,7 +77,7 @@ export function buildEditableConfigSnapshot(options = {}) {
 }
 
 export function saveEditableConfig(payload, options = {}) {
-  const root = options.root || ROOT;
+  const root = options.root || CFG.configRoot;
   const normalized = normalizeEditablePayload(payload);
   const saved = [];
   fs.mkdirSync(root, { recursive: true });

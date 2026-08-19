@@ -20,7 +20,10 @@ const RELEASE_ROOTS = [
   ...PUBLIC_QQFRIEND_FILES,
   "test",
   "scripts",
+  "deploy/linux",
+  "launcher/QQFriendLauncher",
   ".github/workflows/ci.yml",
+  ".dockerignore",
   "napcat_bridge.mjs",
   "start_bridge.bat",
   "package.json",
@@ -173,6 +176,7 @@ function run(command, args, options = {}) {
   const result = spawnSync(spawn[0], spawn[1], {
     cwd: options.cwd || ROOT,
     encoding: "utf8",
+    env: options.env || process.env,
     shell: false,
   });
 
@@ -184,9 +188,9 @@ function run(command, args, options = {}) {
   return output;
 }
 
-function runCheck(label, command, args, checks) {
+function runCheck(label, command, args, checks, options = {}) {
   console.log(`[release] ${label}`);
-  const output = run(command, args);
+  const output = run(command, args, options);
   checks[label] = "pass";
   return output;
 }
@@ -220,50 +224,42 @@ function ensureDist(root) {
 function writeFileList(root, files) {
   const filePath = path.join(root, DIST_DIR, "release-file-list.txt");
   fs.writeFileSync(filePath, files.join("\n") + "\n", "utf8");
+  return filePath;
 }
 
-function copyToStaging(root, files, staging) {
-  fs.rmSync(staging, { recursive: true, force: true });
-  for (const file of files) {
-    const source = path.join(root, file);
-    const target = path.join(staging, file);
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.copyFileSync(source, target);
-  }
+function releasePythonCandidates() {
+  const bundled = path.join(
+    process.env.USERPROFILE || "",
+    ".cache",
+    "codex-runtimes",
+    "codex-primary-runtime",
+    "dependencies",
+    "python",
+    "python.exe"
+  );
+  return [...new Set([
+    process.env.QQBOT_RELEASE_PYTHON,
+    process.env.QQBOT_JM_PYTHON,
+    fs.existsSync(bundled) ? bundled : "",
+    process.platform === "win32" ? "python" : "python3",
+  ].filter(Boolean))];
 }
 
-function compressWithTar(root, files, zipPath) {
-  const result = spawnSync("tar", ["-a", "-cf", zipPath, ...files], {
-    cwd: root,
-    encoding: "utf8",
-  });
-  return result.status === 0;
-}
-
-function compressWithPowerShell(root, files, zipPath) {
-  const staging = path.join(root, DIST_DIR, ".release-staging");
-  copyToStaging(root, files, staging);
-  const command = [
-    "Compress-Archive",
-    "-Path",
-    "'*'",
-    "-DestinationPath",
-    `'${zipPath.replace(/'/g, "''")}'`,
-    "-Force",
-  ].join(" ");
-  const result = spawnSync("powershell", ["-NoProfile", "-Command", command], {
-    cwd: staging,
-    encoding: "utf8",
-  });
-  fs.rmSync(staging, { recursive: true, force: true });
-  return result.status === 0;
-}
-
-function createZip(root, files, zipPath) {
+function createZip(root, zipPath, fileListPath) {
   fs.rmSync(zipPath, { force: true });
-  if (compressWithTar(root, files, zipPath)) return;
-  if (process.platform === "win32" && compressWithPowerShell(root, files, zipPath)) return;
-  throw new Error("failed to create release zip");
+  const script = path.join(root, "scripts", "create-release-zip.py");
+  const failures = [];
+  for (const python of releasePythonCandidates()) {
+    const result = spawnSync(python, [
+      script,
+      "--root", root,
+      "--output", zipPath,
+      "--file-list", fileListPath,
+    ], { cwd: root, encoding: "utf8" });
+    if (result.status === 0) return;
+    failures.push(`${python}: ${result.error?.message || result.stderr || "exit " + result.status}`);
+  }
+  throw new Error("failed to create permission-safe release zip\n" + failures.join("\n"));
 }
 
 export function inspectZipEntries(zipPath) {
@@ -353,14 +349,16 @@ async function runRelease(root, args) {
     const testOutput = runCheck("test", npmCommand(), ["test"], checks);
     tests = testCount(testOutput);
     runCheck("runtime", npmCommand(), ["run", "check:runtime:ci"], checks);
-    runCheck("jmRuntime", npmCommand(), ["run", "check:jm"], checks);
+    runCheck("jmRuntime", npmCommand(), ["run", "check:jm"], checks, {
+      env: { ...process.env, NODE_ENV: "test" },
+    });
   }
 
   const files = collectReleaseFiles(root, options);
   assertNoForbiddenFiles(files);
   scanTextForSecrets(root, files);
   checks.forbiddenFiles = "pass";
-  writeFileList(root, files);
+  const fileListPath = writeFileList(root, files);
 
   if (options.checkOnly) {
     console.log("[release] check-only complete");
@@ -369,7 +367,7 @@ async function runRelease(root, args) {
 
   const now = new Date();
   const zipPath = path.join(root, DIST_DIR, releaseZipName(pkg, now));
-  createZip(root, files, zipPath);
+  createZip(root, zipPath, fileListPath);
   const entries = inspectZipEntries(zipPath);
   assertPortableZipEntries(entries);
   checks.zipPathStyle = "pass";

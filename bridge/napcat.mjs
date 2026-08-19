@@ -3,6 +3,8 @@ import { CFG } from './config.mjs';
 import { logE } from './logger.mjs';
 import { normalizeMsg, cleanText } from './context/messages.mjs';
 import { fetchSafeText, validateSafeUrl } from './safe-url.mjs';
+import { buildNapCatHeaders } from './napcat-auth.mjs';
+import { uploadFileToNapCat } from './napcat-stream.mjs';
 import {
   normalizeOutboundText,
   isOutboundPayloadSuccessful,
@@ -150,7 +152,9 @@ export async function fetchReplyData(replyData) {
   const msgId = replyData.id;
   if (!msgId) return { text: '', images: [] };
   try {
-    const r = await fetch(CFG.napcatApi + '/get_msg?message_id=' + encodeURIComponent(msgId));
+    const r = await fetch(CFG.napcatApi + '/get_msg?message_id=' + encodeURIComponent(msgId), {
+      headers: buildNapCatHeaders(),
+    });
     const d = await r.json();
     if (d?.status === 'ok' || d?.retcode === 0) {
       const msg = d.data;
@@ -192,14 +196,19 @@ export async function sendPrivateMsg(user_id, message) {
   return sendPrivateMessagePayload({ user_id: user_id, message: msgArr }, 'sendPrivateMsg');
 }
 
-export async function uploadGroupFile(groupId, filePath, name) {
+export async function uploadGroupFile(groupId, filePath, name, options = {}) {
   try {
-    const r = await fetch(CFG.napcatApi + '/upload_group_file', {
+    const uploadPath = await resolveNapCatUploadPath(filePath, name, options);
+    const fetchImpl = options.fetchImpl || fetch;
+    const r = await fetchImpl(CFG.napcatApi + '/upload_group_file', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      headers: buildNapCatHeaders(
+        { 'Content-Type': 'application/json; charset=utf-8' },
+        { token: options.token }
+      ),
       body: JSON.stringify({
         group_id: groupId,
-        file: filePath,
+        file: uploadPath,
         name: name,
       }),
       signal: AbortSignal.timeout(60000),
@@ -212,14 +221,19 @@ export async function uploadGroupFile(groupId, filePath, name) {
   }
 }
 
-export async function uploadPrivateFile(userId, filePath, name) {
+export async function uploadPrivateFile(userId, filePath, name, options = {}) {
   try {
-    const r = await fetch(CFG.napcatApi + '/upload_private_file', {
+    const uploadPath = await resolveNapCatUploadPath(filePath, name, options);
+    const fetchImpl = options.fetchImpl || fetch;
+    const r = await fetchImpl(CFG.napcatApi + '/upload_private_file', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      headers: buildNapCatHeaders(
+        { 'Content-Type': 'application/json; charset=utf-8' },
+        { token: options.token }
+      ),
       body: JSON.stringify({
         user_id: userId,
-        file: filePath,
+        file: uploadPath,
         name: name,
       }),
       signal: AbortSignal.timeout(60000),
@@ -238,13 +252,30 @@ export async function getGroupMemberInfo(groupId, userId) {
     '&user_id=' + encodeURIComponent(userId) +
     '&no_cache=false';
   try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    const r = await fetch(url, {
+      headers: buildNapCatHeaders(),
+      signal: AbortSignal.timeout(5000),
+    });
     const d = await r.json();
     if (d?.status === 'ok' || d?.retcode === 0) return d.data || null;
   } catch (e) {
     logE('getGroupMemberInfo error:', e.message);
   }
   return null;
+}
+
+async function resolveNapCatUploadPath(filePath, name, options = {}) {
+  const wsUrl = String(options.wsUrl ?? CFG.napcatWsApi ?? '').trim();
+  if (!wsUrl) return filePath;
+  try {
+    const streamUploader = options.streamUploader || uploadFileToNapCat;
+    const uploaded = await streamUploader(filePath, { filename: name, wsUrl, token: options.token });
+    return uploaded.filePath;
+  } catch (error) {
+    logE('NapCat stream upload error:', error.message);
+    if (options.streamRequired ?? CFG.napcatStreamRequired) throw error;
+    return filePath;
+  }
 }
 
 export async function sendMsgWithImage(groupId, text, imageUrl, options = {}) {

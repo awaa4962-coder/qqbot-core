@@ -1,5 +1,23 @@
 # 夜星桥接器更新日志
 
+## v1.4.0-linux-preview - 2026-08-19 - 独立 Linux 服务器预览版
+- 新增独立 `agent/linux-server-preview` 交付线，Linux 代码、配置与运行状态不覆盖当前 Windows 安装，也不会在开发和验证阶段重启 Windows Bot。
+- 新增 `deploy/linux/`：提供固定 Node 22.23.2 的 Bridge 镜像、固定 `mlikiowa/napcat-docker:v4.18.13` 的 Compose、低权限 systemd 单元、日报 timer、初始化脚本、预检脚本与中文部署说明；首次启动前会生成仅绑定 `127.0.0.1` 的 NapCat WebUI 配置和独立随机令牌。
+- Bridge 增加 `QQBOT_LISTEN_HOST`、`QQBOT_LISTEN_PORT`、`QQBOT_NAPCAT_API`、`QQBOT_NAPCAT_WS_API` 与 `QQBOT_NAPCAT_TOKEN` 等跨平台配置；Windows 默认值和原有单机路径保持不变。
+- NapCat HTTP 请求统一支持 Bearer 鉴权，收藏表情接口也走同一安全头；令牌不写日志、不进入管理快照、不进入发布包。
+- 新增 NapCat `upload_file_stream` 客户端：文件先计算 SHA-256，再按 64 KiB 至 1 MiB 有界分块顺序上传；完成后只把 NapCat 返回的容器内路径交给群文件或私聊文件接口。
+- Linux 默认强制流式文件上传，WS 失败时不会把 Bridge 的 `/tmp` 路径错误回退给 NapCat；Windows 未配置 WS 时继续使用现有本地路径模式。
+- 复用 Windows 控制台的 HTML/CSS/JS，新增浏览器 Host：状态、日志、配置、API、梗库、表情、诊断和备份继续使用原 `/admin/*` API；背景图保存在浏览器 IndexedDB。
+- 浏览器控制台与管理 API 仅允许环回请求并带 CSP、固定静态文件白名单和可选管理令牌；远程访问通过 SSH 端口转发，不开放公网管理端口。
+- Linux 配置、运行数据、日志、临时目录和安全备份分别映射到独立数据卷；`TMPDIR` 指向持久临时卷，JM 压缩包继续在一天后清理，普通资源转发完成后立即删除。
+- 修正容器只读根目录兼容：控制台配置写入 `/config`，管理员审计写入 `/logs`，用户画像写入 `/data`；重启容器后画像不会因落在临时目录而丢失。
+- 新增 `.dockerignore` 与发布清单约束，Linux 包仍排除 `.env*`、API Key、QQ 登录数据、聊天记忆、日志、备份、个人文档、WebView2 数据和本机绝对路径。
+- 发布包补齐启动器源码以保证解压后可自测，仍排除 `bin`、`obj` 与 WebView2 用户数据；Linux 原生运行时默认选择系统标准的 `python3`。
+- 发布 ZIP 统一写入 Unix 安全权限：普通文件 `0644`、部署脚本 `0755`，并在生成后复验；Docker 构建支持仅在构建期使用可选 PyPI 镜像。
+- 新增 `npm run smoke:linux`，会用临时测试配置启动环回 Bridge，验证 `/health`、`/admin/status`、`/console/` 和 CSP 后自动退出。
+- 远程 Linux 已用经 SHA-256 校验的便携 Node 22.23.2 完成无特权验证：`npm ci`、lint、570/570 测试、浏览器烟雾与 JM Python 3.14 依赖检查通过；真实 QQ 登录、API Key 和生产记忆未迁移。
+- 本机验收：`npm ci`、`npm run lint` 0 errors / 0 warnings、`npm test` 570/570 pass、`npm run smoke:linux`、`npm run release:check` 通过；远端尚无 Docker，因此真实镜像构建与 NapCat 登录明确留待系统依赖安装后执行。
+
 ## v1.3.9-module-resilience - 2026-08-13 - 模块韧性与真实健康状态
 - 表情分析改用统一预览读取链路：QQ 临时图片地址会先续签，主视觉模型返回空正文或不安全内容时会切换视觉备用模型，不会把内部推理当作标签写入目录。
 - 群采集候选连续 6 次因下载失效或安全拦截无法分析时自动退役；退役项不再占用采集上限和待分析队列，历史残留会在启动时迁移并按保留策略清理。

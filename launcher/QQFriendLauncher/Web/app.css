@@ -122,6 +122,7 @@ button {
 button:hover { border-color: var(--green); background: var(--control-hover); }
 button:active { transform: translateY(1px); }
 button:disabled { cursor: wait; opacity: 0.55; transform: none; }
+html[data-runtime="browser"] button:disabled { cursor: not-allowed; }
 button.primary { border-color: #246b50; background: #287c5d; color: #fff; }
 button.danger { border-color: #853939; background: #984444; color: #fff; }
 button.danger-quiet { color: var(--red); }

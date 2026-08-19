@@ -2,15 +2,14 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { CFG } from "../config.mjs";
 import { redactLogLine } from "./log-reader.mjs";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const AUDIT_FILE = path.join(ROOT, "logs", "admin-audit.log");
 const MAX_ACTION_LENGTH = 120;
 const MAX_QUERY_KEYS = 20;
 
-export function recordAdminAudit(entry = {}) {
+export function recordAdminAudit(entry = {}, options = {}) {
+  const auditFile = path.resolve(options.file || CFG.adminAuditFile);
   const action = sanitizeAction(entry.action || `${entry.method || "GET"} ${entry.pathname || "/"}`);
   const payload = {
     ts: new Date(entry.ts || Date.now()).toISOString(),
@@ -21,18 +20,19 @@ export function recordAdminAudit(entry = {}) {
     queryKeys: sanitizeQueryKeys(entry.queryKeys || []),
   };
 
-  fs.mkdirSync(path.dirname(AUDIT_FILE), { recursive: true });
-  fs.appendFileSync(AUDIT_FILE, JSON.stringify(payload) + "\n", "utf8");
+  fs.mkdirSync(path.dirname(auditFile), { recursive: true });
+  fs.appendFileSync(auditFile, JSON.stringify(payload) + "\n", "utf8");
   return payload;
 }
 
 export function readAuditTail(options = {}) {
+  const auditFile = path.resolve(options.file || CFG.adminAuditFile);
   const tail = normalizeTail(options.tail);
-  if (!fs.existsSync(AUDIT_FILE)) {
+  if (!fs.existsSync(auditFile)) {
     return { file: "admin-audit.log", count: 0, lines: [] };
   }
 
-  const lines = fs.readFileSync(AUDIT_FILE, "utf8")
+  const lines = fs.readFileSync(auditFile, "utf8")
     .split(/\r?\n/)
     .filter(Boolean)
     .slice(-tail)

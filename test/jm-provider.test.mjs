@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
@@ -373,7 +373,12 @@ function findTestPython() {
     "python",
     "python.exe",
   );
-  return fs.existsSync(bundled) ? bundled : "";
+  if (fs.existsSync(bundled)) return bundled;
+  for (const candidate of process.platform === "win32" ? ["python"] : ["python3", "python"]) {
+    const probe = spawnSync(candidate, ["--version"], { stdio: "ignore", windowsHide: true });
+    if (probe.status === 0) return candidate;
+  }
+  return "";
 }
 
 function runPythonScript(command, args, envPatch) {

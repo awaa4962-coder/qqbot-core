@@ -1,16 +1,15 @@
 // bridge/memory-profile.mjs - bounded, expiring profile summaries for context
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
+import { CFG } from "./config.mjs";
 import { logE } from "./logger.mjs";
 import { MEMORY_TOPIC_RULES } from "./knowledge/topic-rules.mjs";
 
 const DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const INTERJECTION_PREFERENCE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SAVE_DEBOUNCE_MS = 30000;
-const PROFILE_FILE = process.env.QQBOT_MEMORY_PROFILE_FILE ||
-  path.join(process.env.LOCALAPPDATA || os.tmpdir(), "qqfriend", "memory_profiles.json");
+const PROFILE_FILE = CFG.memoryProfileFile;
 
 const SENSITIVE_PATTERNS = [
   /sk-[A-Za-z0-9_-]{12,}/i,

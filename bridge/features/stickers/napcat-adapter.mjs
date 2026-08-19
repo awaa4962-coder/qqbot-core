@@ -1,6 +1,7 @@
 // NapCat custom-face API adapter. All callers receive normalized results.
 
 import { CFG } from "../../config.mjs";
+import { buildNapCatHeaders } from "../../napcat-auth.mjs";
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const RKEY_REFRESH_MARGIN_MS = 30 * 1000;
@@ -123,7 +124,10 @@ export async function postNapCat(action, params = {}, options = {}) {
   try {
     const response = await fetchImpl(CFG.napcatApi.replace(/\/+$/, "") + "/" + action, {
       method: "POST",
-      headers: { "Content-Type": "application/json; charset=utf-8" },
+      headers: buildNapCatHeaders(
+        { "Content-Type": "application/json; charset=utf-8" },
+        { token: options.token }
+      ),
       body: JSON.stringify(compactObject(params)),
       signal: AbortSignal.timeout(Number(options.timeoutMs || DEFAULT_TIMEOUT_MS)),
     });

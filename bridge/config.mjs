@@ -10,6 +10,16 @@ const TEST_MODE = process.env.NODE_ENV === 'test';
 const CONFIG_ROOT = path.resolve(process.env.QQBOT_CONFIG_ROOT || ROOT);
 const DATA_ROOT = path.resolve(process.env.QQBOT_DATA_DIR || ROOT);
 const LOG_ROOT = path.resolve(process.env.QQBOT_LOG_DIR || path.join(DATA_ROOT, 'logs'));
+const ADMIN_BACKUP_DIR = DATA_ROOT === ROOT
+  ? path.join(ROOT, 'dist', 'admin-backups')
+  : path.join(DATA_ROOT, 'backups');
+const MEMORY_PROFILE_FILE = path.resolve(
+  process.env.QQBOT_MEMORY_PROFILE_FILE || (
+    process.env.QQBOT_DATA_DIR
+      ? path.join(DATA_ROOT, '.qqfriend', 'memory_profiles.json')
+      : path.join(process.env.LOCALAPPDATA || DATA_ROOT, 'qqfriend', 'memory_profiles.json')
+  )
+);
 
 const DEFAULT_GROUP_WHITELIST = [];
 const TEST_SELF_UIN = 1000000001;
@@ -57,6 +67,17 @@ function _readOptionalNumberList(filename, envName) {
     return parseNumberList(fs.readFileSync(path.join(CONFIG_ROOT, filename), 'utf-8'));
   } catch {
     return [];
+  }
+}
+
+function _readOptionalSecret(filename, envName) {
+  if (Object.prototype.hasOwnProperty.call(process.env, envName)) {
+    return String(process.env[envName] || '').trim();
+  }
+  try {
+    return fs.readFileSync(path.join(CONFIG_ROOT, filename), 'utf-8').trim();
+  } catch {
+    return '';
   }
 }
 
@@ -142,7 +163,8 @@ function readJmPython() {
     'python',
     'python.exe'
   );
-  return fs.existsSync(bundled) ? bundled : 'python';
+  if (fs.existsSync(bundled)) return bundled;
+  return process.platform === 'win32' ? 'python' : 'python3';
 }
 
 function readJmZipPassword() {
@@ -196,8 +218,16 @@ const FEATURE_GROUP_WHITELIST = readFeatureGroupWhitelist(GROUP_WHITELIST);
 const STICKER_GROUP_WHITELIST = readStickerGroupWhitelist(GROUP_WHITELIST);
 
 export const CFG = {
-  napcatApi: 'http://127.0.0.1:6700',
-  listenPort: 16789,
+  napcatApi: String(process.env.QQBOT_NAPCAT_API || 'http://127.0.0.1:6700').trim().replace(/\/+$/, ''),
+  napcatWsApi: String(process.env.QQBOT_NAPCAT_WS_API || '').trim(),
+  napcatAccessToken: _readOptionalSecret('.env_napcat_token', 'QQBOT_NAPCAT_TOKEN'),
+  napcatStreamRequired: readBooleanEnv('QQBOT_NAPCAT_STREAM_REQUIRED', false),
+  napcatStreamChunkBytes: readBoundedNumber('QQBOT_NAPCAT_STREAM_CHUNK_BYTES', 256 * 1024, 64 * 1024, 1024 * 1024),
+  napcatStreamRetentionSeconds: readBoundedNumber('QQBOT_NAPCAT_STREAM_RETENTION_SECONDS', 86400, 60, 604800),
+  napcatStreamTimeoutMs: readBoundedNumber('QQBOT_NAPCAT_STREAM_TIMEOUT_MS', 60000, 5000, 10 * 60 * 1000),
+  listenHost: String(process.env.QQBOT_LISTEN_HOST || '0.0.0.0').trim() || '0.0.0.0',
+  listenPort: readBoundedNumber('QQBOT_LISTEN_PORT', 16789, 1, 65535),
+  webConsoleEnabled: readBooleanEnv('QQFRIEND_WEB_CONSOLE', false),
   selfUin: readSelfUin(),
   groupWhitelist: GROUP_WHITELIST,
   summaryGroupWhitelist: SUMMARY_GROUP_WHITELIST,
@@ -265,6 +295,11 @@ export const CFG = {
   botNames: readBotNames(),
   memoryFile: path.join(DATA_ROOT, 'user_memory.json'),
   chatLogFile: path.join(DATA_ROOT, 'group_chats.json'),
+  configRoot: CONFIG_ROOT,
+  dataRoot: DATA_ROOT,
+  adminBackupDir: ADMIN_BACKUP_DIR,
+  adminAuditFile: path.join(LOG_ROOT, 'admin-audit.log'),
+  memoryProfileFile: MEMORY_PROFILE_FILE,
   changelogFile: path.join(ROOT, 'CHANGELOG.md'),
   mimoKey: _readKey('.env_mimo', 'MiMo API'),
   dsKey: _readKey('.env_ds', 'DeepSeek API'),

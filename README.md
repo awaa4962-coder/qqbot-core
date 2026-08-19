@@ -15,7 +15,7 @@
 
 QQFriend 是“夜星”QQ 机器人的本地运行核心。它接收 NapCat 的 OneBot 事件，把命令、上下文、模型调用和扩展模块编排成一条可观测的回复链路，再经过统一输出清洗后发送回 QQ。
 
-项目主要面向 Windows 本地部署。QQ 账号、群白名单、模型密钥和运行记忆全部留在本机，不随源码或发布包上传。
+项目支持 Windows 本地运行，并提供独立的 Linux 服务器预览部署。QQ 账号、群白名单、模型密钥和运行记忆均留在各自运行环境，不随源码或发布包上传，也不会在 Windows 与 Linux 之间自动迁移。
 
 ## 能力概览
 
@@ -57,6 +57,8 @@ flowchart LR
 - 已安装并登录的 NapCat `v4.18.13`
 - 至少一个可用的模型 API
 
+Linux 服务器使用 Node.js 22 与 NapCat Docker，完整说明见 [`deploy/linux/README.md`](deploy/linux/README.md)。
+
 ### 安装
 
 ```powershell
@@ -93,6 +95,24 @@ Invoke-RestMethod http://127.0.0.1:16789/health
 {
   "status": "ok"
 }
+```
+
+### Linux 服务器预览
+
+Linux 部署与 Windows 状态完全分开。初始化后补齐 Linux 自己的密钥和白名单，再通过 Docker Compose 启动：
+
+```bash
+cd deploy/linux
+chmod +x prepare.sh check.sh
+./prepare.sh
+docker compose --env-file .env up -d --build
+./check.sh --runtime
+```
+
+管理页面只监听服务器环回地址。使用 SSH 隧道后，在本机打开 `http://127.0.0.1:16789/console/`：
+
+```bash
+ssh -L 16789:127.0.0.1:16789 -L 6099:127.0.0.1:6099 miku-server
 ```
 
 ## 常用命令
@@ -144,7 +164,8 @@ bridge/
   features/            表情等独立扩展
   group-summary/       群日报证据、提示词、模型与格式化
   services/            链接预览等外部服务
-launcher/              Windows 本地控制台
+launcher/              Windows 控制台与 Linux 可复用浏览器界面
+deploy/linux/          Docker Compose、systemd 与 Linux 运维脚本
 scripts/               发布、诊断、脚手架和运行检查
 test/                  模块、集成、安全和回归测试
 ```

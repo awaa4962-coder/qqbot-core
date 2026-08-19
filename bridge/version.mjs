@@ -4,24 +4,24 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.3.9-module-resilience";
-export const VERSION_NAME = "module-resilience";
+export const VERSION = "1.4.0-linux-preview";
+export const VERSION_NAME = "linux-preview";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "表情分析会续签过期 QQ 图片地址；反复失效的群采集候选会自动退役，不再永久占用目录和额度。",
-  "群聊与私聊发送失败会短暂重试；长消息某段持续失败时立即停止后续分段，避免只发出残缺尾句。",
-  "识图主模型返回空正文或不安全内容时会尝试视觉备用模型；随机插话也会使用配置的备用插槽。",
-  "JM 下载依赖改为锁定版本并完成实机安装，启动时后台自检，不阻塞 Bridge；失败会在控制台真实显示降级。",
-  "控制台接入模块实时健康状态；重复日报调度已收敛，过期梗库临时文件会自动清理。",
+  "新增独立 Linux 服务器部署，支持 Docker Compose 与原生 systemd，不覆盖现有 Windows 安装。",
+  "NapCat HTTP、正向 WebSocket 和访问认证可配置；跨容器文件通过 upload_file_stream 传输，不再误用 Bridge 本地路径。",
+  "现有控制台可从浏览器访问，管理 API 与静态页面仅允许环回地址，远程管理使用 SSH 隧道。",
+  "配置、运行数据、日志、临时文件和安全备份分别落到 Linux 数据卷；JM 临时文件继续按一天生命周期清理。",
+  "Linux 初始化不会复制模型凭据、QQ 登录态、聊天记录或用户记忆，迁移必须单独确认。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Sticker analysis now renews expired QQ media URLs and retires repeatedly unavailable captured candidates.",
-  "Group and private sends retry transient failures, while long-message delivery stops after a persistent chunk failure.",
-  "Vision falls back when the primary returns no safe final content, and interjections use their configured fallback slot.",
-  "JM dependencies are pinned and verified in the background without blocking the Bridge event loop.",
-  "The console now reports live module health; duplicate summary scheduling and stale meme temp files are cleaned up.",
+  "Adds an isolated Linux server deployment with Docker Compose and native systemd options.",
+  "NapCat HTTP, forward WebSocket and bearer auth are configurable; cross-container files use upload_file_stream.",
+  "The existing console now runs in a loopback-only browser host designed for SSH port forwarding.",
+  "Configuration, state, logs, temporary files and safe backups use separate Linux data paths.",
+  "Linux initialization never copies model credentials, QQ login state, chats or user memory automatically.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

@@ -18,6 +18,7 @@ import { applyStickerManagerAction, buildStickerManagerSnapshot } from "./sticke
 import { loadStickerPreview } from "../features/stickers/index.mjs";
 import { buildProjectSelfDescription, buildWorkflowDescription } from "../self-description.mjs";
 import { getMemeStore } from "../knowledge/memes/index.mjs";
+import { CFG } from "../config.mjs";
 
 const GET_ROUTES = new Map([
   ["/admin/status", handleStatusRoute],
@@ -145,7 +146,7 @@ function handleAuditRoute(_req, res, context) {
 }
 
 function handleBackupsRoute(_req, res, context) {
-  context.sendJson(res, 200, listSafeBackups(context.root), 2);
+  context.sendJson(res, 200, listSafeBackups(context.root, { backupRoot: CFG.adminBackupDir }), 2);
 }
 
 function handleConfigReadRoute(_req, res, context) {
@@ -245,11 +246,19 @@ async function handleBackupsPostRoute(req, res, context) {
   try {
     const payload = await readJsonRequestBody(req);
     if (payload.action === "create") {
-      sendJson(res, 200, createSafeBackup({ root: context.root, name: payload.name }), 2);
+      sendJson(res, 200, createSafeBackup({
+        root: context.root,
+        name: payload.name,
+        backupRoot: CFG.adminBackupDir,
+      }), 2);
       return;
     }
     if (payload.action === "restore-plan") {
-      sendJson(res, 200, buildBackupRestorePlan({ root: context.root, name: payload.name }), 2);
+      sendJson(res, 200, buildBackupRestorePlan({
+        root: context.root,
+        name: payload.name,
+        backupRoot: CFG.adminBackupDir,
+      }), 2);
       return;
     }
     sendJson(res, 400, { error: "unknown backup action" });

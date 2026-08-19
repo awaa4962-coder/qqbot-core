@@ -74,3 +74,6 @@ test_server.mjs
 Drawing1.*
 NapCat.Shell.Windows.OneKey.zip
 dist/
+deploy/linux/qqfriend.env
+deploy/linux/state/
+deploy/linux/.env.local

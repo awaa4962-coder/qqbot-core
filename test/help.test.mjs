@@ -42,10 +42,10 @@ describe("help text", () => {
 
     const en = buildChangelogText("en");
     assert.match(en, new RegExp("Current version: v" + VERSION));
-    assert.match(en, /live module health/);
-    assert.match(en, /Sticker analysis/);
-    assert.match(en, /Vision falls back/);
-    assert.match(en, /without blocking/);
+    assert.match(en, /isolated Linux server deployment/);
+    assert.match(en, /upload_file_stream/);
+    assert.match(en, /loopback-only browser/);
+    assert.match(en, /model credentials/);
     assert.match(en, /Still reserved:/);
   });
 });

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run QQFriend daily summary shortly after midnight
+
+[Timer]
+OnCalendar=*-*-* 00:05:00 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=90
+Unit=qqfriend-summary.service
+
+[Install]
+WantedBy=timers.target

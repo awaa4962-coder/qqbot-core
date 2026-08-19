@@ -43,6 +43,46 @@ async function createHostHarness() {
   };
 }
 
+async function createBrowserHostHarness(fetchImpl, promptImpl = () => "") {
+  const source = await readFile(hostClientPath, 'utf8');
+  const session = new Map();
+  const local = new Map();
+  const window = {
+    clearTimeout,
+    setTimeout,
+    fetch: fetchImpl,
+    prompt: promptImpl,
+    sessionStorage: storageFor(session),
+    localStorage: storageFor(local),
+  };
+  vm.runInNewContext(source, vm.createContext({ window }));
+  return { host: window.QQFriendHost, session };
+}
+
+function storageFor(values) {
+  return {
+    getItem(key) {
+      return values.has(key) ? values.get(key) : null;
+    },
+    setItem(key, value) {
+      values.set(key, String(value));
+    },
+    removeItem(key) {
+      values.delete(key);
+    },
+  };
+}
+
+function jsonResponse(status, payload) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    async text() {
+      return JSON.stringify(payload);
+    },
+  };
+}
+
 test('launcher host client resolves matching WebView responses', async () => {
   const harness = await createHostHarness();
   const resultPromise = harness.host.call('refreshStatus', { source: 'test' });
@@ -81,6 +121,39 @@ test('launcher host client keeps long-running actions above normal timeout', asy
   assert.equal(harness.host.timeoutFor('researchMemeWeb'), 180_000);
   assert.equal(harness.host.timeoutFor('restartBridge'), 90_000);
   assert.equal(harness.host.timeoutFor('refreshStatus'), 30_000);
+});
+
+test('browser host routes Linux status calls and keeps service control terminal-only', async () => {
+  const requests = [];
+  const harness = await createBrowserHostHarness(async (url, options) => {
+    requests.push({ url, options });
+    return jsonResponse(200, { status: 'ok' });
+  });
+
+  const ready = await harness.host.call('ready');
+  const status = await harness.host.call('refreshStatus');
+  assert.equal(harness.host.mode, 'browser');
+  assert.equal(ready.mode, 'linux-browser');
+  assert.equal(status.status, 'ok');
+  assert.equal(requests[0].url, '/admin/status');
+  await assert.rejects(harness.host.call('startAll'), /Docker Compose.*systemd/);
+});
+
+test('browser host prompts after 403 and keeps the admin token in session storage', async () => {
+  const requests = [];
+  const harness = await createBrowserHostHarness(async (url, options) => {
+    requests.push({ url, options });
+    return requests.length === 1
+      ? jsonResponse(403, { error: 'forbidden' })
+      : jsonResponse(200, { status: 'ok' });
+  }, () => 'session-only-token');
+
+  const status = await harness.host.call('refreshStatus');
+  assert.equal(status.status, 'ok');
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].options.headers['X-QQFriend-Admin-Token'], undefined);
+  assert.equal(requests[1].options.headers['X-QQFriend-Admin-Token'], 'session-only-token');
+  assert.equal(harness.session.get('qqfriend-admin-token'), 'session-only-token');
 });
 
 test('launcher frontend separates daily work into focused views', async () => {

@@ -1,0 +1,51 @@
+name: qqfriend
+
+services:
+  napcat:
+    image: ${NAPCAT_IMAGE:-mlikiowa/napcat-docker:v4.18.13}
+    container_name: qqfriend-napcat
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      NAPCAT_UID: ${NAPCAT_UID:-1000}
+      NAPCAT_GID: ${NAPCAT_GID:-1000}
+    volumes:
+      - ./state/napcat/config:/app/napcat/config
+      - ./state/napcat/qq:/app/.config/QQ
+    security_opt:
+      - no-new-privileges:true
+
+  bridge:
+    build:
+      context: ../..
+      dockerfile: deploy/linux/Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    image: qqfriend-bridge:${QQFRIEND_IMAGE_TAG:-linux-preview}
+    container_name: qqfriend-bridge
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      - napcat
+    env_file:
+      - path: ./qqfriend.env
+        required: true
+    environment:
+      QQBOT_CONFIG_ROOT: /config
+      QQBOT_DATA_DIR: /data
+      QQBOT_LOG_DIR: /logs
+      QQBOT_TEMP_DIR: /tmp/qqfriend
+      TMPDIR: /tmp/qqfriend
+      QQBOT_JM_PYTHON: python
+    volumes:
+      - ./state/qqfriend/config:/config
+      - ./state/qqfriend/data:/data
+      - ./state/qqfriend/logs:/logs
+      - ./state/qqfriend/temp:/tmp/qqfriend
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

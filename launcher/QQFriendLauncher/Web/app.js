@@ -1682,6 +1682,24 @@ function operationOutputId(action) {
   return ["startAll", "health", "restartBridge", "stopBridge", "stopAll"].includes(action) ? "serviceOutput" : "actionOutput";
 }
 
+function configureRuntimeUi() {
+  if (host.mode !== "browser") return;
+  document.documentElement.dataset.runtime = "browser";
+  const terminalOnly = ["startAll", "restartBridge", "stopBridge", "stopAll", "setDesktopBackground"];
+  terminalOnly.forEach(action => {
+    document.querySelectorAll(`[data-action="${action}"]`).forEach(button => {
+      button.disabled = true;
+      button.title = "Linux 上请通过 Docker Compose 或 systemd 执行";
+    });
+  });
+  document.querySelectorAll("[data-native-page]").forEach(button => {
+    button.disabled = true;
+    button.title = "Windows 桌面版专用入口";
+  });
+  const saveButton = document.querySelector('[data-action="saveConfig"]');
+  if (saveButton) saveButton.textContent = "保存配置";
+}
+
 async function runAction(action, button = null, options = {}) {
   const silent = options.silent === true;
   if (action === "newMeme") {
@@ -1863,6 +1881,14 @@ async function runAction(action, button = null, options = {}) {
       lastConfigSnapshot = snapshot;
       renderConfigEditor(snapshot, { force: true });
       renderConfig(lastStatus, snapshot);
+      if (host.mode === "browser") {
+        setOutput(
+          "configStatus",
+          `${result.message || "配置已保存"}\n请在服务器执行 docker compose restart bridge 或 systemctl restart qqfriend 后生效。`,
+          true,
+        );
+        return;
+      }
       setOutput("configStatus", `${result.message || "配置已保存"}\n正在重启 Bridge 使配置生效...`, true);
       try {
         const restartResult = await host.call("restartBridge");
@@ -2257,6 +2283,7 @@ document.addEventListener("change", (event) => {
 document.addEventListener("DOMContentLoaded", async () => {
   applyUiPreferences();
   renderListEditors();
+  configureRuntimeUi();
   try {
     await host.call("ready");
     const [background, snapshot] = await Promise.all([

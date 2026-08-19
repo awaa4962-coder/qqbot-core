@@ -96,6 +96,8 @@ test("admin command scaffold route supports isolated dry-run payloads", async ()
 });
 
 test("admin audit redacts secret-like values from action text", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-audit-"));
+  const auditFile = path.join(root, "admin-audit.log");
   const entry = recordAdminAudit({
     ts: "2026-07-04T00:00:00.000Z",
     action: "POST /admin/config sk-1234567890abcdef1234567890abcdef",
@@ -103,8 +105,10 @@ test("admin audit redacts secret-like values from action text", () => {
     pathname: "/admin/config",
     remoteAddress: "127.0.0.1",
     queryKeys: ["token", "file"],
-  });
+  }, { file: auditFile });
 
   assert.equal(entry.action.includes("sk-123456"), false);
   assert.deepEqual(entry.queryKeys, ["token", "file"]);
+  assert.equal(fs.existsSync(auditFile), true);
+  fs.rmSync(root, { recursive: true, force: true });
 });

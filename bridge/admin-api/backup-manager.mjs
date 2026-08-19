@@ -39,8 +39,8 @@ const EXCLUDED_PATTERNS = [
   "*.tmp",
 ];
 
-export function listSafeBackups(root = ROOT) {
-  const backupRoot = path.join(root, "dist", "admin-backups");
+export function listSafeBackups(root = ROOT, options = {}) {
+  const backupRoot = options.backupRoot || path.join(root, "dist", "admin-backups");
   if (!fs.existsSync(backupRoot)) return { schemaVersion: 1, backups: [] };
 
   const backups = fs.readdirSync(backupRoot, { withFileTypes: true })
@@ -56,7 +56,7 @@ export function createSafeBackup(options = {}) {
   const root = options.root || ROOT;
   const createdAt = new Date(options.now || Date.now()).toISOString();
   const name = options.name ? normalizeBackupName(options.name) : "safe-" + createdAt.replace(/[-:.TZ]/g, "").slice(0, 14);
-  const backupDir = path.join(root, "dist", "admin-backups", name);
+  const backupDir = path.join(options.backupRoot || path.join(root, "dist", "admin-backups"), name);
   const included = [];
   const skipped = [];
 
@@ -92,7 +92,11 @@ export function createSafeBackup(options = {}) {
 export function buildBackupRestorePlan(options = {}) {
   const root = options.root || ROOT;
   const name = normalizeBackupName(options.name || "");
-  const manifestPath = path.join(root, "dist", "admin-backups", name, "backup-manifest.json");
+  const manifestPath = path.join(
+    options.backupRoot || path.join(root, "dist", "admin-backups"),
+    name,
+    "backup-manifest.json"
+  );
   if (!fs.existsSync(manifestPath)) throw new Error("backup not found: " + name);
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   return {

@@ -1,0 +1,30 @@
+[Unit]
+Description=QQFriend daily group summary
+Wants=network-online.target
+After=network-online.target qqfriend.service
+
+[Service]
+Type=oneshot
+User=qqfriend
+Group=qqfriend
+WorkingDirectory=/opt/qqfriend
+Environment=NODE_ENV=production
+Environment=QQBOT_CONFIG_ROOT=/etc/qqfriend
+Environment=QQBOT_DATA_DIR=/var/lib/qqfriend
+Environment=QQBOT_LOG_DIR=/var/log/qqfriend
+Environment=QQBOT_TEMP_DIR=/var/lib/qqfriend/temp
+Environment=TMPDIR=/var/lib/qqfriend/temp
+Environment=QQBOT_JM_PYTHON=/opt/qqfriend-venv/bin/python
+EnvironmentFile=-/etc/qqfriend/qqfriend.env
+ExecStart=/usr/bin/node /opt/qqfriend/daily_summary.mjs
+UMask=0077
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/etc/qqfriend /var/lib/qqfriend /var/log/qqfriend
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=

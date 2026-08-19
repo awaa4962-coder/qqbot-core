@@ -1,6 +1,6 @@
 {
   "name": "qqfriend",
-  "version": "1.3.9-module-resilience",
+  "version": "1.4.0-linux-preview",
   "description": "夜星 QQ 机器人桥接器",
   "type": "module",
   "main": "napcat_bridge.mjs",
@@ -19,6 +19,7 @@
     "check:jm:install": "node scripts/check-jm-runtime.mjs --install",
     "check:runtime": "node scripts/runtime-check.mjs",
     "check:runtime:ci": "node scripts/runtime-check.mjs --allow-missing-env",
+    "smoke:linux": "node scripts/linux-smoke.mjs",
     "command:scaffold": "node scripts/scaffold-command.mjs",
     "self:describe": "node scripts/generate-self-description.mjs",
     "meme:audit": "node scripts/audit-meme-matches.mjs"

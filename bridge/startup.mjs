@@ -20,6 +20,7 @@ import {
   stopMemeTrendUpdates,
 } from "./knowledge/memes/index.mjs";
 import { handleAdminApiRequest } from "./admin-api/index.mjs";
+import { handleWebConsoleRequest } from "./web-console.mjs";
 import {
   initializeStickerSystem,
   shutdownStickerSystem,
@@ -144,6 +145,7 @@ async function handleEventPost(req, res) {
 
 async function routeHttpRequest(req, res, pathname) {
   const url = new URL(req.url, 'http://localhost');
+  if (await handleWebConsoleRequest(req, res, { pathname })) return;
   if (await handleAdminApiRequest(req, res, { pathname, url, sendJson })) return;
   if (req.method === 'GET' && pathname === '/changelog') {
     handleChangelog(res);
@@ -233,8 +235,8 @@ process.on('SIGINT', () => { flushRuntimeState(); process.exit(0); });
 process.on('SIGTERM', () => { flushRuntimeState(); process.exit(0); });
 process.on('beforeExit', flushRuntimeState);
 
-server.listen(CFG.listenPort, function() {
-  log('NapCat Bridge v' + VERSION + ' listening on http://0.0.0.0:' + CFG.listenPort);
+server.listen(CFG.listenPort, CFG.listenHost, function() {
+  log('NapCat Bridge v' + VERSION + ' listening on http://' + CFG.listenHost + ':' + CFG.listenPort);
   log('WebSocket server ready');
   log('Self UIN:', CFG.selfUin);
   log('Whitelist groups:', CFG.groupWhitelist.join(', '));

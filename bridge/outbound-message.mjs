@@ -1,5 +1,6 @@
 import { CFG } from "./config.mjs";
 import { log, logE } from "./logger.mjs";
+import { buildNapCatHeaders } from "./napcat-auth.mjs";
 
 const DEFAULT_MAX_LEN = 900;
 const HARD_MAX_LEN = 1200;
@@ -161,7 +162,7 @@ async function sendPayloadOnce(url, payload) {
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json; charset=utf-8" },
+      headers: buildNapCatHeaders({ "Content-Type": "application/json; charset=utf-8" }),
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(15000),
     });
