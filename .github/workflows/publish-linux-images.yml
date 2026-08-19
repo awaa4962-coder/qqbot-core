@@ -1,6 +1,9 @@
 name: Publish Linux image bundle
 
 on:
+  push:
+    tags:
+      - linux-bundle-build-*
   workflow_dispatch:
 
 permissions:
