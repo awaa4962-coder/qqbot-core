@@ -35,7 +35,7 @@ services:
         required: true
     environment:
       QQFRIEND_CONTAINERIZED: "1"
-      QQBOT_SUMMARY_SCHEDULER: systemd-user-timer
+      QQBOT_SUMMARY_SCHEDULER: user-cron
       QQBOT_LISTEN_HOST: 0.0.0.0
       QQBOT_NAPCAT_API: http://napcat:6700
       QQBOT_NAPCAT_WS_API: ws://napcat:3001
