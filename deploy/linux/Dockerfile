@@ -21,6 +21,9 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts=false \
+    && SEVEN_ZIP_PATH="$(node -p "require('7zip-bin').path7za")" \
+    && chmod 0755 "$SEVEN_ZIP_PATH" \
+    && "$SEVEN_ZIP_PATH" i >/dev/null \
     && npm cache clean --force
 
 COPY scripts/requirements-jm.txt ./scripts/requirements-jm.txt

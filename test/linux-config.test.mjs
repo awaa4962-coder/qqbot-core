@@ -85,6 +85,13 @@ test("Linux bootstrap secures NapCat WebUI before the first container start", ()
   assert.match(compose, /QQBOT_SUMMARY_SCHEDULER: user-cron/);
 });
 
+test("Linux image makes bundled 7-Zip executable and verifies it during build", () => {
+  const dockerfile = fs.readFileSync(path.join(ROOT, "deploy", "linux", "Dockerfile"), "utf8");
+  assert.match(dockerfile, /SEVEN_ZIP_PATH=.*7zip-bin/);
+  assert.match(dockerfile, /chmod 0755 "\$SEVEN_ZIP_PATH"/);
+  assert.match(dockerfile, /"\$SEVEN_ZIP_PATH" i >\/dev\/null/);
+});
+
 test("Linux Docker deployment includes an idempotent user schedule for daily summaries", () => {
   const installer = fs.readFileSync(path.join(ROOT, "deploy", "linux", "install-summary-schedule.sh"), "utf8");
 

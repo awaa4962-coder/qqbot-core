@@ -1,11 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { CFG } from "../bridge/config.mjs";
+import { findUsableSevenZip } from "../bridge/seven-zip.mjs";
 
-const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const RESULT_PREFIX = "QQFRIEND_JM_RESULT ";
 
@@ -39,27 +38,14 @@ function parseResult(stdout) {
   }
 }
 
-function bundledSevenZipPath() {
-  try {
-    return String(require("7zip-bin").path7za || "").trim();
-  } catch {
-    return "";
-  }
-}
-
-function hasSevenZip() {
-  if (CFG.jmSevenZipPath) return true;
-  return Boolean(bundledSevenZipPath());
-}
-
-function collectFailures(result, parsed) {
+function collectFailures(result, parsed, sevenZip) {
   const failures = [];
   if (result.status !== 0 || !parsed?.ok) {
     failures.push("python=" + (parsed?.reason || "unknown"));
     if (parsed?.missing?.length) failures.push("missing=" + parsed.missing.join(","));
     if (parsed?.error) failures.push("error=" + String(parsed.error).slice(0, 300));
   }
-  if (!hasSevenZip()) failures.push("7zip=missing");
+  if (!sevenZip) failures.push("7zip=missing_or_not_executable");
   if (String(CFG.jmZipPassword || "") !== "FS") failures.push("zipPassword=not_FS");
   return failures;
 }
@@ -70,14 +56,14 @@ function printFailure(failures, result) {
   process.exitCode = 1;
 }
 
-function printSuccess(parsed) {
+function printSuccess(parsed, sevenZip) {
   console.log(JSON.stringify({
     ok: true,
     python: CFG.jmPython,
     source: parsed?.source || "not_configured",
     domains: parsed?.domains || 0,
     zipPassword: CFG.jmZipPassword,
-    sevenZip: CFG.jmSevenZipPath || bundledSevenZipPath(),
+    sevenZip,
   }, null, 2));
 }
 
@@ -85,14 +71,15 @@ function main(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
   const result = runPythonCheck(options);
   const parsed = parseResult(result.stdout);
-  const failures = collectFailures(result, parsed);
+  const sevenZip = findUsableSevenZip({ configured: CFG.jmSevenZipPath });
+  const failures = collectFailures(result, parsed, sevenZip);
 
   if (failures.length) {
     printFailure(failures, result);
     return;
   }
 
-  printSuccess(parsed);
+  printSuccess(parsed, sevenZip);
 }
 
 main();

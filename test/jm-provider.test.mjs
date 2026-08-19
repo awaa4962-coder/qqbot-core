@@ -296,6 +296,7 @@ describe("jm provider", () => {
     const health = getJmRuntimeHealth({
       force: true,
       now: 1000,
+      sevenZipRunner: () => ({ status: 0 }),
       runner: () => ({
         status: 0,
         stdout: 'QQFRIEND_JM_RESULT {"ok":true,"source":"installed"}\n',
@@ -312,6 +313,7 @@ describe("jm provider", () => {
     const health = await refreshJmRuntimeHealth({
       force: true,
       now: 2000,
+      sevenZipRunner: () => ({ status: 0 }),
       runner: async () => ({
         status: 0,
         stdout: 'QQFRIEND_JM_RESULT {"ok":true,"source":"installed"}\n',
@@ -319,6 +321,22 @@ describe("jm provider", () => {
     });
     assert.equal(health.health, "ready");
     assert.equal(getJmRuntimeHealth({ now: 2001 }).reason, "runtime_ok");
+  });
+
+  it("reports degraded health when 7-Zip exists but cannot execute", () => {
+    resetJmRuntimeHealthCache();
+    const health = getJmRuntimeHealth({
+      force: true,
+      now: 3000,
+      sevenZipRunner: () => ({ status: null, error: Object.assign(new Error("permission denied"), { code: "EACCES" }) }),
+      runner: () => ({
+        status: 0,
+        stdout: 'QQFRIEND_JM_RESULT {"ok":true,"source":"installed"}\n',
+      }),
+    });
+    assert.equal(health.health, "degraded");
+    assert.equal(health.sevenZipReady, false);
+    assert.equal(health.reason, "7zip_missing");
   });
 
   it("pins the JM Python dependency set used by auto-install", () => {

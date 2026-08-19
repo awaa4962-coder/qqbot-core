@@ -1,6 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
-import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
@@ -9,18 +8,12 @@ import { prepareCommandText } from "./commands/normalize.mjs";
 import { isResourceGroupAllowed } from "./resource-transfer.mjs";
 import { sendMsg, sendPrivateMsg, uploadGroupFile, uploadPrivateFile } from "./napcat.mjs";
 import { log, logE } from "./logger.mjs";
+import { findUsableSevenZip, getBundledSevenZipPath, getSevenZipCommands } from "./seven-zip.mjs";
 
-const require = createRequire(import.meta.url);
 const JM_RE = /^jm\s*([0-9]{3,})$/i;
 const RESULT_PREFIX = "QQFRIEND_JM_RESULT ";
 const JM_TEMP_PREFIX = "qqfriend-jm-";
 const JM_CLEANUP_DELAY_MS = 24 * 60 * 60 * 1000;
-const SEVEN_ZIP_COMMON_PATHS = [
-  "C:\\Program Files\\7-Zip\\7z.exe",
-  "C:\\Program Files (x86)\\7-Zip\\7z.exe",
-  "7z",
-  "7za",
-];
 let activeJmTask = null;
 let jmHealthCache = null;
 let jmHealthExpiresAt = 0;
@@ -284,7 +277,7 @@ export function getJmRuntimeHealth(options = {}) {
   const now = Number(options.now || Date.now());
   if (!options.force && jmHealthCache && jmHealthExpiresAt > now) return { ...jmHealthCache };
   if (isUnforcedTestProbe(options)) return buildTestJmHealth(now);
-  if (options.force || options.runner) return cacheJmHealth(runJmHealthProbe(options), now);
+  if (options.force || options.runner) return cacheJmHealth(runJmHealthProbe(options), now, options);
   refreshJmRuntimeHealth({ now }).catch(error => logE("jm health refresh failed:", error.message));
   if (jmHealthCache) return { ...jmHealthCache, stale: true };
   return buildPendingJmHealth(now);
@@ -295,7 +288,7 @@ export async function refreshJmRuntimeHealth(options = {}) {
   if (!options.force && jmHealthCache && jmHealthExpiresAt > now) return { ...jmHealthCache };
   if (jmHealthPromise) return await jmHealthPromise;
   jmHealthPromise = runJmHealthProbeAsync(options)
-    .then(result => cacheJmHealth(result, now))
+    .then(result => cacheJmHealth(result, now, options))
     .finally(() => { jmHealthPromise = null; });
   return await jmHealthPromise;
 }
@@ -316,7 +309,7 @@ function buildTestJmHealth(now) {
 }
 
 function buildPendingJmHealth(now) {
-  const sevenZipReady = Boolean(CFG.jmSevenZipPath || getBundledSevenZipPath());
+  const sevenZipReady = Boolean(findUsableSevenZip({ configured: CFG.jmSevenZipPath }));
   return {
     health: "degraded",
     dependencyReady: false,
@@ -374,18 +367,21 @@ function spawnHealthProbe(command, args, options) {
   });
 }
 
-function cacheJmHealth(result, now) {
-  const value = buildJmHealthValue(result, now);
+function cacheJmHealth(result, now, options = {}) {
+  const value = buildJmHealthValue(result, now, options);
   jmHealthCache = value;
   jmHealthExpiresAt = now + JM_HEALTH_CACHE_MS;
   return { ...value };
 }
 
-function buildJmHealthValue(result, now) {
+function buildJmHealthValue(result, now, options = {}) {
   const parsed = parseHealthResult(result?.stdout);
   const pythonReady = !result?.error && result?.status !== null;
   const dependencyReady = result?.status === 0 && parsed?.ok === true;
-  const sevenZipReady = Boolean(CFG.jmSevenZipPath || getBundledSevenZipPath());
+  const sevenZipReady = Boolean(findUsableSevenZip({
+    configured: CFG.jmSevenZipPath,
+    runner: options.sevenZipRunner,
+  }));
   const health = dependencyReady && sevenZipReady ? "ready" : "degraded";
   const value = {
     health,
@@ -510,25 +506,12 @@ export function buildSevenZipArgs(zipPath, password) {
   return ["a", "-tzip", "-mx=0", "-mem=AES256", "-p" + password, zipPath, "."];
 }
 
-function getSevenZipCommands(options = {}) {
-  const configured = String(options.sevenZipPath || "").trim();
-  if (configured) return [configured];
-  const bundled = getBundledSevenZipPath();
-  return bundled ? [...SEVEN_ZIP_COMMON_PATHS, bundled] : SEVEN_ZIP_COMMON_PATHS;
-}
-
-export function getBundledSevenZipPath() {
-  try {
-    return String(require("7zip-bin").path7za || "").trim();
-  } catch {
-    return "";
-  }
-}
+export { getBundledSevenZipPath };
 
 export async function zipDirectory(sourceDir, zipPath, options = {}) {
   const password = String(options.password || "").trim();
   if (password) {
-    const commands = getSevenZipCommands(options);
+    const commands = getSevenZipCommands({ configured: options.sevenZipPath });
     for (const command of commands) {
       const ok = await runZipCommand(sourceDir, zipPath, command, buildSevenZipArgs(zipPath, password));
       if (ok) return;

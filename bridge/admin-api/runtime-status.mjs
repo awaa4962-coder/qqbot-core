@@ -9,7 +9,7 @@ import { VERSION, VERSION_NAME } from "../version.mjs";
 import { getCognitionStatus } from "../cognition/index.mjs";
 import { getImageContextCacheStatus } from "../knowledge/memes/image-context.mjs";
 import { getStickerRuntimeStatus } from "../features/stickers/index.mjs";
-import { getBundledSevenZipPath, getJmRuntimeHealth } from "../jm-provider.mjs";
+import { getJmRuntimeHealth } from "../jm-provider.mjs";
 import { loadApiConfig, readProviderSecret } from "../api-providers/store.mjs";
 
 export function buildRuntimeStatus(options = {}) {
@@ -85,7 +85,7 @@ function buildJmModule(now) {
     domains: CFG.jmDomains.length,
     timeoutMs: CFG.jmTimeoutMs,
     zipPasswordConfigured: Boolean(CFG.jmZipPassword),
-    sevenZipConfigured: Boolean(CFG.jmSevenZipPath || getBundledSevenZipPath()),
+    sevenZipConfigured: health.sevenZipReady,
   };
 }
 
