@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CFG } from "./config.mjs";
-import { isLoopbackAddress } from "./admin-api/auth.mjs";
+import { isTrustedManagementAddress } from "./admin-api/auth.mjs";
 
 const DEFAULT_WEB_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -27,7 +27,9 @@ export async function handleWebConsoleRequest(req, res, context = {}) {
   const pathname = context.pathname || "/";
   if (!enabled || !pathname.startsWith("/console")) return false;
 
-  if (!isLoopbackAddress(req.socket?.remoteAddress)) {
+  if (!isTrustedManagementAddress(req.socket?.remoteAddress, {
+    containerized: context.containerized,
+  })) {
     writeText(res, 404, "not found");
     return true;
   }

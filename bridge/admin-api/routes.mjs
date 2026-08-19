@@ -1,6 +1,10 @@
 // bridge/admin-api/routes.mjs - local management routes.
 
-import { isAuthorizedAdminRequest, adminForbiddenPayload, isLoopbackAddress } from "./auth.mjs";
+import {
+  isAuthorizedAdminRequest,
+  adminForbiddenPayload,
+  isTrustedManagementAddress,
+} from "./auth.mjs";
 import { buildAuditStatus, recordAdminAudit } from "./audit-log.mjs";
 import { applyApiProviderAction, buildApiProviderManagerSnapshot } from "./api-provider-manager.mjs";
 import { buildBackupRestorePlan, createSafeBackup, listSafeBackups } from "./backup-manager.mjs";
@@ -58,14 +62,19 @@ export async function handleAdminApiRequest(req, res, context = {}) {
   if (!pathname.startsWith("/admin/")) return false;
   if (pathname === STICKER_PREVIEW_PATH) {
     // WebView image tags cannot attach the admin token. Keep this opaque-ID route loopback-only.
-    if (!isLoopbackAddress(req.socket?.remoteAddress)) {
+    if (!isTrustedManagementAddress(req.socket?.remoteAddress, {
+      containerized: context.containerized,
+    })) {
       sendJson(res, 403, adminForbiddenPayload());
       return true;
     }
     await handleStickerPreviewRoute(req, res, { ...context, pathname, url, sendJson });
     return true;
   }
-  if (!isAuthorizedAdminRequest(req)) {
+  if (!isAuthorizedAdminRequest(req, {
+    containerized: context.containerized,
+    requiredToken: context.requiredToken,
+  })) {
     sendJson(res, 403, adminForbiddenPayload());
     return true;
   }

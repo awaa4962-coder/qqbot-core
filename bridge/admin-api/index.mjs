@@ -17,5 +17,10 @@ export { buildModuleCatalog } from "./module-catalog.mjs";
 export { buildPluginCatalog } from "./plugin-catalog.mjs";
 export { buildAuditStatus, readAuditTail, recordAdminAudit } from "./audit-log.mjs";
 export { buildBackupRestorePlan, createSafeBackup, listSafeBackups } from "./backup-manager.mjs";
-export { isAuthorizedAdminRequest, isLoopbackAddress } from "./auth.mjs";
+export {
+  isAuthorizedAdminRequest,
+  isLoopbackAddress,
+  isPrivateAddress,
+  isTrustedManagementAddress,
+} from "./auth.mjs";
 export { buildProjectSelfDescription, buildWorkflowDescription } from "../self-description.mjs";

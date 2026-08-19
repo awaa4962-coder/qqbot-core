@@ -34,6 +34,7 @@ services:
       - path: ./qqfriend.env
         required: true
     environment:
+      QQFRIEND_CONTAINERIZED: "1"
       QQBOT_LISTEN_HOST: 0.0.0.0
       QQBOT_NAPCAT_API: http://napcat:6700
       QQBOT_NAPCAT_WS_API: ws://napcat:3001

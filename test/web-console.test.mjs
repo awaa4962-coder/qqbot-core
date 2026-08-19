@@ -38,6 +38,33 @@ test("web console is hidden from non-loopback clients", async () => {
   assert.equal(response.statusCode, 404);
 });
 
+test("web console accepts a private Docker gateway only in container mode", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "qqfriend-console-docker-test-"));
+  await fs.writeFile(path.join(root, "index.html"), "<h1>Container</h1>", "utf8");
+  try {
+    const denied = createResponse();
+    await handleWebConsoleRequest(createRequest("172.18.0.1"), denied, {
+      enabled: true,
+      pathname: "/console/",
+      root,
+      containerized: false,
+    });
+    assert.equal(denied.statusCode, 404);
+
+    const allowed = createResponse();
+    await handleWebConsoleRequest(createRequest("172.18.0.1"), allowed, {
+      enabled: true,
+      pathname: "/console/",
+      root,
+      containerized: true,
+    });
+    assert.equal(allowed.statusCode, 200);
+    assert.equal(allowed.body.toString("utf8"), "<h1>Container</h1>");
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test("web console rejects unknown and traversal-like asset paths", async () => {
   for (const pathname of ["/console/../package.json", "/console/secrets", "/console/app.js.map"]) {
     const response = createResponse();

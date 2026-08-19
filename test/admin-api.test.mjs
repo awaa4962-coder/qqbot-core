@@ -15,6 +15,8 @@ import {
   handleAdminApiRequest,
   isAuthorizedAdminRequest,
   isLoopbackAddress,
+  isPrivateAddress,
+  isTrustedManagementAddress,
   readLogTail,
   redactLogLine,
 } from "../bridge/admin-api/index.mjs";
@@ -40,6 +42,36 @@ test("admin api auth honors optional token", () => {
     socket: { remoteAddress: "127.0.0.1" },
     headers: { authorization: "Bearer token-a" },
   }, { requiredToken: "token-a" }), true);
+});
+
+test("container management trusts private gateways only with explicit mode and token", () => {
+  assert.equal(isPrivateAddress("10.0.0.1"), true);
+  assert.equal(isPrivateAddress("172.18.0.1"), true);
+  assert.equal(isPrivateAddress("192.168.1.2"), true);
+  assert.equal(isPrivateAddress("::ffff:172.18.0.1"), true);
+  assert.equal(isPrivateAddress("fd00::1"), true);
+  assert.equal(isPrivateAddress("8.8.8.8"), false);
+
+  assert.equal(isTrustedManagementAddress("172.18.0.1", { containerized: false }), false);
+  assert.equal(isTrustedManagementAddress("172.18.0.1", { containerized: true }), true);
+  assert.equal(isTrustedManagementAddress("8.8.8.8", { containerized: true }), false);
+
+  const req = {
+    socket: { remoteAddress: "172.18.0.1" },
+    headers: { "x-qqfriend-admin-token": "token-a" },
+  };
+  assert.equal(isAuthorizedAdminRequest(req, {
+    containerized: true,
+    requiredToken: "token-a",
+  }), true);
+  assert.equal(isAuthorizedAdminRequest(req, {
+    containerized: true,
+    requiredToken: "token-b",
+  }), false);
+  assert.equal(isAuthorizedAdminRequest(req, {
+    containerized: true,
+    requiredToken: "",
+  }), false);
 });
 
 test("command catalog is generated from manifest as plain JSON data", () => {
@@ -112,6 +144,27 @@ test("admin route returns 403 for non-local requests", async () => {
   const handled = await handleAdminApiRequest(req, res, {
     pathname: "/admin/status",
     url: new URL("http://localhost/admin/status"),
+    sendJson(_res, statusCode, payload) {
+      writes.push({ statusCode, payload });
+    },
+  });
+  assert.equal(handled, true);
+  assert.equal(writes[0].statusCode, 403);
+});
+
+test("container gateway admin route still requires the configured token", async () => {
+  const writes = [];
+  const req = {
+    method: "GET",
+    url: "/admin/status",
+    socket: { remoteAddress: "172.18.0.1" },
+    headers: { "x-qqfriend-admin-token": "token-a" },
+  };
+  const handled = await handleAdminApiRequest(req, {}, {
+    pathname: "/admin/status",
+    url: new URL("http://localhost/admin/status"),
+    containerized: true,
+    requiredToken: "token-b",
     sendJson(_res, statusCode, payload) {
       writes.push({ statusCode, payload });
     },
