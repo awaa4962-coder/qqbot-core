@@ -55,6 +55,12 @@ docker compose --env-file .env up -d --build
 docker compose logs -f --tail=100
 ```
 
+If Docker Hub is unavailable but GitHub is reachable, run the repository's
+`Publish Linux image bundle` workflow. Download the release bundle and its
+SHA-256 file, verify it with `sha256sum -c`, load it with `docker load`, and
+start Compose with `--no-build`. The bundle pins the official NapCat amd64
+manifest and builds the Bridge from the workflow commit.
+
 If Python dependency downloads are unusually slow, set `PIP_INDEX_URL` in
 `deploy/linux/.env` to a trusted mirror before building. This affects only the
 image build and is not passed to the running bot.

@@ -1,0 +1,84 @@
+name: Publish Linux image bundle
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  BUNDLE_NAME: qqfriend-linux-images-amd64
+  RELEASE_TAG: linux-images-v1.4.0
+  NAPCAT_SOURCE: mlikiowa/napcat-docker@sha256:11d72e50b6edc01b20f1a7611a250720e61412fe96184e3c70c3b8cf976744e1
+  NAPCAT_TAG: mlikiowa/napcat-docker:v4.18.13
+  BRIDGE_TAG: qqfriend-bridge:linux-preview
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify source
+        run: |
+          npm ci
+          printf 'dummy\n' > .env_mimo
+          printf 'dummy\n' > .env_ds
+          printf 'dummy\n' > .env_tavily
+          printf 'dummy\n' > .env_doubao
+          npm run check:runtime:ci
+          npm run lint
+          npm test
+
+      - name: Build Bridge image
+        run: |
+          docker build \
+            --file deploy/linux/Dockerfile \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --tag "$BRIDGE_TAG" \
+            .
+
+      - name: Pull pinned NapCat image
+        run: |
+          docker pull --platform linux/amd64 "$NAPCAT_SOURCE"
+          docker tag "$NAPCAT_SOURCE" "$NAPCAT_TAG"
+
+      - name: Create verified image bundle
+        run: |
+          {
+            printf 'source_commit=%s\n' "$GITHUB_SHA"
+            printf 'bridge_tag=%s\n' "$BRIDGE_TAG"
+            printf 'bridge_id=%s\n' "$(docker image inspect --format '{{.Id}}' "$BRIDGE_TAG")"
+            printf 'napcat_source=%s\n' "$NAPCAT_SOURCE"
+            printf 'napcat_tag=%s\n' "$NAPCAT_TAG"
+            printf 'napcat_id=%s\n' "$(docker image inspect --format '{{.Id}}' "$NAPCAT_TAG")"
+          } > "$BUNDLE_NAME.manifest.txt"
+          docker save "$BRIDGE_TAG" "$NAPCAT_TAG" \
+            | zstd --threads=0 --ultra -10 --stdout \
+            > "$BUNDLE_NAME.tar.zst"
+          sha256sum "$BUNDLE_NAME.tar.zst" > "$BUNDLE_NAME.tar.zst.sha256"
+
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "QQFriend Linux image bundle v1.4.0" \
+              --notes "Pinned amd64 images for the isolated QQFriend Linux deployment."
+          fi
+          gh release upload "$RELEASE_TAG" --clobber \
+            "$BUNDLE_NAME.tar.zst" \
+            "$BUNDLE_NAME.tar.zst.sha256" \
+            "$BUNDLE_NAME.manifest.txt"
