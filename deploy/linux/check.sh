@@ -19,12 +19,24 @@ docker compose version >/dev/null 2>&1 && pass "Docker Compose v2 present" || fa
   || fail "NapCat WebUI configuration is missing"
 
 if [[ -f "$ROOT/state/napcat/config/webui.json" ]]; then
-  grep -Eq '"host"[[:space:]]*:[[:space:]]*"127\.0\.0\.1"' "$ROOT/state/napcat/config/webui.json" \
-    && pass "NapCat WebUI is loopback-only" \
-    || fail "NapCat WebUI host must be 127.0.0.1"
+  grep -Eq '"host"[[:space:]]*:[[:space:]]*"0\.0\.0\.0"' "$ROOT/state/napcat/config/webui.json" \
+    && pass "NapCat WebUI accepts the isolated container network" \
+    || fail "NapCat WebUI host must be 0.0.0.0 inside the container"
   grep -Eq '"token"[[:space:]]*:[[:space:]]*"[^"]{16,}"' "$ROOT/state/napcat/config/webui.json" \
     && pass "NapCat WebUI token is non-default" \
     || fail "NapCat WebUI token is missing or too short"
+fi
+
+grep -Fq '"127.0.0.1:6099:6099"' "$ROOT/compose.yaml" \
+  && pass "NapCat WebUI host port is loopback-only" \
+  || fail "NapCat WebUI must publish only on 127.0.0.1"
+grep -Fq '"127.0.0.1:16789:16789"' "$ROOT/compose.yaml" \
+  && pass "Bridge management host port is loopback-only" \
+  || fail "Bridge management port must publish only on 127.0.0.1"
+if grep -Eq '^[[:space:]]*network_mode:[[:space:]]*host' "$ROOT/compose.yaml"; then
+  fail "host networking conflicts with the NapCat Xvfb display socket"
+else
+  pass "services use an isolated Docker network"
 fi
 
 if [[ -f "$ROOT/qqfriend.env" ]]; then

@@ -44,7 +44,7 @@ if [[ ! -f "$NAPCAT_CONFIG_DIR/webui.json" ]]; then
   webui_token="$(random_hex 32)"
   cat > "$NAPCAT_CONFIG_DIR/webui.json" <<EOF
 {
-  "host": "127.0.0.1",
+  "host": "0.0.0.0",
   "port": 6099,
   "prefix": "",
   "token": "$webui_token",

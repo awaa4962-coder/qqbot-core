@@ -66,10 +66,16 @@ test("Linux environment overrides connection and stream settings without changin
 test("Linux bootstrap secures NapCat WebUI before the first container start", () => {
   const prepare = fs.readFileSync(path.join(ROOT, "deploy", "linux", "prepare.sh"), "utf8");
   const check = fs.readFileSync(path.join(ROOT, "deploy", "linux", "check.sh"), "utf8");
+  const compose = fs.readFileSync(path.join(ROOT, "deploy", "linux", "compose.yaml"), "utf8");
   assert.match(prepare, /state\/napcat\/config/);
-  assert.match(prepare, /"host": "127\.0\.0\.1"/);
+  assert.match(prepare, /"host": "0\.0\.0\.0"/);
   assert.match(prepare, /webui_token="\$\(random_hex 32\)"/);
   assert.match(prepare, /chmod 600[\s\S]*webui\.json/);
-  assert.match(check, /NapCat WebUI is loopback-only/);
+  assert.match(check, /NapCat WebUI host port is loopback-only/);
   assert.match(check, /NapCat WebUI token is non-default/);
+  assert.match(compose, /"127\.0\.0\.1:6099:6099"/);
+  assert.match(compose, /"127\.0\.0\.1:16789:16789"/);
+  assert.doesNotMatch(compose, /network_mode:\s*host/);
+  assert.match(compose, /QQBOT_NAPCAT_API: http:\/\/napcat:6700/);
+  assert.match(compose, /QQBOT_NAPCAT_WS_API: ws:\/\/napcat:3001/);
 });

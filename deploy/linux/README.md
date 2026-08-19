@@ -6,7 +6,7 @@ This deployment is isolated from the Windows installation. It creates fresh Linu
 
 - `qqfriend-bridge`: Node.js bridge and browser console.
 - `qqfriend-napcat`: official NapCat Docker image pinned to `v4.18.13`.
-- Bridge HTTP, browser console, NapCat WebUI, and OneBot endpoints stay on loopback.
+- Bridge and NapCat use an isolated Docker network. Published host ports stay on loopback.
 - Remote administration uses an SSH tunnel instead of public ports.
 - Cross-container files use NapCat `upload_file_stream`; local Bridge paths are never passed directly to NapCat.
 
@@ -36,14 +36,14 @@ Fill these files under `state/qqfriend/config`:
 .env_doubao
 ```
 
-`prepare.sh` also creates `state/napcat/config/webui.json` before NapCat can start. It binds the WebUI to `127.0.0.1` and generates a random token; keep that file private and use its token when signing in.
+`prepare.sh` also creates `state/napcat/config/webui.json` before NapCat can start. The WebUI listens inside the isolated container network, while Compose publishes it only on host `127.0.0.1`. Keep its generated token private and use it when signing in.
 
 Set allowlists and the bot QQ number in `qqfriend.env`. Then open NapCat WebUI at `http://127.0.0.1:6099/webui` through an SSH tunnel and configure:
 
 ```text
-HTTP server:           127.0.0.1:6700
-Forward WebSocket:     127.0.0.1:3001
-Reverse WebSocket:     ws://127.0.0.1:16789
+HTTP server:           0.0.0.0:6700
+Forward WebSocket:     0.0.0.0:3001
+Reverse WebSocket:     ws://bridge:16789
 Access token:          state/qqfriend/config/.env_napcat_token
 ```
 

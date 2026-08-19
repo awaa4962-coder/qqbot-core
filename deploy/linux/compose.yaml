@@ -4,7 +4,6 @@ services:
   napcat:
     image: ${NAPCAT_IMAGE:-mlikiowa/napcat-docker:v4.18.13}
     container_name: qqfriend-napcat
-    network_mode: host
     restart: unless-stopped
     environment:
       NAPCAT_UID: ${NAPCAT_UID:-1000}
@@ -12,6 +11,10 @@ services:
     volumes:
       - ./state/napcat/config:/app/napcat/config
       - ./state/napcat/qq:/app/.config/QQ
+    ports:
+      - "127.0.0.1:6099:6099"
+      - "127.0.0.1:6700:6700"
+      - "127.0.0.1:3001:3001"
     security_opt:
       - no-new-privileges:true
 
@@ -23,7 +26,6 @@ services:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
     image: qqfriend-bridge:${QQFRIEND_IMAGE_TAG:-linux-preview}
     container_name: qqfriend-bridge
-    network_mode: host
     restart: unless-stopped
     depends_on:
       - napcat
@@ -31,6 +33,9 @@ services:
       - path: ./qqfriend.env
         required: true
     environment:
+      QQBOT_LISTEN_HOST: 0.0.0.0
+      QQBOT_NAPCAT_API: http://napcat:6700
+      QQBOT_NAPCAT_WS_API: ws://napcat:3001
       QQBOT_CONFIG_ROOT: /config
       QQBOT_DATA_DIR: /data
       QQBOT_LOG_DIR: /logs
@@ -42,6 +47,8 @@ services:
       - ./state/qqfriend/data:/data
       - ./state/qqfriend/logs:/logs
       - ./state/qqfriend/temp:/tmp/qqfriend
+    ports:
+      - "127.0.0.1:16789:16789"
     read_only: true
     tmpfs:
       - /tmp:size=256m,mode=1777
