@@ -26,6 +26,7 @@ test("Linux environment overrides connection and stream settings without changin
     "  listenHost: CFG.listenHost,",
     "  listenPort: CFG.listenPort,",
     "  webConsoleEnabled: CFG.webConsoleEnabled,",
+    "  summaryScheduler: CFG.summaryScheduler,",
     "  configRoot: CFG.configRoot,",
     "  adminAuditFile: CFG.adminAuditFile,",
     "  memoryProfileFile: CFG.memoryProfileFile,",
@@ -47,6 +48,7 @@ test("Linux environment overrides connection and stream settings without changin
       QQBOT_LISTEN_HOST: "127.0.0.1",
       QQBOT_LISTEN_PORT: "17689",
       QQFRIEND_WEB_CONSOLE: "1",
+      QQBOT_SUMMARY_SCHEDULER: "systemd-user-timer",
     },
   });
   const value = JSON.parse(stdout);
@@ -58,6 +60,7 @@ test("Linux environment overrides connection and stream settings without changin
   assert.equal(value.listenHost, "127.0.0.1");
   assert.equal(value.listenPort, 17689);
   assert.equal(value.webConsoleEnabled, true);
+  assert.equal(value.summaryScheduler, "systemd-user-timer");
   assert.equal(value.configRoot, configRoot);
   assert.equal(value.adminAuditFile, path.join(logRoot, "admin-audit.log"));
   assert.equal(value.memoryProfileFile, path.join(dataRoot, ".qqfriend", "memory_profiles.json"));
@@ -79,4 +82,31 @@ test("Linux bootstrap secures NapCat WebUI before the first container start", ()
   assert.match(compose, /ACCOUNT: \$\{NAPCAT_ACCOUNT:-\}/);
   assert.match(compose, /QQBOT_NAPCAT_API: http:\/\/napcat:6700/);
   assert.match(compose, /QQBOT_NAPCAT_WS_API: ws:\/\/napcat:3001/);
+  assert.match(compose, /QQBOT_SUMMARY_SCHEDULER: systemd-user-timer/);
+});
+
+test("Linux Docker deployment includes a persistent user timer for daily summaries", () => {
+  const installer = fs.readFileSync(path.join(ROOT, "deploy", "linux", "install-summary-timer.sh"), "utf8");
+  const service = fs.readFileSync(path.join(
+    ROOT,
+    "deploy",
+    "linux",
+    "systemd-user",
+    "qqfriend-compose-summary.service"
+  ), "utf8");
+  const timer = fs.readFileSync(path.join(
+    ROOT,
+    "deploy",
+    "linux",
+    "systemd-user",
+    "qqfriend-compose-summary.timer"
+  ), "utf8");
+
+  assert.match(installer, /systemctl --user enable --now qqfriend-compose-summary\.timer/);
+  assert.match(installer, /loginctl show-user/);
+  assert.doesNotMatch(installer, /sudo systemctl/);
+  assert.match(service, /docker compose[\s\S]*run --rm --no-deps -T bridge node daily_summary\.mjs/);
+  assert.match(service, /Restart=on-failure/);
+  assert.match(timer, /OnCalendar=\*-\*-\* 00:05:00 Asia\/Shanghai/);
+  assert.match(timer, /Persistent=true/);
 });

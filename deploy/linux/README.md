@@ -23,7 +23,7 @@ sudo ./install-docker-host.sh
 
 ```bash
 cd deploy/linux
-chmod +x install-docker-host.sh prepare.sh check.sh
+chmod +x install-docker-host.sh prepare.sh install-summary-timer.sh check.sh
 ./prepare.sh
 ```
 
@@ -55,9 +55,16 @@ Start and verify:
 
 ```bash
 docker compose --env-file .env up -d --build
+./install-summary-timer.sh
 ./check.sh --runtime
 docker compose logs -f --tail=100
 ```
+
+`install-summary-timer.sh` installs a user-level systemd timer that runs the
+containerized `daily_summary.mjs` at 00:05 Asia/Shanghai. It does not require a
+host Node.js installation or root. User lingering must remain enabled so the
+timer survives logout and reboot; the installer prints a warning when it is not.
+The existing per-group send guard still prevents duplicate daily reports.
 
 If Docker Hub is unavailable but GitHub is reachable, run the repository's
 `Publish Linux image bundle` workflow. Download the release bundle and its

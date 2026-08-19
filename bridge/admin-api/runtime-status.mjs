@@ -93,7 +93,7 @@ function buildGroupSummaryModule() {
   return {
     ...buildWhitelistModule(CFG.summaryGroupWhitelist),
     groups: CFG.summaryGroupWhitelist,
-    scheduler: "openclaw-cron",
+    scheduler: CFG.summaryScheduler,
   };
 }
 

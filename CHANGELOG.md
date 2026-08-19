@@ -20,7 +20,8 @@
 - 图片识别任务默认关闭内部长推理，把有限输出预算留给可发送的视觉正文；不支持图片的 MiMo 2.5 Pro 不再作为 Linux 视觉备用，表情分析不再因“主路只有推理、备用 404”整批失败。
 - API 实例连接测试统一使用省额度推理策略，修复 DeepSeek 接口返回 HTTP 200 却因测试预算被内部推理耗尽而显示失败的问题；内部推理仍不会进入最终输出。
 - 已在 Ubuntu 26.04 x86_64 实机完成 Docker 部署：Bridge 与 NapCat 镜像经过 SHA-256 校验后导入，NapCat 登录、OneBot HTTP/WS、反向 WebSocket、浏览器控制台和管理鉴权均通过，Windows 生产安装未被覆盖。
-- 验收：`npm run lint` 0 errors / 0 warnings、`npm test` 574/574 pass、Linux 浏览器烟雾、JM Python 依赖、真实 MiMo/DeepSeek 文本连接与 MiMo 图片输入检查通过；Bridge `/health` 为 ok，两只容器重启计数均为 0。
+- Docker 部署新增无需 root 和宿主机 Node.js 的 systemd user timer，每天北京时间 00:05 调用容器内日报入口；启用 lingering 后注销与重启仍生效，并继续复用逐群发送锁防止重复日报。
+- 验收：`npm run lint` 0 errors / 0 warnings、`npm test` 575/575 pass、Linux 浏览器烟雾、JM Python 依赖、真实 MiMo/DeepSeek 文本连接与 MiMo 图片输入检查通过；Bridge `/health` 为 ok，两只容器重启计数均为 0。
 
 ## v1.3.9-module-resilience - 2026-08-13 - 模块韧性与真实健康状态
 - 表情分析改用统一预览读取链路：QQ 临时图片地址会先续签，主视觉模型返回空正文或不安全内容时会切换视觉备用模型，不会把内部推理当作标签写入目录。

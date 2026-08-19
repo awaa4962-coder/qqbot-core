@@ -54,6 +54,12 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; 
 fi
 
 if [[ "${1:-}" == "--runtime" ]]; then
+  if systemctl --user is-enabled qqfriend-compose-summary.timer >/dev/null 2>&1 \
+    && systemctl --user is-active qqfriend-compose-summary.timer >/dev/null 2>&1; then
+    pass "Daily summary user timer"
+  else
+    fail "daily summary timer is not active; run ./install-summary-timer.sh"
+  fi
   if curl --fail --silent --max-time 5 http://127.0.0.1:16789/health >/dev/null; then
     pass "Bridge health endpoint"
   else

@@ -231,6 +231,7 @@ export const CFG = {
   selfUin: readSelfUin(),
   groupWhitelist: GROUP_WHITELIST,
   summaryGroupWhitelist: SUMMARY_GROUP_WHITELIST,
+  summaryScheduler: String(process.env.QQBOT_SUMMARY_SCHEDULER || 'openclaw-cron').trim() || 'openclaw-cron',
   resourceGroupWhitelist: RESOURCE_GROUP_WHITELIST,
   featureGroupWhitelist: FEATURE_GROUP_WHITELIST,
   stickerGroupWhitelist: STICKER_GROUP_WHITELIST,
