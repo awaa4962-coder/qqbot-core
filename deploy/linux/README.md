@@ -14,9 +14,16 @@ This deployment is isolated from the Windows installation. It creates fresh Linu
 
 Requirements: Linux x86_64/arm64, Docker Engine, Docker Compose v2, and enough free disk for the NapCat image and persistent QQ data.
 
+On a fresh supported Ubuntu host, install Docker Engine from Docker's official
+APT repository, then reconnect so the new `docker` group membership applies:
+
+```bash
+sudo ./install-docker-host.sh
+```
+
 ```bash
 cd deploy/linux
-chmod +x prepare.sh check.sh
+chmod +x install-docker-host.sh prepare.sh check.sh
 ./prepare.sh
 ```
 
