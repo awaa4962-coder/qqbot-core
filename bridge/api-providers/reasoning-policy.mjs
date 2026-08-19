@@ -7,8 +7,14 @@ export const REASONING_MODES = Object.freeze([
 ]);
 
 const MODE_IDS = new Set(REASONING_MODES.map(item => item.id));
-const ECONOMY_TASKS = new Set(["interjection", "group_summary", "relationship_comment", "sticker_select"]);
-const DEEP_TASKS = new Set(["file_chat", "vision", "profile"]);
+const ECONOMY_TASKS = new Set([
+  "interjection",
+  "group_summary",
+  "relationship_comment",
+  "sticker_select",
+  "vision",
+]);
+const DEEP_TASKS = new Set(["file_chat", "profile"]);
 const COMPLEX_REQUEST = /(?:为什么|为何|分析|推理|比较|对比|方案|规划|代码|报错|原理|证明|计算|总结|详细|解释|怎么做|怎么办|如何实现|风险|排查|审核|审计|why|analy[sz]e|compare|plan|code|debug|explain|reason)/i;
 
 export function defaultReasoningMode(task) {

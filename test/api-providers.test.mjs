@@ -6,7 +6,10 @@ import { afterEach, describe, it } from "node:test";
 
 import { callApiProvider, callTaskApi } from "../bridge/api-providers/gateway.mjs";
 import { listApiPresets } from "../bridge/api-providers/presets.mjs";
-import { applyApiProviderAction } from "../bridge/admin-api/api-provider-manager.mjs";
+import {
+  applyApiProviderAction,
+  testApiProvider,
+} from "../bridge/admin-api/api-provider-manager.mjs";
 import {
   buildApiConfigSnapshot,
   createDefaultApiConfig,
@@ -46,6 +49,9 @@ describe("API provider presets and storage", () => {
     assert.equal(config.routes.group_summary.primary, "deepseek");
     assert.equal(config.routes.group_summary.fallback, "mimo");
     assert.equal(config.routes.group_summary.reasoning, "economy");
+    assert.equal(config.routes.vision.primary, "mimo");
+    assert.equal(config.routes.vision.fallback, null);
+    assert.equal(config.routes.vision.reasoning, "economy");
     assert.equal(config.providers.deepseek.name, "DeepSeek V4 Flash");
     assert.equal(config.providers.deepseek.model, "deepseek-v4-flash");
   });
@@ -236,6 +242,27 @@ describe("API protocol adapters", () => {
     assert.deepEqual(body.thinking, { type: "disabled" });
     assert.equal(result.reasoningPolicy.effectiveMode, "economy");
     assert.equal(result.reasoningPolicy.applied, true);
+  });
+
+  it("disables private reasoning during provider connection tests", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-api-connection-test-"));
+    fs.writeFileSync(path.join(root, ".env_ds"), "sk-test-ds-key", "utf8");
+    let body = null;
+    globalThis.fetch = async (_url, options) => {
+      body = JSON.parse(options.body);
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({
+          choices: [{ message: { content: "OK", reasoning_content: "private" } }],
+        }),
+      };
+    };
+
+    const result = await testApiProvider("deepseek", { root });
+    assert.deepEqual(body.thinking, { type: "disabled" });
+    assert.equal(result.ok, true);
+    assert.equal(result.output, "OK");
   });
 
   it("normalizes Responses output into the shared output pipeline", async () => {

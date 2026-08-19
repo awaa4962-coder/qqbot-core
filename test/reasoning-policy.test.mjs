@@ -14,6 +14,7 @@ describe("reasoning policy", () => {
     assert.equal(defaultReasoningMode("group_chat"), "auto");
     assert.equal(defaultReasoningMode("interjection"), "economy");
     assert.equal(defaultReasoningMode("group_summary"), "economy");
+    assert.equal(defaultReasoningMode("vision"), "economy");
     assert.equal(normalizeReasoningMode("invalid", "sticker_select"), "economy");
   });
 
@@ -22,6 +23,10 @@ describe("reasoning policy", () => {
     assert.equal(resolveAutomaticMode("group_chat", request("请详细分析这个报错为什么发生，并给出修复方案")), "deep");
     assert.equal(resolveAutomaticMode("group_summary", request("短文本")), "economy");
     assert.equal(resolveAutomaticMode("interjection", request("请详细分析")), "economy");
+    assert.equal(resolveAutomaticMode("vision", {
+      ...request("[图片]"),
+      reasoningSignals: { hasImages: true },
+    }), "economy");
     assert.equal(resolveAutomaticMode("group_chat", {
       ...request("[图片]"),
       reasoningSignals: { hasImages: true },

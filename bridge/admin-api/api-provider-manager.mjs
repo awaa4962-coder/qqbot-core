@@ -1,9 +1,11 @@
 import { buildOutputPacket } from "../output-pipeline.mjs";
 import { callApiProvider } from "../api-providers/gateway.mjs";
 import { API_PROTOCOLS, listApiPresets } from "../api-providers/presets.mjs";
+import { applyReasoningPolicy } from "../api-providers/reasoning-policy.mjs";
 import {
   buildApiConfigSnapshot,
   deleteApiProvider,
+  getProvider,
   rollbackApiConfig,
   saveApiProvider,
   saveApiRoutes,
@@ -70,7 +72,8 @@ export async function applyApiProviderAction(payload, options = {}) {
 }
 
 export async function testApiProvider(providerId, options = {}) {
-  const result = await callApiProvider(providerId, {
+  const provider = getProvider(providerId, options);
+  const baseRequest = {
     messages: [
       { role: "system", content: "这是连接测试。不要解释，只回复 OK。" },
       { role: "user", content: "请回复 OK" },
@@ -78,7 +81,15 @@ export async function testApiProvider(providerId, options = {}) {
     maxTokens: 24,
     temperature: 0,
     timeoutMs: 15000,
-  }, options);
+  };
+  const resolved = applyReasoningPolicy(provider, baseRequest, {
+    task: "group_chat",
+    mode: "economy",
+  });
+  const result = await callApiProvider(providerId, resolved.request, {
+    ...options,
+    provider,
+  });
   if (!result.ok) {
     return {
       ok: false,

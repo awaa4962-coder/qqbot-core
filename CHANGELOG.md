@@ -15,8 +15,12 @@
 - 发布包补齐启动器源码以保证解压后可自测，仍排除 `bin`、`obj` 与 WebView2 用户数据；Linux 原生运行时默认选择系统标准的 `python3`。
 - 发布 ZIP 统一写入 Unix 安全权限：普通文件 `0644`、部署脚本 `0755`，并在生成后复验；Docker 构建支持仅在构建期使用可选 PyPI 镜像。
 - 新增 `npm run smoke:linux`，会用临时测试配置启动环回 Bridge，验证 `/health`、`/admin/status`、`/console/` 和 CSP 后自动退出。
-- 远程 Linux 已用经 SHA-256 校验的便携 Node 22.23.2 完成无特权验证：`npm ci`、lint、570/570 测试、浏览器烟雾与 JM Python 3.14 依赖检查通过；真实 QQ 登录、API Key 和生产记忆未迁移。
-- 本机验收：`npm ci`、`npm run lint` 0 errors / 0 warnings、`npm test` 570/570 pass、`npm run smoke:linux`、`npm run release:check` 通过；远端尚无 Docker，因此真实镜像构建与 NapCat 登录明确留待系统依赖安装后执行。
+- Compose 改用隔离容器网络，避免 NapCat 的 Xvfb 显示号与 Linux 桌面冲突；宿主机端口仍全部只绑定 `127.0.0.1`，Bridge 通过容器服务名连接 NapCat。
+- 容器化管理请求会识别 Docker 私有网关，但只有显式容器模式才启用；管理 API 对这类请求仍强制校验随机令牌，公网地址继续拒绝。
+- 图片识别任务默认关闭内部长推理，把有限输出预算留给可发送的视觉正文；不支持图片的 MiMo 2.5 Pro 不再作为 Linux 视觉备用，表情分析不再因“主路只有推理、备用 404”整批失败。
+- API 实例连接测试统一使用省额度推理策略，修复 DeepSeek 接口返回 HTTP 200 却因测试预算被内部推理耗尽而显示失败的问题；内部推理仍不会进入最终输出。
+- 已在 Ubuntu 26.04 x86_64 实机完成 Docker 部署：Bridge 与 NapCat 镜像经过 SHA-256 校验后导入，NapCat 登录、OneBot HTTP/WS、反向 WebSocket、浏览器控制台和管理鉴权均通过，Windows 生产安装未被覆盖。
+- 验收：`npm run lint` 0 errors / 0 warnings、`npm test` 574/574 pass、Linux 浏览器烟雾、JM Python 依赖、真实 MiMo/DeepSeek 文本连接与 MiMo 图片输入检查通过；Bridge `/health` 为 ok，两只容器重启计数均为 0。
 
 ## v1.3.9-module-resilience - 2026-08-13 - 模块韧性与真实健康状态
 - 表情分析改用统一预览读取链路：QQ 临时图片地址会先续签，主视觉模型返回空正文或不安全内容时会切换视觉备用模型，不会把内部推理当作标签写入目录。
