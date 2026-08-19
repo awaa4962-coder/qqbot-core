@@ -80,6 +80,8 @@ jobs:
               --target "$GITHUB_SHA" \
               --title "QQFriend Linux image bundle v1.4.0" \
               --notes "Pinned amd64 images for the isolated QQFriend Linux deployment."
+          else
+            gh release edit "$RELEASE_TAG" --target "$GITHUB_SHA"
           fi
           gh release upload "$RELEASE_TAG" --clobber \
             "$BUNDLE_NAME.tar.zst" \
