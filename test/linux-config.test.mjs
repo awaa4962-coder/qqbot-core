@@ -76,6 +76,7 @@ test("Linux bootstrap secures NapCat WebUI before the first container start", ()
   assert.match(compose, /"127\.0\.0\.1:6099:6099"/);
   assert.match(compose, /"127\.0\.0\.1:16789:16789"/);
   assert.doesNotMatch(compose, /network_mode:\s*host/);
+  assert.match(compose, /ACCOUNT: \$\{NAPCAT_ACCOUNT:-\}/);
   assert.match(compose, /QQBOT_NAPCAT_API: http:\/\/napcat:6700/);
   assert.match(compose, /QQBOT_NAPCAT_WS_API: ws:\/\/napcat:3001/);
 });

@@ -47,6 +47,10 @@ Reverse WebSocket:     ws://bridge:16789
 Access token:          state/qqfriend/config/.env_napcat_token
 ```
 
+After the first QR-code login, set `NAPCAT_ACCOUNT` in `deploy/linux/.env` to
+the logged-in QQ number. Subsequent container restarts will then use NapCat's
+persisted quick-login state instead of requesting a new QR code.
+
 Start and verify:
 
 ```bash

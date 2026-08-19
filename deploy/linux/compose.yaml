@@ -6,6 +6,7 @@ services:
     container_name: qqfriend-napcat
     restart: unless-stopped
     environment:
+      ACCOUNT: ${NAPCAT_ACCOUNT:-}
       NAPCAT_UID: ${NAPCAT_UID:-1000}
       NAPCAT_GID: ${NAPCAT_GID:-1000}
     volumes:
