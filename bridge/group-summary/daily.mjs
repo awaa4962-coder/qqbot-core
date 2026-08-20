@@ -42,7 +42,12 @@ async function runDailySummaryForGroup(options) {
     const messages = loadMessages(dateText, groupId);
     if (!messages.length) return skippedResult("no_messages", options);
     log("start", { dateText, groupId, messages: messages.length });
-    const result = await sendSummary({ dateText, groupId, messages });
+    const result = await sendSummary({
+      dateText,
+      groupId,
+      messages,
+      beforeSend: payload => guard.markAttempt?.(payload),
+    });
     markSentWhenSuccessful(guard, result);
     log(result.ok && result.sent ? "sent" : "failed", { dateText, groupId, result });
     return { groupId, ...result };
@@ -60,7 +65,10 @@ function skippedResult(reason, options) {
 }
 
 function markSentWhenSuccessful(guard, result) {
-  if (!result.ok || !result.sent) return;
+  if (!result.ok || !result.sent) {
+    guard.markFailed?.();
+    return;
+  }
   guard.markSent({
     messages: result.messages,
     outputFile: result.outputFile,

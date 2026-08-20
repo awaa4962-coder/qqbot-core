@@ -1,5 +1,7 @@
 // bridge/relationship.mjs — v1.2.1 relationship computation + schema
 
+import { wallAgeMs } from "./runtime-clock.mjs";
+
 export const RELATIONSHIP_SCORE_FIELDS = Object.freeze([
   "familiarity",
   "affinity",
@@ -158,7 +160,7 @@ export function computeRelationship(user, options = {}) {
   const activeDays = countActiveDays(chats);
 
   // 首次见面距今天数
-  const daysSinceFirstSeen = firstSeen ? Math.max(0, (now - firstSeen) / 86400000) : 0;
+  const daysSinceFirstSeen = calculateDaysSinceFirstSeen(firstSeen, now);
 
   // 昵称数
   const nicknameCount = nicknames.length;
@@ -276,11 +278,15 @@ function calculateGroupFamiliarity(groupChats, options) {
   );
 }
 
+function calculateDaysSinceFirstSeen(firstSeen, now) {
+  if (!firstSeen) return 0;
+  const age = wallAgeMs(firstSeen, now);
+  return Number.isFinite(age) ? age / 86400000 : 0;
+}
+
 function classifyRecentHeat(chats, now) {
-  const oneDay = now - 86400000;
-  const sevenDays = now - 7 * 86400000;
-  const dayCount = chats.filter(c => Number(c.ts || 0) >= oneDay).length;
-  const weekCount = chats.filter(c => Number(c.ts || 0) >= sevenDays).length;
+  const dayCount = chats.filter(c => wallAgeMs(c.ts, now) <= 86400000).length;
+  const weekCount = chats.filter(c => wallAgeMs(c.ts, now) <= 7 * 86400000).length;
   if (dayCount >= 8 || weekCount >= 30) return "高";
   if (dayCount >= 3 || weekCount >= 12) return "较活跃";
   if (weekCount >= 3) return "普通";
@@ -363,10 +369,7 @@ function countActiveDays(chats) {
 }
 
 function hasRecentActivity(chats, now) {
-  const sevenDaysAgo = now - 7 * 86400000;
-  return chats.some(function(c) {
-    return c.ts && c.ts >= sevenDaysAgo;
-  });
+  return chats.some(c => wallAgeMs(c.ts, now) <= 7 * 86400000);
 }
 
 function analyzeRelationshipText(chats) {

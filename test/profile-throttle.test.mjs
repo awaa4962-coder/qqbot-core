@@ -50,4 +50,20 @@ describe("profile generation throttle", () => {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  it("does not consume the throttle window when generation fails", async () => {
+    const uid = "profile-throttle-failure";
+    const now = Date.now();
+    users[uid] = { uid, nicknames: [], chats: makeChats(10) };
+    try {
+      await assert.rejects(
+        maybeGenerateProfile(uid, async () => { throw new Error("model unavailable"); }, now),
+        /model unavailable/,
+      );
+      assert.equal(shouldGenerateProfile(uid, now + 1000), true);
+      assert.equal(users[uid].profileGeneratedAt, undefined);
+    } finally {
+      delete users[uid];
+    }
+  });
 });

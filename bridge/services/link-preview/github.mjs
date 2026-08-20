@@ -1,4 +1,5 @@
 import { fetchSafeResponse } from "../../safe-url.mjs";
+import { monotonicNow } from "../../runtime-clock.mjs";
 
 const API_VERSION = "2026-03-10";
 const MAX_RESPONSE_BYTES = 512 * 1024;
@@ -72,7 +73,7 @@ export function parseGitHubRepositoryUrl(value) {
 export async function fetchGitHubRepositoryInfo(value, options = {}) {
   const repository = parseGitHubRepositoryUrl(value);
   if (!repository) return null;
-  const now = Number(options.now || Date.now());
+  const now = Number(options.now ?? monotonicNow());
   const cached = readCache(repository.key, now);
   if (cached) return cached;
 

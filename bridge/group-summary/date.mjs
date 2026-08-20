@@ -22,6 +22,10 @@ export function resolveSummaryDate(now = new Date(), options = {}) {
   return formatDate(new Date(Date.parse(dateText + "T00:00:00+08:00") - 24 * 60 * 60 * 1000));
 }
 
+export function resolvePreviousSummaryDate(now = new Date()) {
+  return formatDate(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+}
+
 export function dateRange(dateText) {
   const start = Date.parse(String(dateText) + "T00:00:00+08:00");
   if (!Number.isFinite(start)) throw new Error("invalid date: " + dateText);

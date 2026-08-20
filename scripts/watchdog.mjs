@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { hasNapCatProcess } from "./napcat-process.mjs";
 import { prepareNapCatLaunch } from "./runtime-paths.mjs";
+import { monotonicNow } from "../bridge/runtime-clock.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -65,7 +66,7 @@ function startNapCat() {
     log("NapCat executable missing:", NAPCAT_EXE);
     return;
   }
-  const now = Date.now();
+  const now = monotonicNow();
   if (now - lastNapCatStart < START_COOLDOWN_MS) return;
   lastNapCatStart = now;
   log("starting NapCat");
@@ -76,7 +77,7 @@ function startNapCat() {
 }
 
 function startBridge() {
-  const now = Date.now();
+  const now = monotonicNow();
   if (now - lastBridgeStart < START_COOLDOWN_MS) return;
   lastBridgeStart = now;
   const out = path.join(LOG_DIR, "watchdog-bridge-" + nowStamp() + ".log");

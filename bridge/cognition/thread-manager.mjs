@@ -1,4 +1,5 @@
 import { saveUsers, users } from "../storage.mjs";
+import { wallAgeMs } from "../runtime-clock.mjs";
 
 const GROUP_THREAD_TTL_MS = 90 * 60 * 1000;
 const PRIVATE_THREAD_TTL_MS = 6 * 60 * 60 * 1000;
@@ -222,7 +223,10 @@ function snapshotThread(thread, scope) {
 }
 
 function isActiveThread(thread, now) {
-  return Boolean(thread && Array.isArray(thread.turns) && Number(thread.expiresAt || 0) > now);
+  if (!thread || !Array.isArray(thread.turns)) return false;
+  const updatedAt = Number(thread.updatedAt || 0);
+  if (updatedAt) return wallAgeMs(updatedAt, now) < ttlForScope(thread.scope);
+  return Number(thread.expiresAt || 0) > now;
 }
 
 function ttlForScope(scope) {

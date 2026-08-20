@@ -90,6 +90,15 @@ async function buildSummaryServiceResult(options) {
   if (options.dryRun) return result;
 
   const sender = options.sendGroupMessage || sendMsg;
+  if (typeof options.beforeSend === "function") {
+    await options.beforeSend({
+      dateText,
+      groupId,
+      messages: messages.length,
+      outputFile,
+      provider: generated.provider,
+    });
+  }
   result.result = await sender(groupId, summary);
   result.sent = isSuccessfulOutbound(result.result);
   if (!result.sent) {

@@ -50,24 +50,26 @@ function _readKey(filename, label) {
   }
 }
 
-function _readOptionalList(filename, envName) {
-  const fromEnv = String(process.env[envName] || '').trim();
-  if (fromEnv) return parseList(fromEnv);
+function _readOptionalListState(filename, envName, parser = parseList) {
+  if (Object.prototype.hasOwnProperty.call(process.env, envName)) {
+    return { configured: true, values: parser(process.env[envName]) };
+  }
   try {
-    return parseList(fs.readFileSync(path.join(CONFIG_ROOT, filename), 'utf-8'));
+    return {
+      configured: true,
+      values: parser(fs.readFileSync(path.join(CONFIG_ROOT, filename), 'utf-8')),
+    };
   } catch {
-    return [];
+    return { configured: false, values: [] };
   }
 }
 
+function _readOptionalList(filename, envName) {
+  return _readOptionalListState(filename, envName).values;
+}
+
 function _readOptionalNumberList(filename, envName) {
-  const fromEnv = String(process.env[envName] || '').trim();
-  if (fromEnv) return parseNumberList(fromEnv);
-  try {
-    return parseNumberList(fs.readFileSync(path.join(CONFIG_ROOT, filename), 'utf-8'));
-  } catch {
-    return [];
-  }
+  return _readOptionalListState(filename, envName, parseNumberList).values;
 }
 
 function _readOptionalSecret(filename, envName) {
@@ -100,8 +102,8 @@ function readBotNames() {
 }
 
 function readGroupWhitelist() {
-  const fromConfig = _readOptionalNumberList('.env_groups', 'QQBOT_GROUPS');
-  if (fromConfig.length) return fromConfig;
+  const state = _readOptionalListState('.env_groups', 'QQBOT_GROUPS', parseNumberList);
+  if (state.configured) return state.values;
   return TEST_MODE ? TEST_GROUP_WHITELIST : DEFAULT_GROUP_WHITELIST;
 }
 
@@ -111,31 +113,32 @@ function readSelfUin() {
 }
 
 function readSummaryGroupWhitelist(groupWhitelist) {
-  const fromConfig = _readOptionalNumberList('.env_summary_groups', 'QQBOT_SUMMARY_GROUPS');
-  if (fromConfig.length) return fromConfig;
+  const state = _readOptionalListState('.env_summary_groups', 'QQBOT_SUMMARY_GROUPS', parseNumberList);
+  if (state.configured) return state.values;
   return TEST_MODE
     ? groupWhitelist.filter(groupId => !TEST_SUMMARY_EXCLUDED.has(groupId))
     : groupWhitelist;
 }
 
 function readResourceGroupWhitelist(groupWhitelist) {
-  const fromConfig = _readOptionalNumberList('.env_resource_groups', 'QQBOT_RESOURCE_GROUPS');
-  return fromConfig.length ? fromConfig : groupWhitelist;
+  const state = _readOptionalListState('.env_resource_groups', 'QQBOT_RESOURCE_GROUPS', parseNumberList);
+  return state.configured ? state.values : groupWhitelist;
 }
 
 function readFeatureGroupWhitelist(groupWhitelist) {
-  const fromConfig = _readOptionalNumberList('.env_feature_groups', 'QQBOT_FEATURE_GROUPS');
-  return fromConfig.length ? fromConfig : groupWhitelist;
+  const state = _readOptionalListState('.env_feature_groups', 'QQBOT_FEATURE_GROUPS', parseNumberList);
+  return state.configured ? state.values : groupWhitelist;
 }
 
 function readStickerGroupWhitelist(groupWhitelist) {
-  const fromConfig = _readOptionalNumberList('.env_sticker_groups', 'QQBOT_STICKER_GROUPS');
-  return fromConfig.length ? fromConfig : groupWhitelist;
+  const state = _readOptionalListState('.env_sticker_groups', 'QQBOT_STICKER_GROUPS', parseNumberList);
+  return state.configured ? state.values : groupWhitelist;
 }
 
 function readFriendWhitelist() {
-  const fromConfig = _readOptionalNumberList('.env_friends', 'QQBOT_FRIENDS');
-  return fromConfig.length || !TEST_MODE ? fromConfig : TEST_FRIEND_WHITELIST;
+  const state = _readOptionalListState('.env_friends', 'QQBOT_FRIENDS', parseNumberList);
+  if (state.configured) return state.values;
+  return TEST_MODE ? TEST_FRIEND_WHITELIST : [];
 }
 
 function readJmUserWhitelist() {
@@ -143,13 +146,15 @@ function readJmUserWhitelist() {
 }
 
 function readBotBlacklist() {
-  const fromConfig = _readOptionalNumberList('.env_bot_blacklist', 'QQBOT_BLACKLIST');
-  return fromConfig.length || !TEST_MODE ? fromConfig : TEST_BOT_BLACKLIST;
+  const state = _readOptionalListState('.env_bot_blacklist', 'QQBOT_BLACKLIST', parseNumberList);
+  if (state.configured) return state.values;
+  return TEST_MODE ? TEST_BOT_BLACKLIST : [];
 }
 
 function readLongGroups() {
-  const fromConfig = _readOptionalNumberList('.env_long_groups', 'QQBOT_LONG_GROUPS');
-  return fromConfig.length || !TEST_MODE ? fromConfig.map(String) : TEST_LONG_GROUPS;
+  const state = _readOptionalListState('.env_long_groups', 'QQBOT_LONG_GROUPS', parseNumberList);
+  if (state.configured) return state.values.map(String);
+  return TEST_MODE ? TEST_LONG_GROUPS : [];
 }
 
 function readJmPython() {

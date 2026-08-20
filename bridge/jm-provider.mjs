@@ -8,12 +8,15 @@ import { prepareCommandText } from "./commands/normalize.mjs";
 import { isResourceGroupAllowed } from "./resource-transfer.mjs";
 import { sendMsg, sendPrivateMsg, uploadGroupFile, uploadPrivateFile } from "./napcat.mjs";
 import { log, logE } from "./logger.mjs";
+import { monotonicNow } from "./runtime-clock.mjs";
 import { findUsableSevenZip, getBundledSevenZipPath, getSevenZipCommands } from "./seven-zip.mjs";
 
 const JM_RE = /^jm\s*([0-9]{3,})$/i;
 const RESULT_PREFIX = "QQFRIEND_JM_RESULT ";
 const JM_TEMP_PREFIX = "qqfriend-jm-";
 const JM_CLEANUP_DELAY_MS = 24 * 60 * 60 * 1000;
+const FUTURE_SKEW_MS = 5 * 60 * 1000;
+const activeJmTempDirs = new Set();
 let activeJmTask = null;
 let jmHealthCache = null;
 let jmHealthExpiresAt = 0;
@@ -75,6 +78,7 @@ export async function transferJmToGroup(options) {
   const runner = options.runner || runJmDownload;
   const zipper = options.zipper || zipDirectory;
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), JM_TEMP_PREFIX));
+  activeJmTempDirs.add(path.resolve(tempDir));
   const downloadDir = path.join(tempDir, "download");
   const zipPath = path.join(tempDir, "jm-" + options.jmId + ".zip");
 
@@ -114,6 +118,7 @@ export async function transferJmToGroup(options) {
     await sender(options.groupId, jmErrorText(error.message), options.replyToId);
     return { ok: false, reason: error.message };
   } finally {
+    activeJmTempDirs.delete(path.resolve(tempDir));
     scheduleJmTempCleanup(tempDir, options.cleanupDelayMs ?? JM_CLEANUP_DELAY_MS);
   }
 }
@@ -168,6 +173,7 @@ export async function transferJmToPrivate(options) {
   const runner = options.runner || runJmDownload;
   const zipper = options.zipper || zipDirectory;
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), JM_TEMP_PREFIX));
+  activeJmTempDirs.add(path.resolve(tempDir));
   const downloadDir = path.join(tempDir, "download");
   const zipPath = path.join(tempDir, "jm-" + options.jmId + ".zip");
 
@@ -203,6 +209,7 @@ export async function transferJmToPrivate(options) {
     await sender(options.userId, jmErrorText(error.message));
     return { ok: false, reason: error.message };
   } finally {
+    activeJmTempDirs.delete(path.resolve(tempDir));
     scheduleJmTempCleanup(tempDir, options.cleanupDelayMs ?? JM_CLEANUP_DELAY_MS);
   }
 }
@@ -239,19 +246,26 @@ export async function cleanupExpiredJmTempDirs(options = {}) {
 
   let cleaned = 0;
   for (const item of items) {
-    if (!item.isDirectory() || !item.name.startsWith(JM_TEMP_PREFIX)) continue;
-    const fullPath = path.join(root, item.name);
-    try {
-      const stat = await fs.stat(fullPath);
-      if (now - stat.mtimeMs < maxAgeMs) continue;
-      await fs.rm(fullPath, { recursive: true, force: true });
-      cleaned++;
-    } catch (error) {
-      logE("jm temp cleanup failed:", error.message);
-    }
+    if (await cleanupJmTempEntry(root, item, now, maxAgeMs)) cleaned++;
   }
   if (cleaned) log("jm expired temp cleaned:", cleaned);
   return cleaned;
+}
+
+async function cleanupJmTempEntry(root, item, now, maxAgeMs) {
+  if (!item.isDirectory() || !item.name.startsWith(JM_TEMP_PREFIX)) return false;
+  const fullPath = path.join(root, item.name);
+  if (activeJmTempDirs.has(path.resolve(fullPath))) return false;
+  try {
+    const age = now - (await fs.stat(fullPath)).mtimeMs;
+    if (age >= 0 && age < maxAgeMs) return false;
+    if (age < 0 && age > -FUTURE_SKEW_MS) return false;
+    await fs.rm(fullPath, { recursive: true, force: true });
+    return true;
+  } catch (error) {
+    logE("jm temp cleanup failed:", error.message);
+    return false;
+  }
 }
 
 export function runJmDownload(jmId, outputDir, options = {}) {
@@ -275,9 +289,10 @@ export function buildJmDownloadEnv(baseEnv = process.env) {
 
 export function getJmRuntimeHealth(options = {}) {
   const now = Number(options.now || Date.now());
-  if (!options.force && jmHealthCache && jmHealthExpiresAt > now) return { ...jmHealthCache };
+  const cacheNow = Number(options.cacheNow ?? monotonicNow());
+  if (!options.force && jmHealthCache && jmHealthExpiresAt > cacheNow) return { ...jmHealthCache };
   if (isUnforcedTestProbe(options)) return buildTestJmHealth(now);
-  if (options.force || options.runner) return cacheJmHealth(runJmHealthProbe(options), now, options);
+  if (options.force || options.runner) return cacheJmHealth(runJmHealthProbe(options), now, cacheNow, options);
   refreshJmRuntimeHealth({ now }).catch(error => logE("jm health refresh failed:", error.message));
   if (jmHealthCache) return { ...jmHealthCache, stale: true };
   return buildPendingJmHealth(now);
@@ -285,10 +300,11 @@ export function getJmRuntimeHealth(options = {}) {
 
 export async function refreshJmRuntimeHealth(options = {}) {
   const now = Number(options.now || Date.now());
-  if (!options.force && jmHealthCache && jmHealthExpiresAt > now) return { ...jmHealthCache };
+  const cacheNow = Number(options.cacheNow ?? monotonicNow());
+  if (!options.force && jmHealthCache && jmHealthExpiresAt > cacheNow) return { ...jmHealthCache };
   if (jmHealthPromise) return await jmHealthPromise;
   jmHealthPromise = runJmHealthProbeAsync(options)
-    .then(result => cacheJmHealth(result, now, options))
+    .then(result => cacheJmHealth(result, now, cacheNow, options))
     .finally(() => { jmHealthPromise = null; });
   return await jmHealthPromise;
 }
@@ -367,10 +383,10 @@ function spawnHealthProbe(command, args, options) {
   });
 }
 
-function cacheJmHealth(result, now, options = {}) {
+function cacheJmHealth(result, now, cacheNow, options = {}) {
   const value = buildJmHealthValue(result, now, options);
   jmHealthCache = value;
-  jmHealthExpiresAt = now + JM_HEALTH_CACHE_MS;
+  jmHealthExpiresAt = cacheNow + JM_HEALTH_CACHE_MS;
   return { ...value };
 }
 

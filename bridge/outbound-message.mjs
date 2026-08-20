@@ -1,6 +1,7 @@
 import { CFG } from "./config.mjs";
 import { log, logE } from "./logger.mjs";
 import { buildNapCatHeaders } from "./napcat-auth.mjs";
+import { markOutboundAttempt, markOutboundSuccess } from "./pipeline-state.mjs";
 
 const DEFAULT_MAX_LEN = 900;
 const HARD_MAX_LEN = 1200;
@@ -142,10 +143,12 @@ async function sendPayloadWithRetry({ url, payload, label, options }) {
   let lastResult = null;
   let lastError = "";
   for (let attempt = 1; attempt <= attempts; attempt++) {
+    markOutboundAttempt();
     const outcome = await sendPayloadOnce(url, payload);
     lastResult = outcome.result;
     lastError = outcome.error;
     if (outcome.ok) {
+      markOutboundSuccess();
       log(label + ":", lastResult?.status || lastResult?.retcode || "ok");
       return lastResult;
     }

@@ -10,6 +10,10 @@ import { log, logE } from "./logger.mjs";
 
 const COMMAND_RE = /^(download|dl|fetch|下载)\s*(.*)$/i;
 const DEFAULT_TIMEOUT_MS = 120000;
+const RESOURCE_TEMP_PREFIX = "qqfriend-resource-";
+const DEFAULT_TEMP_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const FUTURE_SKEW_MS = 5 * 60 * 1000;
+const activeResourceTempDirs = new Set();
 
 export function isResourceGroupAllowed(groupId, whitelist = CFG.resourceGroupWhitelist) {
   return whitelist.map(Number).includes(Number(groupId));
@@ -90,7 +94,8 @@ export async function downloadResourceToTemp(url, options = {}) {
   const result = await fetchSafeResponse(url, { timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS });
   const response = validateDownloadResponse(result, maxBytes);
 
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "qqfriend-resource-"));
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), RESOURCE_TEMP_PREFIX));
+  activeResourceTempDirs.add(path.resolve(tempDir));
   const fileName = safeFileName(response, result.url);
   const filePath = path.join(tempDir, fileName);
   let bytes;
@@ -101,7 +106,10 @@ export async function downloadResourceToTemp(url, options = {}) {
     throw error;
   }
 
-  if (bytes <= 0) throw new Error("empty_body");
+  if (bytes <= 0) {
+    await cleanupTempDir(tempDir);
+    throw new Error("empty_body");
+  }
   log("resource downloaded:", fileName, formatBytes(bytes));
   return { tempDir, filePath, fileName, bytes, url: result.url?.href || url };
 }
@@ -133,7 +141,33 @@ async function writeBodyToFile(body, filePath, maxBytes) {
 }
 
 export async function cleanupTempDir(tempDir) {
-  await fs.rm(tempDir, { recursive: true, force: true });
+  try {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  } finally {
+    activeResourceTempDirs.delete(path.resolve(tempDir));
+  }
+}
+
+export async function cleanupExpiredResourceTempDirs(options = {}) {
+  const root = options.root || os.tmpdir();
+  const now = Number(options.now || Date.now());
+  const maxAgeMs = Number(options.maxAgeMs || DEFAULT_TEMP_MAX_AGE_MS);
+  let entries = [];
+  try { entries = await fs.readdir(root, { withFileTypes: true }); } catch { return 0; }
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith(RESOURCE_TEMP_PREFIX)) continue;
+    const target = path.join(root, entry.name);
+    if (activeResourceTempDirs.has(path.resolve(target))) continue;
+    try {
+      const age = now - (await fs.stat(target)).mtimeMs;
+      if (age >= 0 && age < maxAgeMs) continue;
+      if (age < 0 && age > -FUTURE_SKEW_MS) continue;
+      await fs.rm(target, { recursive: true, force: true });
+      removed++;
+    } catch {}
+  }
+  return removed;
 }
 
 export function resourceErrorText(reason) {

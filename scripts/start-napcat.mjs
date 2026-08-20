@@ -1,6 +1,7 @@
 // scripts/start-napcat.mjs - start the configured NapCat without duplicating it.
 
 import fs from "node:fs";
+import { performance } from "node:perf_hooks";
 import path from "node:path";
 import { hasNapCatProcess } from "./napcat-process.mjs";
 import { prepareNapCatLaunch } from "./runtime-paths.mjs";
@@ -53,8 +54,8 @@ async function napCatReady() {
 }
 
 async function waitUntilReady(timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
+  const deadline = performance.now() + timeoutMs;
+  while (performance.now() < deadline) {
     if (await napCatReady()) return true;
     await new Promise(resolve => setTimeout(resolve, 1500));
   }

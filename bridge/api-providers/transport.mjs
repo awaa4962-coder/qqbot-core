@@ -1,10 +1,25 @@
 import { buildBearerAuth } from "../clients/auth.mjs";
 import { validateProviderEndpoint } from "./store.mjs";
+import { monotonicNow } from "../runtime-clock.mjs";
+import { setTimeout as delay } from "node:timers/promises";
+
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
 export async function postProviderJson(provider, key, body, options = {}) {
   const endpoint = validateProviderEndpoint(provider);
   const headers = buildProviderHeaders(provider, key);
-  const startedAt = Date.now();
+  const startedAt = monotonicNow();
+  const maxAttempts = Math.max(1, Math.min(3, Number(options.maxAttempts || 2)));
+  let outcome = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    outcome = await postProviderJsonOnce(endpoint, headers, body, provider, options);
+    if (outcome.ok || !shouldRetry(outcome, attempt, maxAttempts)) break;
+    await delay(Math.max(0, Number(options.retryDelayMs ?? 400)) * attempt);
+  }
+  return { ...outcome, durationMs: Math.max(0, monotonicNow() - startedAt) };
+}
+
+async function postProviderJsonOnce(endpoint, headers, body, provider, options) {
   try {
     const response = await fetch(endpoint, {
       method: "POST",
@@ -19,23 +34,28 @@ export async function postProviderJson(provider, key, body, options = {}) {
         ok: false,
         status: response.status,
         error: provider.name + " HTTP " + response.status + formatErrorSuffix(data),
-        durationMs: Date.now() - startedAt,
+        durationMs: 0,
       };
     }
     return {
       ok: true,
       status: response.status,
       data,
-      durationMs: Date.now() - startedAt,
+      durationMs: 0,
     };
   } catch (error) {
     return {
       ok: false,
       status: 0,
       error: safeTransportError(error),
-      durationMs: Date.now() - startedAt,
+      durationMs: 0,
     };
   }
+}
+
+function shouldRetry(outcome, attempt, maxAttempts) {
+  if (attempt >= maxAttempts) return false;
+  return Number(outcome?.status || 0) === 0 || RETRYABLE_STATUS.has(Number(outcome.status));
 }
 
 export function buildProviderHeaders(provider, key) {

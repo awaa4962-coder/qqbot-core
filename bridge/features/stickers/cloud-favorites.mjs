@@ -11,6 +11,7 @@ import {
 } from "./napcat-adapter.mjs";
 
 const TEMP_MAX_AGE_MS = 15 * 60 * 1000;
+const activeStickerFiles = new Set();
 
 export async function addBufferToCloudFavorites(image = {}, options = {}) {
   const buffer = Buffer.isBuffer(image.buffer) ? image.buffer : null;
@@ -72,6 +73,7 @@ export async function withTemporaryStickerFile(image, callback, options = {}) {
   const name = "sticker-" + Date.now() + "-" + crypto.randomUUID() + extension;
   const filename = path.join(tempDir, name);
   fs.writeFileSync(filename, image.buffer, { flag: "wx" });
+  activeStickerFiles.add(path.resolve(filename));
   try {
     return await callback({ path: filename, name });
   } finally {
@@ -80,6 +82,7 @@ export async function withTemporaryStickerFile(image, callback, options = {}) {
     } catch {
       // Startup cleanup handles files left behind by external locks.
     }
+    activeStickerFiles.delete(path.resolve(filename));
   }
 }
 
@@ -92,8 +95,11 @@ export function cleanupTemporaryStickerFiles(options = {}) {
     for (const entry of fs.readdirSync(tempDir, { withFileTypes: true })) {
       if (!entry.isFile() || !entry.name.startsWith("sticker-")) continue;
       const filename = path.join(tempDir, entry.name);
+      if (activeStickerFiles.has(path.resolve(filename))) continue;
       const stat = fs.statSync(filename);
-      if (now - stat.mtimeMs < maxAgeMs) continue;
+      const age = now - stat.mtimeMs;
+      if (age >= 0 && age < maxAgeMs) continue;
+      if (age < 0 && age > -5 * 60 * 1000) continue;
       fs.rmSync(filename, { force: true });
       removed++;
     }

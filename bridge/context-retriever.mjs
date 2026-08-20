@@ -10,6 +10,7 @@ import {
   recentHistoryWeighted,
 } from "./context/history.mjs";
 import { CFG } from "./config.mjs";
+import { wallAgeMs } from "./runtime-clock.mjs";
 import { users, groupChats } from "./storage.mjs";
 import { RETRIEVAL_KEYWORD_RULES } from "./knowledge/topic-rules.mjs";
 import { buildMemorySummary, getActiveMemoryContext } from "./memory-profile.mjs";
@@ -178,7 +179,7 @@ function isCurrentMemory(chat, options) {
   if (!currentMessageId) return false;
   const currentText = String(options.currentText || "").replace(/\s+/g, " ").trim();
   const chatText = String(chat?.text || "").replace(/\s+/g, " ").trim();
-  return Boolean(currentText && currentText === chatText && Date.now() - Number(chat?.ts || 0) < 15000);
+  return Boolean(currentText && currentText === chatText && wallAgeMs(chat?.ts) < 15000);
 }
 
 function conversationMessageIds(thread) {
@@ -255,7 +256,7 @@ function isExcludedInterjectionAuthor(message) {
 }
 
 function isStaleInterjectionMessage(message, now) {
-  return Number(now || 0) - Number(message.ts || 0) > INTERJECTION_CONTEXT_MAX_AGE_MS;
+  return wallAgeMs(message.ts, now) > INTERJECTION_CONTEXT_MAX_AGE_MS;
 }
 
 function isCurrentInterjectionMessage(message, options) {
@@ -264,7 +265,7 @@ function isCurrentInterjectionMessage(message, options) {
   return Boolean(
     options.currentText &&
     normalized === options.currentText &&
-    Number(options.now || 0) - Number(message.ts || 0) < 15000
+    wallAgeMs(message.ts, options.now) < 15000
   );
 }
 
@@ -302,7 +303,7 @@ function scoreMemory(text, keywords, chat, groupId) {
   }
   if (score <= 0) return 0;
   if (groupId && String(chat.group) === groupId) score += 1;
-  const ageMs = Date.now() - Number(chat.ts || 0);
+  const ageMs = wallAgeMs(chat.ts);
   if (ageMs < 24 * 60 * 60 * 1000) score += 1;
   return score;
 }

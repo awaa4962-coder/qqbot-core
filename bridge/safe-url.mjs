@@ -1,4 +1,19 @@
+import { lookup as dnsLookup } from "node:dns/promises";
+import { isIP } from "node:net";
+
 const DEFAULT_MAX_REDIRECTS = 5;
+const IPV4_BLOCK_RULES = [
+  ([a]) => a === 0 || a === 10 || a === 127 || a >= 224,
+  ([a, b]) => a === 169 && b === 254,
+  ([a, b]) => a === 172 && b >= 16 && b <= 31,
+  ([a, b]) => a === 192 && b === 168,
+  ([a, b]) => a === 100 && b >= 64 && b <= 127,
+  ([a, b, c]) => a === 192 && b === 0 && (c === 0 || c === 2),
+  ([a, b, c]) => a === 192 && b === 88 && c === 99,
+  ([a, b]) => a === 198 && (b === 18 || b === 19),
+  ([a, b, c]) => a === 198 && b === 51 && c === 100,
+  ([a, b, c]) => a === 203 && b === 0 && c === 113,
+];
 
 function normalizeHostname(hostname) {
   return String(hostname || "").trim().toLowerCase().replace(/^\[|\]$/g, "");
@@ -15,14 +30,7 @@ function parseIpv4(hostname) {
 function isPrivateIpv4(hostname) {
   const ip = parseIpv4(hostname);
   if (!ip) return false;
-  const [a, b] = ip;
-  return a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168) ||
-    (a === 100 && b >= 64 && b <= 127);
+  return IPV4_BLOCK_RULES.some(rule => rule(ip));
 }
 
 function isPrivateIpv6(hostname) {
@@ -31,6 +39,8 @@ function isPrivateIpv6(hostname) {
   if (host === "::" || host === "::1") return true;
   if (host.startsWith("fc") || host.startsWith("fd")) return true;
   if (/^fe[89ab]/.test(host)) return true;
+  if (host.startsWith("fec") || host.startsWith("fed") || host.startsWith("fee") || host.startsWith("fef")) return true;
+  if (host.startsWith("ff")) return true;
   const mapped = host.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/);
   if (mapped) return isPrivateIpv4(mapped[1]);
   const mappedHex = parseIpv4MappedHex(host);
@@ -71,6 +81,9 @@ export function validateSafeUrl(url) {
   if (!["http:", "https:"].includes(parsed.protocol)) {
     return { ok: false, reason: "unsupported_protocol", url: parsed };
   }
+  if (parsed.username || parsed.password) {
+    return { ok: false, reason: "credentials_not_allowed", url: parsed };
+  }
   if (isPrivateHostname(parsed.hostname)) {
     return { ok: false, reason: "private_address", url: parsed };
   }
@@ -99,6 +112,8 @@ export async function fetchSafeResponse(url, options = {}) {
 
   let currentMethod = method;
   for (let redirects = 0; redirects <= maxRedirects; redirects++) {
+    const resolved = await validateResolvedHost(current.url, options);
+    if (!resolved.ok) return { ok: false, reason: resolved.reason, response: null, url: null };
     const response = await fetch(current.url.href, {
       method: currentMethod,
       headers,
@@ -120,6 +135,28 @@ export async function fetchSafeResponse(url, options = {}) {
   }
 
   return { ok: false, reason: "too_many_redirects", response: null, url: current.url };
+}
+
+async function validateResolvedHost(url, options) {
+  const hostname = normalizeHostname(url.hostname);
+  if (isIP(hostname)) {
+    return isPrivateHostname(hostname)
+      ? { ok: false, reason: "private_address" }
+      : { ok: true, reason: "" };
+  }
+  if (!options.lookup && process.env.NODE_ENV === "test") return { ok: true, reason: "" };
+  const lookup = options.lookup || dnsLookup;
+  try {
+    const result = await lookup(hostname, { all: true, verbatim: true });
+    const addresses = Array.isArray(result) ? result : [result];
+    if (!addresses.length) return { ok: false, reason: "dns_lookup_failed" };
+    const privateAddress = addresses.some(item => isPrivateHostname(item?.address || item));
+    return privateAddress
+      ? { ok: false, reason: "private_address" }
+      : { ok: true, reason: "" };
+  } catch {
+    return { ok: false, reason: "dns_lookup_failed" };
+  }
 }
 
 export async function fetchSafeText(url, options = {}) {

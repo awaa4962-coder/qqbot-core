@@ -4,6 +4,7 @@ import { log } from "./logger.mjs";
 import { groupChats } from "./storage.mjs";
 import { normalizeMsg, cleanText } from "./context/messages.mjs";
 import { mentionedUsers, parseMentions } from "./mentions/index.mjs";
+import { wallAgeMs } from "./runtime-clock.mjs";
 import {
   getImages,
   getImageSegments,
@@ -76,11 +77,11 @@ export async function resolveReplyContext(ctx) {
 
 export function pullRecentImages(groupId) {
   const recentMsgs = groupChats[String(groupId)] || [];
-  const cutoff = Date.now() - 300000;
   const urls = [];
   for (let i = recentMsgs.length - 1; i >= 0; i--) {
     const m = recentMsgs[i];
-    if (m.ts < cutoff) break;
+    const age = wallAgeMs(m.ts);
+    if (age > 300000) continue;
     if (m.imageUrls?.length) urls.push(...m.imageUrls);
   }
   if (urls.length) log("pulled", urls.length, "recent images into context");

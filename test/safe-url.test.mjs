@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { fetchFileContent } from "../bridge/napcat.mjs";
-import { fetchSafeBuffer, validateSafeUrl } from "../bridge/safe-url.mjs";
+import { fetchSafeBuffer, fetchSafeResponse, validateSafeUrl } from "../bridge/safe-url.mjs";
 import { safeFetch } from "../bridge/services/link-preview/safe-fetch.mjs";
 import { tryMiMoVision } from "../bridge/vision.mjs";
 
@@ -28,6 +28,20 @@ describe("safe url redirects", () => {
   it("rejects IPv4-mapped IPv6 loopback forms", () => {
     assert.equal(validateSafeUrl("http://[::ffff:127.0.0.1]/").ok, false);
     assert.equal(validateSafeUrl("http://[::ffff:7f00:1]/").ok, false);
+  });
+
+  it("rejects public-looking hostnames that resolve to private addresses", async () => {
+    let fetchCalls = 0;
+    const result = await withMockFetch(async () => {
+      fetchCalls++;
+      return new globalThis.Response("nope");
+    }, () => fetchSafeResponse("https://public.example/path", {
+      lookup: async () => [{ address: "169.254.169.254", family: 4 }],
+    }));
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "private_address");
+    assert.equal(fetchCalls, 0);
   });
 
   it("safeFetch rejects public URL redirecting to loopback", async () => {

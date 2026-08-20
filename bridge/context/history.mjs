@@ -1,5 +1,6 @@
 import { users, groupChats } from "../storage.mjs";
 import { fmtMsg, formatSpeakerLine } from "./messages.mjs";
+import { wallAgeMs } from "../runtime-clock.mjs";
 
 export function recentGroupChat(group_id, limit = 30, options = {}) {
   const gid = String(group_id);
@@ -48,7 +49,9 @@ function collectWeightedUserChats(chats, currentGroup, options) {
     const chat = chats[i];
     if (String(chat.group) !== currentGroup) continue;
     if (isExcludedMessage(chat, options)) continue;
-    const ageHours = (now - chat.ts) / 3600000;
+    const ageMs = wallAgeMs(chat.ts, now);
+    if (!Number.isFinite(ageMs)) continue;
+    const ageHours = ageMs / 3600000;
     if (ageHours > 12) break;
     weighted.push({ msg: chat, weight: weightRecentChat(ageHours) });
   }
@@ -65,7 +68,7 @@ function isExcludedMessage(message, options = {}) {
   const currentText = String(options.currentText || "").replace(/\s+/g, " ").trim();
   if (!currentMessageId || !currentText) return false;
   const messageText = String(message?.text || "").replace(/\s+/g, " ").trim();
-  return messageText === currentText && Date.now() - Number(message?.ts || 0) < 15000;
+  return messageText === currentText && wallAgeMs(message?.ts) < 15000;
 }
 
 function hasExcludedMessageId(message, excludedIds) {

@@ -1,5 +1,6 @@
 import { normalizeInterjectionReply as normalizeReplyText } from "./thinking.mjs";
 import { buildCurrentInput } from "./context/messages.mjs";
+import { monotonicNow } from "./runtime-clock.mjs";
 
 const PROBABILITY = Object.freeze({
   ordinary: 0.06,
@@ -47,8 +48,8 @@ function cooldownAllows(ctx, state, now) {
   const lastGroupAt = state.lastGroupAt.get(groupId) || 0;
   const lastUserAt = state.lastUserAt.get(userId) || 0;
   const sinceCount = state.groupMessagesSinceInterjection.get(groupId) ?? MIN_GROUP_MESSAGES_BETWEEN;
-  if (now - lastGroupAt < GROUP_COOLDOWN_MS) return false;
-  if (now - lastUserAt < USER_COOLDOWN_MS) return false;
+  if (lastGroupAt && now - lastGroupAt < GROUP_COOLDOWN_MS) return false;
+  if (lastUserAt && now - lastUserAt < USER_COOLDOWN_MS) return false;
   if (sinceCount < MIN_GROUP_MESSAGES_BETWEEN) return false;
   return true;
 }
@@ -93,7 +94,7 @@ export function buildInterjectionDecision(text, ctx = {}, state = defaultState) 
   const probability = applyProbabilityFactor(PROBABILITY[kind] || 0, ctx.probabilityFactor);
   if (!probability) return { ok: false, kind, reason: "no_probability", probability };
 
-  const now = ctx.now || Date.now();
+  const now = ctx.now ?? monotonicNow();
   if (!cooldownAllows(ctx, state, now)) return { ok: false, kind, reason: "cooldown", probability };
   const random = typeof ctx.random === "function" ? ctx.random() : Math.random();
   if (random >= probability) return { ok: false, kind, reason: "random", probability };

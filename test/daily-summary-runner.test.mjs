@@ -48,3 +48,25 @@ test("daily summary runner skips only the guarded or empty group", async () => {
   assert.deepEqual(sent, [303]);
   assert.deepEqual(result.results.map(item => item.reason || ""), ["already_sent", "no_messages", ""]);
 });
+
+test("daily summary runner clears a reserved attempt after a confirmed send failure", async () => {
+  const events = [];
+  const result = await runDailySummaries({
+    dateText: "2026-07-29",
+    groupIds: [101],
+    createGuard: () => ({
+      ok: true,
+      markAttempt: payload => events.push(["attempt", payload.messages]),
+      markFailed: () => events.push(["failed"]),
+      release: () => events.push(["released"]),
+    }),
+    loadMessages: () => [{ text: "ready" }],
+    sendSummary: async options => {
+      await options.beforeSend({ messages: 1 });
+      return { ok: false, sent: false, error: "send_failed" };
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(events, [["attempt", 1], ["failed"], ["released"]]);
+});

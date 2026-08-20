@@ -1,4 +1,5 @@
 import { validateSafeUrl } from "../../safe-url.mjs";
+import { monotonicNow } from "../../runtime-clock.mjs";
 
 const DEFAULT_DEDUPE_WINDOW_MS = 30 * 60 * 1000;
 const MAX_MESSAGE_LENGTH = 1200;
@@ -71,7 +72,7 @@ export function previewAddsValue(preview, rawText) {
 export function markAutoPreviewSent(groupId, candidate, options = {}) {
   const key = typeof candidate === "string" ? candidate : candidate?.key;
   if (!key) return;
-  const now = Number(options.now || Date.now());
+  const now = Number(options.now ?? monotonicNow());
   const groupKey = String(groupId || "default");
   const history = recentByGroup.get(groupKey) || new Map();
   purgeExpired(history, now, dedupeWindow(options));
@@ -86,7 +87,7 @@ export function resetAutoPreviewPolicy() {
 }
 
 function wasRecentlyPreviewed(groupId, key, options) {
-  const now = Number(options.now || Date.now());
+  const now = Number(options.now ?? monotonicNow());
   const history = recentByGroup.get(String(groupId || "default"));
   if (!history) return false;
   const windowMs = dedupeWindow(options);

@@ -11,6 +11,11 @@ fail() { printf '[fail] %s\n' "$1" >&2; FAILED=1; }
 command -v docker >/dev/null 2>&1 && pass "Docker present" || fail "Docker is not installed"
 docker compose version >/dev/null 2>&1 && pass "Docker Compose v2 present" || fail "docker compose is unavailable"
 [[ -f "$ROOT/qqfriend.env" ]] && pass "qqfriend.env present" || fail "run ./prepare.sh first"
+if [[ -f "$ROOT/qqfriend.env" && "$(stat -Lc '%a' "$ROOT/qqfriend.env")" == "600" ]]; then
+  pass "qqfriend.env permissions"
+else
+  fail "qqfriend.env must be mode 600"
+fi
 [[ -s "$ROOT/state/qqfriend/config/.env_napcat_token" ]] \
   && pass "NapCat token present" \
   || fail "NapCat token is missing"
@@ -54,6 +59,11 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; 
 fi
 
 if [[ "${1:-}" == "--runtime" ]]; then
+  if systemctl cat docker.service 2>/dev/null | grep -Fq 'After=chrony-wait.service'; then
+    pass "Docker waits for clock synchronization"
+  else
+    fail "Docker clock ordering is missing; run sudo ./install-time-order.sh"
+  fi
   if crontab -l 2>/dev/null | grep -Fq "# BEGIN QQFRIEND DAILY SUMMARY" \
     && crontab -l 2>/dev/null | grep -Fq "bridge node daily_summary.mjs"; then
     pass "Daily summary user schedule"
@@ -64,6 +74,11 @@ if [[ "${1:-}" == "--runtime" ]]; then
     pass "Bridge health endpoint"
   else
     fail "Bridge health endpoint is unavailable"
+  fi
+  if curl --fail --silent --max-time 5 http://127.0.0.1:16789/ready >/dev/null; then
+    pass "Bridge OneBot readiness endpoint"
+  else
+    fail "Bridge is alive but OneBot is not ready"
   fi
 fi
 

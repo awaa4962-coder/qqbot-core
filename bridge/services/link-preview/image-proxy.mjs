@@ -1,4 +1,5 @@
 import { fetchSafeBuffer } from "../../safe-url.mjs";
+import { monotonicNow } from "../../runtime-clock.mjs";
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 const CACHE_TTL_MS = 10 * 60 * 1000;
@@ -10,7 +11,7 @@ export async function resolvePreviewImage(imageUrl, options = {}) {
   if (!url) return null;
   if (url.startsWith("base64://")) return url;
 
-  const now = Number(options.now || Date.now());
+  const now = Number(options.now ?? monotonicNow());
   const cached = readCache(url, now);
   if (cached) return cached;
 

@@ -1,4 +1,5 @@
 // bridge/duplicate-message.mjs - in-memory guard against repeater pollution.
+import { monotonicNow } from "./runtime-clock.mjs";
 
 const WINDOW_MS = 5 * 60 * 1000;
 const SAME_USER_REPEAT_MS = 45 * 1000;
@@ -11,7 +12,7 @@ export function observeGroupDuplicate(event = {}, options = {}) {
   const text = normalizeDuplicateText(event.text);
   if (!shouldCheckDuplicate(text, event, options)) return duplicateResult(false, text, 0, 0, "bypass");
 
-  const now = Number(options.now || event.now || Date.now());
+  const now = Number(options.now ?? event.now ?? monotonicNow());
   const { groupId, uid } = duplicateIdentity(event);
   if (!groupId || !uid) return duplicateResult(false, text, 0, 0, "missing_identity");
 

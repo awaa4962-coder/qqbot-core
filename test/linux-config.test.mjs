@@ -106,9 +106,23 @@ test("Linux Docker deployment includes an idempotent user schedule for daily sum
   assert.doesNotMatch(installer, /sudo/);
 });
 
+test("Linux Docker waits for clock synchronization without hard-requiring network time", () => {
+  const installer = fs.readFileSync(path.join(ROOT, "deploy", "linux", "install-time-order.sh"), "utf8");
+  const dropIn = fs.readFileSync(path.join(ROOT, "deploy", "linux", "systemd", "docker-chrony-wait.conf"), "utf8");
+  const check = fs.readFileSync(path.join(ROOT, "deploy", "linux", "check.sh"), "utf8");
+
+  assert.match(dropIn, /Wants=chrony-wait\.service/);
+  assert.match(dropIn, /After=chrony-wait\.service/);
+  assert.doesNotMatch(dropIn, /Requires=/);
+  assert.match(installer, /timedatectl set-local-rtc 0/);
+  assert.match(installer, /hwclock --systohc --utc/);
+  assert.match(check, /\/ready/);
+  assert.match(check, /qqfriend\.env must be mode 600/);
+});
+
 test("Linux deployment scripts keep Unix line endings", () => {
   const deployRoot = path.join(ROOT, "deploy", "linux");
-  for (const name of ["check.sh", "install-docker-host.sh", "install-summary-schedule.sh", "prepare.sh"]) {
+  for (const name of ["check.sh", "install-docker-host.sh", "install-summary-schedule.sh", "install-time-order.sh", "prepare.sh"]) {
     const script = fs.readFileSync(path.join(deployRoot, name), "utf8");
     assert.doesNotMatch(script, /\r\n/, `${name} must use LF line endings`);
   }

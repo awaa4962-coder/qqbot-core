@@ -12,6 +12,10 @@ import { prepareCommandText } from "../../commands/normalize.mjs";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TOP_N = 48;
 const MIN_TOKEN_COUNT = 2;
+const WORDCLOUD_TEMP_PREFIX = "qqfriend-wordcloud-";
+const DEFAULT_TEMP_MAX_AGE_MS = 60 * 60 * 1000;
+const FUTURE_SKEW_MS = 5 * 60 * 1000;
+const activeWordcloudFiles = new Set();
 
 export async function handleWordcloudCommand(ctx, options = {}) {
   if (!ctx?.isAtMe) return false;
@@ -35,6 +39,7 @@ export async function handleWordcloudCommand(ctx, options = {}) {
       await imageSender(ctx.group_id, result.text, result.imagePath);
     } finally {
       await fs.rm(result.imagePath, { force: true }).catch(() => {});
+      activeWordcloudFiles.delete(path.resolve(result.imagePath));
     }
   } else {
     await sender(ctx.group_id, result.text, options.replyToId);
@@ -167,10 +172,33 @@ export function wordcloudRangeLabel(parsed) {
 export async function renderWordcloudPng(tokens, options = {}) {
   const sharp = await loadSharp();
   if (!sharp) return null;
-  const filePath = path.join(os.tmpdir(), `qqfriend-wordcloud-${Date.now()}-${Math.random().toString(16).slice(2)}.png`);
+  const filePath = path.join(os.tmpdir(), `${WORDCLOUD_TEMP_PREFIX}${Date.now()}-${Math.random().toString(16).slice(2)}.png`);
   const svg = buildWordcloudSvg(tokens, options);
   await sharp(Buffer.from(svg)).png().toFile(filePath);
+  activeWordcloudFiles.add(path.resolve(filePath));
   return filePath;
+}
+
+export async function cleanupExpiredWordcloudFiles(options = {}) {
+  const root = options.root || os.tmpdir();
+  const now = Number(options.now || Date.now());
+  const maxAgeMs = Number(options.maxAgeMs || DEFAULT_TEMP_MAX_AGE_MS);
+  let entries = [];
+  try { entries = await fs.readdir(root, { withFileTypes: true }); } catch { return 0; }
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.startsWith(WORDCLOUD_TEMP_PREFIX)) continue;
+    const target = path.join(root, entry.name);
+    if (activeWordcloudFiles.has(path.resolve(target))) continue;
+    try {
+      const age = now - (await fs.stat(target)).mtimeMs;
+      if (age >= 0 && age < maxAgeMs) continue;
+      if (age < 0 && age > -FUTURE_SKEW_MS) continue;
+      await fs.rm(target, { force: true });
+      removed++;
+    } catch {}
+  }
+  return removed;
 }
 
 export function buildWordcloudSvg(tokens, options = {}) {

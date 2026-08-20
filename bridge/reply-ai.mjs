@@ -15,10 +15,12 @@ import { getPreferredDisplayName } from "./user-preferences.mjs";
 import { isSuccessfulOutbound, recordConversationTurn } from "./cognition/index.mjs";
 import { selectPersonaCue } from "./persona-style.mjs";
 import { maybeSendStickerAfterReply } from "./features/stickers/index.mjs";
+import { wallAgeMs } from "./runtime-clock.mjs";
 
 const PROFILE_REFRESH_MS = 6 * 60 * 60 * 1000;
 const PROFILE_REFRESH_MESSAGES = 30;
 const PROFILE_MIN_MESSAGES = 10;
+const profileRefreshInFlight = new Map();
 
 export async function aiReply(group_id, userId, userMsg, userName, imageUrls, replyTo, replyText, isAtMe, mentions = [], runtime = {}) {
   if (isAtMe === undefined) isAtMe = true;
@@ -105,19 +107,28 @@ export function shouldGenerateProfile(uid, now = Date.now()) {
   const lastAt = Number(u.profileGeneratedAt || 0);
   const lastCount = Number(u.profileGeneratedChatCount || 0);
   if (!lastAt) return true;
-  return now - lastAt >= PROFILE_REFRESH_MS ||
+  return wallAgeMs(lastAt, now) >= PROFILE_REFRESH_MS ||
     chatCount - lastCount >= PROFILE_REFRESH_MESSAGES;
 }
 
 export async function maybeGenerateProfile(uid, generator = generateProfile, now = Date.now()) {
-  if (!shouldGenerateProfile(uid, now)) return "";
-  const u = users[String(uid)];
-  if (u) {
-    u.profileGeneratedAt = now;
-    u.profileGeneratedChatCount = Array.isArray(u.chats) ? u.chats.length : 0;
-    saveUsers();
-  }
-  return await generator(uid);
+  const key = String(uid);
+  if (profileRefreshInFlight.has(key)) return await profileRefreshInFlight.get(key);
+  if (!shouldGenerateProfile(key, now)) return "";
+  const task = Promise.resolve(generator(key)).then(result => {
+    if (result) markProfileGenerated(key, now);
+    return result;
+  }).finally(() => profileRefreshInFlight.delete(key));
+  profileRefreshInFlight.set(key, task);
+  return await task;
+}
+
+function markProfileGenerated(uid, now) {
+  const user = users[String(uid)];
+  if (!user) return;
+  user.profileGeneratedAt = now;
+  user.profileGeneratedChatCount = Array.isArray(user.chats) ? user.chats.length : 0;
+  saveUsers();
 }
 
 const LAST_RESORT_REPLIES = [

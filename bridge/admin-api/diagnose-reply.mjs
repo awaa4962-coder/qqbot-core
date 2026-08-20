@@ -11,6 +11,8 @@ import {
 import { parseWordcloudCommand } from "../features/wordcloud/index.mjs";
 import { parseJmCommand } from "../jm-provider.mjs";
 import { parseResourceTransferCommand } from "../resource-transfer.mjs";
+import { getAdmissionStatus } from "../event-admission.mjs";
+import { getPipelineStatus } from "../pipeline-state.mjs";
 
 export function buildReplyDiagnosis(input = {}, options = {}) {
   const event = normalizeDiagnosticEvent(input);
@@ -41,6 +43,10 @@ export function buildReplyDiagnosis(input = {}, options = {}) {
     },
     command: buildCommandDiagnosis(ctx, cfg),
     interjection: buildInterjectionDiagnosis(ctx, state),
+    runtimePressure: {
+      admission: getAdmissionStatus(),
+      pipeline: getPipelineStatus(),
+    },
   };
   result.replyPlan = buildReplyPlan(result, ctx);
   return result;

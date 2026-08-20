@@ -4,24 +4,24 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.0-linux-preview";
-export const VERSION_NAME = "linux-preview";
+export const VERSION = "1.4.1-runtime-resilience";
+export const VERSION_NAME = "runtime-resilience";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "新增独立 Linux 服务器部署，支持 Docker Compose 与原生 systemd，不覆盖现有 Windows 安装。",
-  "NapCat HTTP、正向 WebSocket 和访问认证可配置；跨容器文件通过 upload_file_stream 传输，不再误用 Bridge 本地路径。",
-  "现有控制台可从浏览器访问，管理 API 与静态页面仅允许环回地址，远程管理使用 SSH 隧道。",
-  "配置、运行数据、日志、临时文件和安全备份分别落到 Linux 数据卷；JM 临时文件继续按一天生命周期清理。",
-  "Linux 初始化不会复制模型凭据、QQ 登录态、聊天记录或用户记忆，迁移必须单独确认。",
+  "限流、冷却与运行缓存改用单调时钟；系统时间回拨不再冻结群聊回复，非白名单流量也不会抢占正常群额度。",
+  "OneBot 链路新增心跳、连接代次、同群有序队列、消息 ID 去重和独立 /ready 就绪状态。",
+  "日报采用原子发送状态与不确定结果保护，开机后等待 OneBot 就绪并补跑昨天，避免重复发送或日期错位。",
+  "空白名单语义、画像失败节流、临时文件周期清理、记忆落盘窗口和 API 瞬时重试统一加固。",
+  "Linux Docker 在开机时等待 Chrony 校时，运行检查会验证配置权限、时钟顺序、存活与真实就绪状态。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Adds an isolated Linux server deployment with Docker Compose and native systemd options.",
-  "NapCat HTTP, forward WebSocket and bearer auth are configurable; cross-container files use upload_file_stream.",
-  "The existing console now runs in a loopback-only browser host designed for SSH port forwarding.",
-  "Configuration, state, logs, temporary files and safe backups use separate Linux data paths.",
-  "Linux initialization never copies model credentials, QQ login state, chats or user memory automatically.",
+  "Moves rate limits, cooldowns and runtime caches to monotonic time so clock steps cannot freeze replies.",
+  "Adds OneBot heartbeat, connection generations, ordered queues, message-id deduplication and a separate readiness endpoint.",
+  "Makes daily summaries crash-aware and atomic, with a previous-day boot catch-up after OneBot is ready.",
+  "Hardens empty allowlist semantics, profile throttling, temporary cleanup, persistence and transient API retries.",
+  "Keeps the isolated Linux server deployment, upload_file_stream transfers, loopback-only browser and no automatic model credentials migration; Docker now waits for Chrony synchronization.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

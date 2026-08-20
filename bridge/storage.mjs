@@ -6,25 +6,29 @@ import { logE } from './logger.mjs';
 // ── 全局状态 ──
 export let users = {};
 export let groupChats = {};
+let _usersNeedTimestampRepair = false;
+let _groupChatsNeedTimestampRepair = false;
 
 try {
   const raw = fs.readFileSync(CFG.memoryFile, 'utf-8');
   users = JSON.parse(raw);
   if (typeof users !== 'object' || Array.isArray(users)) users = {};
+  _usersNeedTimestampRepair = repairUserTimestamps(users);
 } catch { users = {}; }
 
 try {
   const raw = fs.readFileSync(CFG.chatLogFile, 'utf-8');
   groupChats = JSON.parse(raw);
   if (typeof groupChats !== 'object' || Array.isArray(groupChats)) groupChats = {};
+  _groupChatsNeedTimestampRepair = repairGroupChatTimestamps(groupChats);
 } catch { groupChats = {}; }
 
 // ── 防抖存档（v17: 异步批量，避免每条消息都同步写盘）──
-let _saveUsersDirty = false;
+let _saveUsersDirty = _usersNeedTimestampRepair;
 let _saveUsersTimer = null;
-let _saveGroupChatsDirty = false;
+let _saveGroupChatsDirty = _groupChatsNeedTimestampRepair;
 let _saveGroupChatsTimer = null;
-const SAVE_DEBOUNCE_MS = 30000;
+const SAVE_DEBOUNCE_MS = 5000;
 const _saveInProgress = { users: false, chats: false };
 
 export function saveUsers() {
@@ -33,8 +37,11 @@ export function saveUsers() {
   _saveUsersTimer = setTimeout(async () => {
     _saveUsersTimer = null;
     if (!_saveUsersDirty) return;
+    if (_saveInProgress.users) {
+      saveUsers();
+      return;
+    }
     _saveUsersDirty = false;
-    if (_saveInProgress.users) return;
     _saveInProgress.users = true;
     try {
       const tmp = CFG.memoryFile + '.tmp.' + process.pid;
@@ -55,8 +62,11 @@ export function saveGroupChats() {
   _saveGroupChatsTimer = setTimeout(async () => {
     _saveGroupChatsTimer = null;
     if (!_saveGroupChatsDirty) return;
+    if (_saveInProgress.chats) {
+      saveGroupChats();
+      return;
+    }
     _saveGroupChatsDirty = false;
-    if (_saveInProgress.chats) return;
     _saveInProgress.chats = true;
     try {
       const tmp = CFG.chatLogFile + '.tmp.' + process.pid;
@@ -102,6 +112,9 @@ export function flushSavesSync() {
     }
   }
 }
+
+if (_saveUsersDirty) saveUsers();
+if (_saveGroupChatsDirty) saveGroupChats();
 
 export function getUser(uid, nickname) {
   if (!users[uid]) {
@@ -179,4 +192,51 @@ function sanitizeMentions(mentions) {
       };
     })
     .filter(Boolean);
+}
+
+function repairUserTimestamps(store, now = Date.now()) {
+  let changed = false;
+  for (const user of Object.values(store || {})) {
+    if (!user || typeof user !== 'object') continue;
+    changed = repairChatList(user.chats, now) || changed;
+    if (isFarFuture(user.profileGeneratedAt, now)) {
+      user.profileGeneratedAt = 0;
+      changed = true;
+    }
+    if (isFarFuture(Date.parse(user.firstSeen), now)) {
+      user.firstSeen = new Date(now).toISOString();
+      changed = true;
+    }
+    for (const comment of Object.values(user.relationshipComments || {})) {
+      if (isFarFuture(comment?.generatedAt, now)) {
+        comment.generatedAt = 0;
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
+function repairGroupChatTimestamps(store, now = Date.now()) {
+  let changed = false;
+  for (const chats of Object.values(store || {})) {
+    changed = repairChatList(chats, now) || changed;
+  }
+  return changed;
+}
+
+function repairChatList(chats, now) {
+  if (!Array.isArray(chats)) return false;
+  let changed = false;
+  for (const chat of chats) {
+    if (!isFarFuture(chat?.ts, now)) continue;
+    chat.ts = now;
+    changed = true;
+  }
+  return changed;
+}
+
+function isFarFuture(timestamp, now) {
+  const value = Number(timestamp);
+  return Number.isFinite(value) && value > Number(now) + 5 * 60 * 1000;
 }

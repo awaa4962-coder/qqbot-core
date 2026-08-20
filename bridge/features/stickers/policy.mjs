@@ -1,6 +1,7 @@
 import { CFG } from "../../config.mjs";
 import { getStickerSettings } from "./catalog-store.mjs";
 import { resolveStickerAllowedGroups } from "./scope.mjs";
+import { monotonicNow } from "../../runtime-clock.mjs";
 
 const lastSent = new Map();
 const SERIOUS_RE = /急救|报警|自杀|自残|死亡|去世|住院|法律责任|报错|异常|失败|密钥|密码|管理员|日报|更新日志|版本|命令|诊断/;
@@ -8,7 +9,7 @@ const STRONG_RE = /哈哈|笑死|绷不住|无语|离谱|震惊|卧槽|生气|�
 
 export function evaluateStickerPolicy(context = {}, options = {}) {
   const settings = options.settings || getStickerSettings();
-  const now = Number(options.now || Date.now());
+  const now = Number(options.now ?? monotonicNow());
   const mode = settings.mode || "steady";
   const preflight = evaluatePreflight(context, mode);
   if (preflight) return preflight;
@@ -18,7 +19,7 @@ export function evaluateStickerPolicy(context = {}, options = {}) {
   return cooldownBlock || evaluateChance(context, settings, scope.key, mode, options.random);
 }
 
-export function recordStickerCooldown(scopeKey, now = Date.now()) {
+export function recordStickerCooldown(scopeKey, now = monotonicNow()) {
   if (scopeKey) lastSent.set(String(scopeKey), Number(now));
 }
 

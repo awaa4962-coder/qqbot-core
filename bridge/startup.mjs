@@ -7,10 +7,19 @@ import { log, logE, cleanupLogger, getStormStatus } from "./logger.mjs";
 import { users, groupChats, flushSavesSync } from "./storage.mjs";
 import { sendMsg, getImages, getFiles, getReplyData } from "./napcat.mjs";
 import { processEvent } from "./reply.mjs";
+import { getAdmissionStatus } from "./event-admission.mjs";
+import { createOneBotLinkManager } from "./onebot-link.mjs";
+import { getPipelineStatus } from "./pipeline-state.mjs";
+import { createDailySummaryCatchUp } from "./group-summary/catchup.mjs";
+import { createRuntimeMaintenance } from "./runtime-maintenance.mjs";
+import {
+  getCachedNapCatReadiness,
+  refreshNapCatReadiness,
+} from "./napcat-readiness.mjs";
 import { generateProfile } from "./profile.mjs";
 import { cleanText } from "./context/messages.mjs";
 import { VERSION } from "./version.mjs";
-import { cleanupExpiredJmTempDirs, refreshJmRuntimeHealth } from "./jm-provider.mjs";
+import { refreshJmRuntimeHealth } from "./jm-provider.mjs";
 import { cleanupExpiredMemoryProfiles, flushMemoryProfilesSync } from "./memory-profile.mjs";
 import { flushImageContextCacheSync } from "./knowledge/memes/image-context.mjs";
 import {
@@ -96,6 +105,21 @@ function handleHealth(res) {
     groups: Object.keys(groupChats).length,
     memory: process.memoryUsage().rss,
     storm: getStormStatus(),
+    pipeline: getPipelineStatus(),
+    napcat: getCachedNapCatReadiness(),
+  });
+}
+
+async function handleReady(res) {
+  const onebot = oneBotLink.status();
+  const napcat = await refreshNapCatReadiness();
+  const ready = onebot.ready && napcat.ready;
+  sendJson(res, ready ? 200 : 503, {
+    status: ready ? 'ready' : 'not_ready',
+    onebot,
+    napcat,
+    admission: getAdmissionStatus(),
+    pipeline: getPipelineStatus(),
   });
 }
 
@@ -135,8 +159,8 @@ async function handleEventPost(req, res) {
   try {
     const ev = await readJsonBody(req, res);
     if (!ev) return;
-    await processEvent(ev);
-    sendJson(res, 200, { status: 'received' });
+    const outcome = await processEvent(ev);
+    sendJson(res, 200, { status: outcome.ok ? 'processed' : 'ignored', outcome });
   } catch (e) {
     logE('processEvent error:', e.message);
     sendJson(res, 500, { error: e.message });
@@ -153,6 +177,10 @@ async function routeHttpRequest(req, res, pathname) {
   }
   if (req.method === 'GET' && pathname === '/health') {
     handleHealth(res);
+    return;
+  }
+  if (req.method === 'GET' && pathname === '/ready') {
+    await handleReady(res);
     return;
   }
   if (req.method === 'POST' && pathname === '/reply') {
@@ -187,41 +215,24 @@ server.on('error', function(error) {
 });
 
 // ── WebSocket Server ──
-const wss = new WebSocketServer({ server: server });
-
-// ── WebSocket 单连接管理：新连接优先，替换旧连接 ──
-let _activeWs = null;
+const wss = new WebSocketServer({ server: server, maxPayload: MAX_BODY_BYTES });
+const oneBotLink = createOneBotLinkManager({ processor: processEvent, log, logError: logE });
+const dailySummaryCatchUp = createDailySummaryCatchUp({
+  isReady: () => oneBotLink.status().ready && getCachedNapCatReadiness().ready,
+  log: (event, detail) => log('summary catch-up', event, JSON.stringify(detail || {})),
+});
+const runtimeMaintenance = createRuntimeMaintenance({ log, logError: logE });
 
 wss.on('connection', function(ws) {
-  if (_activeWs && _activeWs.readyState === _activeWs.OPEN) {
-    log('WebSocket new client connected, closing previous client');
-    _activeWs.close(1000, 'replaced by new connection');
-  }
-  _activeWs = ws;
-  log('WebSocket client connected');
-
-  ws.on('message', function(data) {
-    try {
-      const ev = JSON.parse(data.toString());
-      processEvent(ev).catch(function(e) { logE('WS processEvent error:', e.message); });
-    } catch (e) {
-      logE('WS parse error:', e.message);
-    }
-  });
-
-  ws.on('close', function() {
-    if (_activeWs === ws) _activeWs = null;
-    log('WebSocket client disconnected');
-  });
-  ws.on('error', function(e) {
-    if (_activeWs === ws) _activeWs = null;
-    logE('WebSocket error:', e.message);
-  });
+  oneBotLink.attach(ws);
+  refreshNapCatReadiness({ force: true }).catch(error => logE('NapCat readiness probe failed:', error.message));
 });
 
 // ── Start ──
 // 进程退出前强制存档
 function flushRuntimeState() {
+  dailySummaryCatchUp.stop();
+  runtimeMaintenance.stop();
   stopMemeTrendUpdates();
   shutdownStickerSystem();
   flushSavesSync();
@@ -231,8 +242,19 @@ function flushRuntimeState() {
   cleanupLogger();
 }
 
-process.on('SIGINT', () => { flushRuntimeState(); process.exit(0); });
-process.on('SIGTERM', () => { flushRuntimeState(); process.exit(0); });
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  log('shutdown requested:', signal);
+  await oneBotLink.stop({ drainMs: 10000 });
+  await new Promise(resolve => server.close(resolve));
+  flushRuntimeState();
+  process.exit(0);
+}
+
+process.on('SIGINT', () => { shutdown('SIGINT').catch(() => process.exit(1)); });
+process.on('SIGTERM', () => { shutdown('SIGTERM').catch(() => process.exit(1)); });
 process.on('beforeExit', flushRuntimeState);
 
 server.listen(CFG.listenPort, CFG.listenHost, function() {
@@ -242,7 +264,7 @@ server.listen(CFG.listenPort, CFG.listenHost, function() {
   log('Whitelist groups:', CFG.groupWhitelist.join(', '));
   log('Users loaded:', Object.keys(users).length);
   log('Group chats loaded:', Object.keys(groupChats).length);
-  cleanupExpiredJmTempDirs().catch(error => logE('jm expired temp cleanup failed:', error.message));
+  runtimeMaintenance.start();
   refreshJmRuntimeHealth().then(status => {
     log('jm runtime health:', status.health, status.reason);
   }).catch(error => logE('jm runtime health failed:', error.message));
@@ -252,6 +274,7 @@ server.listen(CFG.listenPort, CFG.listenHost, function() {
   const stickerStatus = initializeStickerSystem();
   log('sticker system ready:', JSON.stringify(stickerStatus));
   scheduleMemeTrendUpdates();
+  dailySummaryCatchUp.start();
 
   // 每小时更新所有用户画像
   async function refreshAllProfiles() {

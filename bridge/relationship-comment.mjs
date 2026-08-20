@@ -4,6 +4,7 @@ import {
   callRelationshipCommentPrimary,
 } from "./model-router.mjs";
 import { saveUsers } from "./storage.mjs";
+import { wallAgeMs } from "./runtime-clock.mjs";
 
 const COMMENT_CACHE_MS = 6 * 60 * 60 * 1000;
 const COMMENT_CACHE_MESSAGES = 30;
@@ -65,7 +66,7 @@ export function normalizeRelationshipComment(text) {
 
 export function shouldRefreshComment(cache, relation, now = Date.now()) {
   if (!cache?.text) return true;
-  if (now - Number(cache.generatedAt || 0) >= COMMENT_CACHE_MS) return true;
+  if (wallAgeMs(cache.generatedAt, now) >= COMMENT_CACHE_MS) return true;
   if (Number(relation.messageCount || 0) - Number(cache.messageCount || 0) >= COMMENT_CACHE_MESSAGES) return true;
   if (Number(relation.groupMessageCount || 0) - Number(cache.groupMessageCount || 0) >= COMMENT_CACHE_MESSAGES) return true;
   return false;

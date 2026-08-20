@@ -2,6 +2,9 @@
 
 import { CFG, LONG_GROUPS } from "../config.mjs";
 import { getStormStatus } from "../logger.mjs";
+import { getAdmissionStatus } from "../event-admission.mjs";
+import { getPipelineStatus } from "../pipeline-state.mjs";
+import { getCachedNapCatReadiness } from "../napcat-readiness.mjs";
 import { getMemeStore } from "../knowledge/memes/index.mjs";
 import { linkPreviewStatus } from "../services/link-preview/index.mjs";
 import { users, groupChats } from "../storage.mjs";
@@ -44,6 +47,9 @@ export function buildRuntimeStatus(options = {}) {
       doubao: Boolean(CFG.doubaoKey),
     },
     storm: getStormStatus(),
+    admission: getAdmissionStatus(),
+    pipeline: getPipelineStatus(),
+    napcat: getCachedNapCatReadiness(),
   };
 }
 

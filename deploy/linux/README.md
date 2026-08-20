@@ -23,7 +23,8 @@ sudo ./install-docker-host.sh
 
 ```bash
 cd deploy/linux
-chmod +x install-docker-host.sh prepare.sh install-summary-schedule.sh check.sh
+chmod +x install-docker-host.sh install-time-order.sh prepare.sh install-summary-schedule.sh check.sh
+sudo ./install-time-order.sh
 ./prepare.sh
 ```
 
@@ -92,6 +93,8 @@ ssh -L 16789:127.0.0.1:16789 -L 6099:127.0.0.1:6099 miku-server
 ```
 
 Then visit `http://127.0.0.1:16789/console/` and `http://127.0.0.1:6099/webui` locally.
+
+`/health` is process liveness. `/ready` additionally requires a healthy OneBot WebSocket heartbeat and available inbound queue capacity.
 
 ## Native Bridge with systemd
 

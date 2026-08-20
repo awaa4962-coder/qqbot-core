@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { monotonicNow } from "../../runtime-clock.mjs";
 import { CFG } from "../../config.mjs";
 import { log, logE } from "../../logger.mjs";
 import {
@@ -124,7 +125,7 @@ export async function researchMemeTerm(term, options = {}) {
 async function runUpdate(options) {
   const now = Number(options.now || Date.now());
   const startedAt = new Date(now).toISOString();
-  const startedClock = Date.now();
+  const startedClock = monotonicNow();
   const runId = String(options.runId || crypto.randomUUID());
   const releaseLock = options.lock === false
     ? () => {}
@@ -166,7 +167,7 @@ async function runUpdate(options) {
     const sourceFailures = Object.values(collected.statuses).filter(item => !item.ok).length;
     const status = sourceFailures ? "partial" : "success";
     const skipped = Math.max(0, candidates.length - entries.length) + batch.skipped;
-    const durationMs = Math.max(0, Date.now() - startedClock);
+    const durationMs = Math.max(0, monotonicNow() - startedClock);
 
     Object.assign(sync, {
       lastSuccessAt: new Date(now).toISOString(),
@@ -354,7 +355,7 @@ function appendRollbackEntry(runId, entry, now) {
 
 function finishFailedRun({ runId, startedAt, startedClock, error }) {
   const sync = getMemeStore().sync;
-  const durationMs = Math.max(0, Date.now() - startedClock);
+  const durationMs = Math.max(0, monotonicNow() - startedClock);
   const message = clean(error, 180) || "unknown error";
   Object.assign(sync, {
     accepted: 0,
@@ -433,7 +434,8 @@ function acquireUpdateLock(filePath, now) {
 function removeStaleLock(filePath, now) {
   try {
     const stat = fs.statSync(filePath);
-    if (Number(now) - stat.mtimeMs > STALE_LOCK_MS) fs.unlinkSync(filePath);
+    const age = Number(now) - stat.mtimeMs;
+    if (age > STALE_LOCK_MS || age < -5 * 60 * 1000) fs.unlinkSync(filePath);
   } catch (error) {
     if (error?.code !== "ENOENT") throw error;
   }

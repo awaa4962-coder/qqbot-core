@@ -5,6 +5,7 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -25,6 +26,7 @@ try {
       QQBOT_TEMP_DIR: path.join(sandbox, "temp"),
       QQBOT_LISTEN_HOST: "127.0.0.1",
       QQBOT_LISTEN_PORT: String(port),
+      QQBOT_NAPCAT_API: "http://127.0.0.1:1",
       QQBOT_NAPCAT_WS_API: "",
       QQBOT_MEME_AUTO_UPDATE: "0",
       QQBOT_STICKERS_ENABLED: "0",
@@ -39,6 +41,7 @@ try {
 
   const health = await waitForJson(`http://127.0.0.1:${port}/health`, 15000);
   const status = await waitForJson(`http://127.0.0.1:${port}/admin/status`, 5000);
+  const readiness = await getJsonResponse(`http://127.0.0.1:${port}/ready`);
   const savedConfig = await postJson(`http://127.0.0.1:${port}/admin/config`, {
     editable: { botNames: ["LinuxSmoke"] },
   });
@@ -49,6 +52,7 @@ try {
 
   assert(health.status === "ok", "health status is not ok");
   assert(status.status === "ok", "admin status is not ok");
+  assert(readiness.status === 503 && readiness.payload.status === "not_ready", "readiness must fail closed without OneBot");
   assert(savedConfig.ok === true, "admin config write failed");
   assert(
     fs.existsSync(path.join(sandbox, "config", ".env_bot_names")),
@@ -70,6 +74,7 @@ try {
     port,
     health: health.status,
     status: status.status,
+    readiness: readiness.payload.status,
     console: "ok",
     configWrite: "ok",
     auditWrite: "ok",
@@ -93,9 +98,9 @@ function assert(condition, message) {
 }
 
 async function waitForJson(url, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = performance.now() + timeoutMs;
   let lastError = null;
-  while (Date.now() < deadline) {
+  while (performance.now() < deadline) {
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(1500) });
       if (response.ok) return await response.json();
@@ -118,6 +123,11 @@ async function postJson(url, body) {
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "HTTP " + response.status);
   return payload;
+}
+
+async function getJsonResponse(url) {
+  const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+  return { status: response.status, payload: await response.json() };
 }
 
 async function findFreePort() {

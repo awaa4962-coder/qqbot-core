@@ -50,17 +50,46 @@ describe("daily summary guard", () => {
 
   it("removes stale locks before starting a new run", () => {
     const rootDir = tempRoot();
-    const first = createDailySummaryGuard({ dateText: "2026-07-07", groupId: 2000000001, rootDir });
-    const oldTime = new Date(Date.now() - 10_000);
-    fs.utimesSync(first.lockDir, oldTime, oldTime);
+    let uptime = 1000;
+    createDailySummaryGuard({
+      dateText: "2026-07-07",
+      groupId: 2000000001,
+      rootDir,
+      uptimeNow: () => uptime,
+    });
+    uptime += 10_000;
 
     const second = createDailySummaryGuard({
       dateText: "2026-07-07",
       groupId: 2000000001,
       rootDir,
       staleMs: 1,
+      uptimeNow: () => uptime,
     });
     assert.equal(second.ok, true);
     second.release();
+  });
+
+  it("blocks automatic retries after an unconfirmed send attempt", () => {
+    const rootDir = tempRoot();
+    const first = createDailySummaryGuard({ dateText: "2026-07-07", groupId: 2000000001, rootDir });
+    first.markAttempt({ messages: 20 });
+    first.release();
+
+    const second = createDailySummaryGuard({ dateText: "2026-07-07", groupId: 2000000001, rootDir });
+    assert.equal(second.ok, false);
+    assert.equal(second.reason, "previous_attempt_unconfirmed");
+  });
+
+  it("quarantines a malformed sent marker instead of treating it as sent", () => {
+    const rootDir = tempRoot();
+    const marker = path.join(rootDir, "2026-07-07-2000000001.sent.json");
+    fs.writeFileSync(marker, "not-json", "utf8");
+    const guard = createDailySummaryGuard({ dateText: "2026-07-07", groupId: 2000000001, rootDir });
+
+    assert.equal(guard.ok, true);
+    assert.equal(fs.existsSync(marker), false);
+    assert.ok(fs.readdirSync(rootDir).some(name => name.includes(".sent.json.invalid-")));
+    guard.release();
   });
 });

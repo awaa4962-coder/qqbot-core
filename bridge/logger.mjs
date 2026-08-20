@@ -3,6 +3,7 @@
 import fs, { createWriteStream } from 'node:fs';
 import path from 'node:path';
 import { CFG } from './config.mjs';
+import { monotonicNow } from './runtime-clock.mjs';
 
 fs.mkdirSync(CFG.logDir, { recursive: true });
 
@@ -82,26 +83,26 @@ export function logFile(level, line) {
 
 // ── 2. 日志风暴检测 ──
 let _logCountWindow = 0;
-let _logWindowStart = Date.now();
+let _logWindowStart = monotonicNow();
 const LOG_STORM_THRESHOLD = 200;
 const LOG_STORM_COOLDOWN = 60000;
-let _logStormUntil = 0;
+let _logStormUntilMono = 0;
 
 function _checkLogStorm() {
-  const now = Date.now();
+  const now = monotonicNow();
   if (now - _logWindowStart > 1000) {
     _logCountWindow = 0;
     _logWindowStart = now;
   }
   _logCountWindow++;
   // 冷却结束后重置风暴状态，允许再次触发保护
-  if (_logStormUntil && now >= _logStormUntil) {
-    _logStormUntil = 0;
+  if (_logStormUntilMono && now >= _logStormUntilMono) {
+    _logStormUntilMono = 0;
     _logCountWindow = 0;
   }
-  if (_logCountWindow > LOG_STORM_THRESHOLD && !_logStormUntil) {
+  if (_logCountWindow > LOG_STORM_THRESHOLD && !_logStormUntilMono) {
     const stormCount = _logCountWindow;
-    _logStormUntil = now + LOG_STORM_COOLDOWN;
+    _logStormUntilMono = now + LOG_STORM_COOLDOWN;
     _logCountWindow = 0;
     const warn = '!!! LOG STORM DETECTED (' + stormCount + ' logs/sec) !!! Cooling down for 60s';
     writeConsole(process.stderr, warn);
@@ -109,42 +110,19 @@ function _checkLogStorm() {
   }
 }
 
-// ── 3. 事件处理限流 ──
+// ── 3. 处理中任务计数 ──
 export let _processingCount = 0;
 
 export function incProcessingCount() { _processingCount++; }
 export function decProcessingCount() { if (_processingCount > 0) _processingCount--; }
 
-const EVENT_RATE_LIMIT = 20;
-let _eventWindowStart = Date.now();
-let _eventWindowCount = 0;
-let _eventDropped = 0;
-
-export function canProcessEvent() {
-  const now = Date.now();
-  if (now - _eventWindowStart > 1000) {
-    _eventWindowCount = 0;
-    _eventWindowStart = now;
-    if (_eventDropped > 0) {
-      logFile('I', '[' + new Date().toISOString().slice(11,19) + '] [THROTTLE] dropped ' + _eventDropped + ' events in the last second');
-      _eventDropped = 0;
-    }
-  }
-  _eventWindowCount++;
-  if (_eventWindowCount > EVENT_RATE_LIMIT) {
-    _eventDropped++;
-    return false;
-  }
-  return true;
-}
-
 // ── 4. 致命异常 ──
 let _fatalCount = 0;
-let _fatalWindowStart = Date.now();
+let _fatalWindowStart = monotonicNow();
 process.on('uncaughtException', (err) => {
   writeConsole(process.stderr, '[FATAL] uncaughtException: ' + err.message);
   _fatalCount++;
-  const now = Date.now();
+  const now = monotonicNow();
   if (now - _fatalWindowStart > 60000) { _fatalCount = 1; _fatalWindowStart = now; }
   if (_fatalCount > 10) {
     writeConsole(process.stderr, '[FATAL] too many fatal errors, suppressing detail');
@@ -155,7 +133,7 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
   writeConsole(process.stderr, '[FATAL] unhandledRejection: ' + (reason?.message || reason));
   _fatalCount++;
-  const now = Date.now();
+  const now = monotonicNow();
   if (now - _fatalWindowStart > 60000) { _fatalCount = 1; _fatalWindowStart = now; }
   if (_fatalCount > 10) return;
   try { logFile('F', '[FATAL] unhandledRejection: ' + (reason?.message || reason) + '\n' + (reason?.stack?.slice(0, 300)||'')); } catch {}
@@ -163,11 +141,12 @@ process.on('unhandledRejection', (reason) => {
 
 // ── 4.5. 风暴状态导出 ──
 export function getStormStatus() {
+  const stormRemainingMs = Math.max(0, Math.round(_logStormUntilMono - monotonicNow()));
   return {
     logTruncated: _logTruncated,
     logStreamBytes: _logStreamBytes,
-    logStormUntil: _logStormUntil,
-    eventDropped: _eventDropped,
+    logStormUntil: stormRemainingMs ? Date.now() + stormRemainingMs : 0,
+    logStormRemainingMs: stormRemainingMs,
     processingCount: _processingCount,
   };
 }
@@ -177,7 +156,7 @@ export function log(...args) {
   const line = '[' + new Date().toISOString().slice(11, 19) + '] ' + args.join(' ');
   writeConsole(process.stdout, line);
   _checkLogStorm();
-  if (_logStormUntil && Date.now() < _logStormUntil) return;
+  if (_logStormUntilMono && monotonicNow() < _logStormUntilMono) return;
   try { logFile('I', line); } catch(e) { writeConsole(process.stderr, '[log-file-err] ' + e.message); }
 }
 
@@ -185,7 +164,7 @@ export function logE(...args) {
   const line = '[' + new Date().toISOString().slice(11, 19) + '] [E] ' + args.join(' ');
   writeConsole(process.stderr, line);
   _checkLogStorm();
-  if (_logStormUntil && Date.now() < _logStormUntil) return;
+  if (_logStormUntilMono && monotonicNow() < _logStormUntilMono) return;
   try { logFile('E', line); } catch(e) { writeConsole(process.stderr, '[log-file-err] ' + e.message); }
 }
 
