@@ -86,6 +86,20 @@ If Python dependency downloads are unusually slow, set `PIP_INDEX_URL` in
 `deploy/linux/.env` to a trusted mirror before building. This affects only the
 image build and is not passed to the running bot.
 
+If Docker Hub metadata is temporarily unavailable and a previously accepted
+`qqfriend-bridge` image with the same dependency lock is already local, update
+only the application layer without network access:
+
+```bash
+docker build --pull=false \
+  --build-arg BASE_IMAGE=qqfriend-bridge:linux-preview \
+  -f Dockerfile.overlay \
+  -t qqfriend-bridge:1.4.1-runtime-resilience ../..
+```
+
+Use this only when `package-lock.json` and `scripts/requirements-jm.txt` have no
+dependency changes. A normal clean build remains the release baseline.
+
 From a workstation, create tunnels without exposing either console:
 
 ```bash

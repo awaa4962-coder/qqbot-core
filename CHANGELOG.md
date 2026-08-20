@@ -14,7 +14,8 @@
 - 画像生成只有成功后才写入 6 小时/30 条节流标记，并合并同一用户的并发刷新；模型失败不会让画像更新静默停摆。
 - API 传输层只对网络异常、429 与 5xx 做一次短延迟重试，401/403 等配置错误不重试；SSRF 防护在每次重定向外增加 DNS 解析地址检查，拒绝解析到本机、内网和链路本地地址的域名。
 - Linux 新增 `install-time-order.sh` 与 Docker systemd drop-in，使用 `Wants/After=chrony-wait.service` 等待校时但不硬依赖网络；运行检查同时验证 `qqfriend.env` 权限、Docker 时钟顺序、`/health` 和 `/ready`。
-- 验收：`npm run lint` 0 errors / 0 warnings，`npm test` 603/603 pass；新增时钟回拨、跨入口幂等、WS 换代/心跳/队列、QQ 登录就绪、空配置语义、日报崩溃状态、启动补发、API 重试与 DNS SSRF 测试。
+- Linux 增加 `Dockerfile.overlay` 离线源码覆盖路径：仅在依赖锁未变化且本机已有已验收 Bridge 镜像时使用，Docker Hub 暂时不可达也能更新应用层；标准全量构建仍是发布基线。
+- 验收：`npm run lint` 0 errors / 0 warnings，`npm test` 604/604 pass；新增时钟回拨、跨入口幂等、WS 换代/心跳/队列、QQ 登录就绪、空配置语义、日报崩溃状态、启动补发、API 重试、DNS SSRF 与离线覆盖构建测试。
 
 ## v1.4.0-linux-preview - 2026-08-19 - 独立 Linux 服务器预览版
 - 新增独立 `agent/linux-server-preview` 交付线，Linux 代码、配置与运行状态不覆盖当前 Windows 安装，也不会在开发和验证阶段重启 Windows Bot。

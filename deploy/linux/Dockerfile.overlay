@@ -1,0 +1,13 @@
+ARG BASE_IMAGE=qqfriend-bridge:linux-preview
+FROM ${BASE_IMAGE}
+
+USER root
+WORKDIR /app
+
+COPY --chown=node:node bridge ./bridge
+COPY --chown=node:node scripts ./scripts
+COPY --chown=node:node napcat_bridge.mjs daily_summary.mjs ./
+COPY --chown=node:node package.json CHANGELOG.md README.md ./
+COPY --chown=node:node launcher/QQFriendLauncher/Web ./launcher/QQFriendLauncher/Web
+
+USER node

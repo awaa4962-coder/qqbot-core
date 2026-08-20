@@ -95,6 +95,13 @@ test("Linux image makes bundled 7-Zip executable and verifies it during build", 
   assert.match(dockerfile, /"\$SEVEN_ZIP_PATH" i >\/dev\/null/);
 });
 
+test("Linux image has an offline source overlay fallback without reinstalling dependencies", () => {
+  const overlay = fs.readFileSync(path.join(ROOT, "deploy", "linux", "Dockerfile.overlay"), "utf8");
+  assert.match(overlay, /ARG BASE_IMAGE=qqfriend-bridge:linux-preview/);
+  assert.match(overlay, /COPY --chown=node:node bridge \.\/bridge/);
+  assert.doesNotMatch(overlay, /npm ci|pip install|apt-get/);
+});
+
 test("Linux Docker deployment includes an idempotent user schedule for daily summaries", () => {
   const installer = fs.readFileSync(path.join(ROOT, "deploy", "linux", "install-summary-schedule.sh"), "utf8");
 
