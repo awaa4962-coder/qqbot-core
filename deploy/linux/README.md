@@ -51,6 +51,14 @@ After the first QR-code login, set `NAPCAT_ACCOUNT` in `deploy/linux/.env` to
 the logged-in QQ number. Subsequent container restarts will then use NapCat's
 persisted quick-login state instead of requesting a new QR code.
 
+For unattended recovery when the persisted login state expires, set exactly one
+of `NAPCAT_QUICK_PASSWORD` or `NAPCAT_QUICK_PASSWORD_MD5` in the same private
+`.env` file. Prefer the 32-character MD5 form so the plaintext QQ password is not
+stored on the server. Treat either form as a login credential, keep `.env` mode
+`0600`, and never commit or include it in a release bundle. Password fallback
+may still require interactive device verification when QQ marks the server as a
+new device.
+
 Start and verify:
 
 ```bash

@@ -22,7 +22,9 @@
 - 已在 Ubuntu 26.04 x86_64 实机完成 Docker 部署：Bridge 与 NapCat 镜像经过 SHA-256 校验后导入，NapCat 登录、OneBot HTTP/WS、反向 WebSocket、浏览器控制台和管理鉴权均通过，Windows 生产安装未被覆盖。
 - Docker 部署新增无需 root 和宿主机 Node.js 的用户 crontab，每天北京时间 00:05 调用容器内日报入口；`flock` 防止任务重叠，并继续复用逐群发送锁防止重复日报。该方式会在每次任务启动时读取当前 Docker 用户组，避免常驻 user-systemd 缓存旧组权限。
 - 修复 Linux 镜像内置 7za 只有读取权限、JM 下载完成后无法生成 ZIP 的问题；镜像构建会补执行权限并当场试运行，自检与控制台也改为验证 7za 实际可执行，不再把“路径存在”误报为正常。
-- 验收：`npm run lint` 0 errors / 0 warnings、`npm test` 577/577 pass、Linux 浏览器烟雾、JM Python 依赖、真实 MiMo/DeepSeek 文本连接与 MiMo 图片输入检查通过；Bridge `/health` 为 ok，两只容器重启计数均为 0。
+- Linux Compose 补齐 NapCat 快速登录账号与密码回退变量；登录态过期时可使用服务器私有 `.env` 中的密码 MD5 自动恢复，并明确凭据不得进入 GitHub 或发布包。
+- Linux 部署脚本统一锁定 LF 行尾并加入回归测试，避免从 Windows 交付后因 `bash\r` 导致初始化或运行自检无法执行。
+- 验收：`npm run lint` 0 errors / 0 warnings、`npm test` 578/578 pass、Linux 浏览器烟雾、JM Python 依赖、真实 MiMo/DeepSeek 文本连接与 MiMo 图片输入检查通过；Bridge `/health` 为 ok，两只容器重启计数均为 0。
 
 ## v1.3.9-module-resilience - 2026-08-13 - 模块韧性与真实健康状态
 - 表情分析改用统一预览读取链路：QQ 临时图片地址会先续签，主视觉模型返回空正文或不安全内容时会切换视觉备用模型，不会把内部推理当作标签写入目录。

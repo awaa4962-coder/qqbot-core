@@ -80,6 +80,9 @@ test("Linux bootstrap secures NapCat WebUI before the first container start", ()
   assert.match(compose, /"127\.0\.0\.1:16789:16789"/);
   assert.doesNotMatch(compose, /network_mode:\s*host/);
   assert.match(compose, /ACCOUNT: \$\{NAPCAT_ACCOUNT:-\}/);
+  assert.match(compose, /NAPCAT_QUICK_ACCOUNT: \$\{NAPCAT_ACCOUNT:-\}/);
+  assert.match(compose, /NAPCAT_QUICK_PASSWORD: \$\{NAPCAT_QUICK_PASSWORD:-\}/);
+  assert.match(compose, /NAPCAT_QUICK_PASSWORD_MD5: \$\{NAPCAT_QUICK_PASSWORD_MD5:-\}/);
   assert.match(compose, /QQBOT_NAPCAT_API: http:\/\/napcat:6700/);
   assert.match(compose, /QQBOT_NAPCAT_WS_API: ws:\/\/napcat:3001/);
   assert.match(compose, /QQBOT_SUMMARY_SCHEDULER: user-cron/);
@@ -101,4 +104,12 @@ test("Linux Docker deployment includes an idempotent user schedule for daily sum
   assert.match(installer, /BEGIN QQFRIEND DAILY SUMMARY/);
   assert.match(installer, /Timezone[\s\S]*Asia\/Shanghai/);
   assert.doesNotMatch(installer, /sudo/);
+});
+
+test("Linux deployment scripts keep Unix line endings", () => {
+  const deployRoot = path.join(ROOT, "deploy", "linux");
+  for (const name of ["check.sh", "install-docker-host.sh", "install-summary-schedule.sh", "prepare.sh"]) {
+    const script = fs.readFileSync(path.join(deployRoot, name), "utf8");
+    assert.doesNotMatch(script, /\r\n/, `${name} must use LF line endings`);
+  }
 });
