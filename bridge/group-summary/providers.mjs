@@ -9,24 +9,32 @@ import { buildLocalSummaryFallback } from "./fallback.mjs";
 import { buildGroupSummaryPrompt, summarySystemPrompt } from "./prompt.mjs";
 
 const SUMMARY_TEMPERATURE = 0.3;
+const SUMMARY_PRIMARY_MAX_TOKENS = 8192;
+const SUMMARY_RECOVERY_MAX_TOKENS = 3072;
 
 async function callPrimarySummary(prompt) {
-  return await callSummarySlot("primary", prompt);
+  return await callSummarySlot("primary", prompt, {
+    maxTokens: SUMMARY_PRIMARY_MAX_TOKENS,
+  });
 }
 
 async function callFallbackSummary(prompt) {
-  return await callSummarySlot("fallback", prompt);
+  return await callSummarySlot("fallback", prompt, {
+    maxTokens: SUMMARY_RECOVERY_MAX_TOKENS,
+    reasoningMode: "economy",
+  });
 }
 
-async function callSummarySlot(position, prompt) {
+async function callSummarySlot(position, prompt, options = {}) {
   return await callTaskProviderResult(MODEL_TASKS.GROUP_SUMMARY, position, {
     task: MODEL_TASKS.GROUP_SUMMARY,
     systemPrompt: summarySystemPrompt(),
     messages: [{ role: "user", content: prompt }],
-    // The summary route defaults to non-thinking so this budget is reserved for the final report.
-    maxTokens: 2048,
+    maxTokens: options.maxTokens || SUMMARY_RECOVERY_MAX_TOKENS,
     temperature: SUMMARY_TEMPERATURE,
     timeoutMs: 120000,
+  }, {
+    reasoningMode: options.reasoningMode,
   });
 }
 

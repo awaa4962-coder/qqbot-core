@@ -94,7 +94,7 @@ only the application layer without network access:
 docker build --pull=false \
   --build-arg BASE_IMAGE=qqfriend-bridge:linux-preview \
   -f Dockerfile.overlay \
-  -t qqfriend-bridge:1.4.1-runtime-resilience ../..
+  -t qqfriend-bridge:1.4.2-summary-recovery ../..
 ```
 
 Use this only when `package-lock.json` and `scripts/requirements-jm.txt` have no

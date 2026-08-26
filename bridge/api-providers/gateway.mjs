@@ -50,7 +50,7 @@ export async function callTaskApi(task, position, request = {}, options = {}) {
   const provider = getProvider(providerId, sharedOptions);
   const resolved = applyReasoningPolicy(provider, request, {
     task,
-    mode: route.reasoning,
+    mode: options.reasoningMode ?? route.reasoning,
   });
   const result = await callApiProvider(providerId, resolved.request, {
     ...sharedOptions,

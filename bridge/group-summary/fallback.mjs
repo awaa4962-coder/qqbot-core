@@ -10,22 +10,84 @@ export function buildLocalSummaryFallback(messages, options = {}) {
   const stats = buildSummaryStats(messages || [], { ...options, evidence });
   const digest = options.digest || buildSummaryDigest(messages || [], { ...options, evidence });
   const style = getSummaryStyle(options.style);
-  const topics = digest.topicHints?.length
-    ? digest.topicHints.map(item => item.name).slice(0, style.maxTopics).join("、")
-    : "没有形成可靠主题";
   const lowData = digest.effectiveMessageCount < 8;
+  const episodes = selectTopicEpisodes(digest, style.maxTopics);
+  const topicNames = episodes.map(item => item.topic).join("、") || "日常交流";
+
+  if (lowData) {
+    return [
+      `【${label} 群聊日报】`,
+      "",
+      "今日主线：有效记录较少，暂时无法可靠概括主要讨论。",
+      `可确认线索：${topicNames}。`,
+      "状态：记录不足，不推测讨论结果。",
+      buildMediaLine(digest),
+      `参与概况：${stats.messageCount} 条消息，${stats.speakerCount} 位群友发言。`,
+    ].filter(Boolean).join("\n");
+  }
 
   return [
     `【${label} 群聊日报】`,
     "",
-    lowData
-      ? "今日主线：有效记录较少，暂时无法可靠概括主要讨论。"
-      : "今日主线：模型暂未生成可用正文，以下仅保留可以直接核对的统计和话题线索。",
-    `可确认线索：${topics}。`,
-    lowData ? "状态：记录不足，不推测讨论结果。" : "状态：未进行语义结论判断，不补写讨论结果。",
+    `今日主线：有效讨论主要集中在${topicNames}；以下只保留可以由记录直接核对的线索。`,
+    "",
+    "关键线索",
+    ...buildEpisodeLines(episodes),
     buildMediaLine(digest),
-    `参与概况：${stats.messageCount} 条消息，${stats.speakerCount} 位群友发言。`,
+    `参与概况：${stats.messageCount} 条消息，${stats.speakerCount} 位群友发言；参与较多者：${stats.top3}。`,
   ].filter(Boolean).join("\n");
+}
+
+function selectTopicEpisodes(digest, limit) {
+  const seen = new Set();
+  const result = [];
+  for (const item of digest.topicEpisodes || []) {
+    const topic = String(item.topic || "").trim();
+    if (!topic || seen.has(topic)) continue;
+    seen.add(topic);
+    result.push({ ...item, topic });
+    if (result.length >= limit) return result;
+  }
+  for (const item of digest.topicHints || []) {
+    const topic = String(item.name || "").trim();
+    if (!topic || seen.has(topic)) continue;
+    seen.add(topic);
+    result.push({ topic, messageCount: Number(item.count || 0), speakerCount: 0 });
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
+function buildEpisodeLines(episodes) {
+  if (!episodes.length) {
+    return ["1. 日常交流：没有形成可稳定归类的主题，不根据零散消息补写结论。"];
+  }
+  return episodes.map((item, index) => {
+    const time = formatTimeRange(item.startTs, item.endTs);
+    const speakerText = Number(item.speakerCount || 0) > 0
+      ? `，${Number(item.speakerCount)} 位群友参与`
+      : "";
+    return `${index + 1}. ${item.topic}${time ? `（${time}）` : ""}：` +
+      `${Number(item.messageCount || 0)} 条相关消息${speakerText}；结果未确认。`;
+  });
+}
+
+function formatTimeRange(startTs, endTs) {
+  const start = formatClock(startTs);
+  const end = formatClock(endTs);
+  if (!start) return "";
+  return !end || end === start ? start : `${start}-${end}`;
+}
+
+function formatClock(value) {
+  const timestamp = Number(value || 0);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return "";
+  return new Date(timestamp).toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Shanghai",
+  });
 }
 
 function buildMediaLine(digest) {

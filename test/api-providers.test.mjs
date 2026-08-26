@@ -244,6 +244,31 @@ describe("API protocol adapters", () => {
     assert.equal(result.reasoningPolicy.applied, true);
   });
 
+  it("allows a summary recovery call to force non-thinking output", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-api-summary-recovery-"));
+    saveApiRoutes({
+      group_summary: { primary: "deepseek", fallback: "mimo", reasoning: "deep" },
+    }, { root });
+    fs.writeFileSync(path.join(root, ".env_mimo"), "sk-test-mimo-key", "utf8");
+    let body = null;
+    globalThis.fetch = async (_url, options) => {
+      body = JSON.parse(options.body);
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ choices: [{ message: { content: "恢复正文" } }] }),
+      };
+    };
+
+    const result = await callTaskApi("group_summary", "fallback", basicRequest(), {
+      root,
+      reasoningMode: "economy",
+    });
+    assert.deepEqual(body.thinking, { type: "disabled" });
+    assert.equal(result.reasoningPolicy.configuredMode, "economy");
+    assert.equal(result.reasoningPolicy.effectiveMode, "economy");
+  });
+
   it("disables private reasoning during provider connection tests", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-api-connection-test-"));
     fs.writeFileSync(path.join(root, ".env_ds"), "sk-test-ds-key", "utf8");

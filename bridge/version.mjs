@@ -4,24 +4,24 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.1-runtime-resilience";
-export const VERSION_NAME = "runtime-resilience";
+export const VERSION = "1.4.2-summary-recovery";
+export const VERSION_NAME = "summary-recovery";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "限流、冷却与运行缓存改用单调时钟；系统时间回拨不再冻结群聊回复，非白名单流量也不会抢占正常群额度。",
-  "OneBot 链路新增心跳、连接代次、同群有序队列、消息 ID 去重和独立 /ready 就绪状态。",
-  "日报采用原子发送状态与不确定结果保护，开机后等待 OneBot 就绪并补跑昨天，避免重复发送或日期错位。",
-  "空白名单语义、画像失败节流、临时文件周期清理、记忆落盘窗口和 API 瞬时重试统一加固。",
-  "Linux Docker 在开机时等待 Chrony 校时，运行检查会验证配置权限、时钟顺序、存活与真实就绪状态。",
+  "群日报深度分析的输出预算提升到 8192，避免模型把额度耗在内部推理后没有最终正文。",
+  "日报备用模型固定走省额度恢复通道，关闭思考并把输出额度优先留给可发送正文。",
+  "两家模型都不可用时，本地日报会列出主要主题、讨论时段、相关消息数和参与人数，不再发送后台故障占位文案。",
+  "reasoning_content 和其他私有推理字段继续只记录长度，绝不会进入 QQ 消息。",
+  "原子发送标记、昨日补跑、逐群锁、白名单和 Linux 时钟保护保持不变。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Moves rate limits, cooldowns and runtime caches to monotonic time so clock steps cannot freeze replies.",
-  "Adds OneBot heartbeat, connection generations, ordered queues, message-id deduplication and a separate readiness endpoint.",
-  "Makes daily summaries crash-aware and atomic, with a previous-day boot catch-up after OneBot is ready.",
-  "Hardens empty allowlist semantics, profile throttling, temporary cleanup, persistence and transient API retries.",
-  "Keeps the isolated Linux server deployment, upload_file_stream transfers, loopback-only browser and no automatic model credentials migration; Docker now waits for Chrony synchronization.",
+  "Raises the deep daily-summary output budget to 8192 so private reasoning cannot consume the entire final-answer allowance.",
+  "Runs the summary fallback as a non-thinking recovery path that prioritizes sendable final text.",
+  "Produces a structured local report with topics, time windows, message counts and participation when both providers fail.",
+  "Keeps reasoning_content and all other private reasoning fields out of QQ messages.",
+  "Preserves the isolated Linux server deployment, upload_file_stream transfers, loopback-only browser, no automatic model credentials migration, atomic sent markers and clock safeguards.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

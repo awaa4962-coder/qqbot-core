@@ -134,8 +134,8 @@ export async function callTaskRawProvider(task, position, request = {}) {
   return result.ok ? result.raw : null;
 }
 
-export async function callTaskProviderResult(task, position, request = {}) {
-  return await callTaskApi(task, position, buildRawRequest(request));
+export async function callTaskProviderResult(task, position, request = {}, options = {}) {
+  return await callTaskApi(task, position, buildRawRequest(request), options);
 }
 
 export async function callRelationshipCommentPrimary(prompt) {

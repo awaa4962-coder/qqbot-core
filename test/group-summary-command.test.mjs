@@ -170,4 +170,29 @@ describe("group summary commands", () => {
     assert.equal(result.provider, "mimo-25-pro");
     assert.equal(result.text, "备用模型日报");
   });
+
+  it("recovers with the fallback slot when the primary spends its budget on reasoning", async () => {
+    let fallbackCalls = 0;
+    const result = await generateGroupSummaryResult(sampleMessages(8), {
+      dateText: "2026-06-26",
+      callPrimarySummary: async () => ({
+        provider: "deepseek",
+        choices: [{
+          finish_reason: "length",
+          message: { content: "", reasoning_content: "private reasoning" },
+        }],
+      }),
+      callFallbackSummary: async () => {
+        fallbackCalls++;
+        return {
+          provider: "mimo-25-pro",
+          choices: [{ message: { content: "恢复后的日报正文" } }],
+        };
+      },
+    });
+    assert.equal(fallbackCalls, 1);
+    assert.equal(result.provider, "mimo-25-pro");
+    assert.equal(result.text, "恢复后的日报正文");
+    assert.doesNotMatch(result.text, /private reasoning/);
+  });
 });

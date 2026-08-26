@@ -124,7 +124,10 @@ describe("group summary", () => {
     });
     assert.match(summary, /群聊日报/);
     assert.match(summary, /8 条消息/);
-    assert.match(summary, /不补写讨论结果/);
+    assert.match(summary, /关键线索/);
+    assert.match(summary, /机器人\/模型|JM\/资源|运维\/代码/);
+    assert.match(summary, /结果未确认/);
+    assert.doesNotMatch(summary, /模型暂未生成|正文为空|API/);
   });
 
   it("removes internal filtering notes from model output", async () => {
