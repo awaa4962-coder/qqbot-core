@@ -29,6 +29,13 @@ export const COMMAND_DEFINITIONS = Object.freeze([
     helpLine: "  状态        查看运行状态",
   },
   {
+    id: "cache-stats",
+    permission: "user",
+    aliases: ["缓存", "缓存命中", "缓存命中率", "我的缓存", "cache", "cache stats"],
+    helpPage: 6,
+    helpLine: "  缓存命中    查看自己的缓存率",
+  },
+  {
     id: "version",
     permission: "user",
     aliases: ["version", "版本"],

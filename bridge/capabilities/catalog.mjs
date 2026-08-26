@@ -144,6 +144,15 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
     keywords: ["状态", "在线", "ping", "测试", "版本"],
   }),
   capability({
+    id: "system.cache",
+    category: "system",
+    name: "我的缓存命中",
+    summary: "查看由自己触发的模型请求在供应商 Prompt Cache 中的命中率。",
+    scopes: ["group", "private"],
+    examples: ["@夜星 缓存命中"],
+    keywords: ["缓存", "缓存命中", "命中率", "cache"],
+  }),
+  capability({
     id: "system.changelog",
     category: "system",
     name: "版本更新",

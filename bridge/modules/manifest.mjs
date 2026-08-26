@@ -187,7 +187,7 @@ export const MODULE_DEFINITIONS = Object.freeze([
     category: "core",
     enabled: true,
     entrypoints: ["bridge/api-providers/", "bridge/model-router.mjs", "bridge/admin-api/api-provider-manager.mjs"],
-    commands: [],
+    commands: ["缓存命中", "cache stats"],
     configFields: ["apiProviders", "apiTaskRoutes", "apiTaskReasoning"],
     editableConfigFields: ["apiProviders", "apiTaskRoutes", "apiTaskReasoning"],
     healthChecks: [
@@ -196,11 +196,12 @@ export const MODULE_DEFINITIONS = Object.freeze([
       "secret sidecar isolation",
       "runtime cache invalidation",
       "fallback route protection",
+      "pseudonymous prompt-cache usage accounting",
     ],
     diagnostics: ["admin/api-providers", "provider connection test"],
-    tests: ["test/api-providers.test.mjs", "test/reasoning-policy.test.mjs", "test/model-router.test.mjs"],
+    tests: ["test/api-providers.test.mjs", "test/api-usage.test.mjs", "test/reasoning-policy.test.mjs", "test/model-router.test.mjs"],
     riskLevel: "high",
-    privacy: "API keys stay in local sidecar files and are never returned by the admin snapshot",
+    privacy: "API credentials stay in local sidecars; cache metrics keep only numeric usage and salted user identifiers",
   },
   {
     id: "stickers",

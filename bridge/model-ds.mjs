@@ -56,6 +56,7 @@ export async function tryDeepSeek(userMsg, userName, history, groupId, isAtMe, m
       maxTokens: maxTok,
       temperature: 0.7,
       timeoutMs: 30000,
+      usageContext: buildDeepSeekUsageContext(options, task, privateRequest),
     };
     const result = options.providerId
       ? await callApiProvider(options.providerId, request)
@@ -77,6 +78,14 @@ export async function tryDeepSeek(userMsg, userName, history, groupId, isAtMe, m
     logE('tryDeepSeek error:', e.message);
     return null;
   }
+}
+
+function buildDeepSeekUsageContext(options, task, privateRequest) {
+  return {
+    userId: options.currentUserId,
+    task,
+    position: options.position || (privateRequest ? "primary" : "fallback"),
+  };
 }
 
 function isPrivateModelRequest(groupId) {

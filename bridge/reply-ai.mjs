@@ -157,7 +157,7 @@ function pickLastResortReply() {
 async function resolveAiReply(ctx) {
   const hasImages = Boolean(ctx.imageUrls?.length);
   const visionContext = hasImages
-    ? await resolveChatVisionContext(ctx.imageUrls)
+    ? await resolveChatVisionContext(ctx.imageUrls, { userId: ctx.uid })
     : undefined;
   const modelResult = await executeChatTask({
     userMsg: ctx.userMsg,

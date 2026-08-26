@@ -33,10 +33,10 @@ export function buildSystem(_userName, groupId, mood, options = {}) {
 // ── tryMiMo 拆分子函数 ──
 
 /** 处理图片 → 文本描述 */
-export async function resolveVisionContext(imageUrls) {
+export async function resolveVisionContext(imageUrls, options = {}) {
   if (!imageUrls?.length) return null;
   log('vision: processing', imageUrls.length, 'images');
-  const desc = await tryMiMoVision(imageUrls);
+  const desc = await tryMiMoVision(imageUrls, options);
   log('vision: MiMo result', desc ? 'ok (' + desc.length + ' chars)' : 'NULL');
   if (!desc) { log('vision: no visual description available'); }
   return desc;
@@ -53,6 +53,7 @@ export async function callMiMoApi(systemPrompt, messages, maxTokens, options = {
     reasoningSignals: options.reasoningSignals,
     tools: options.allowTools === false ? [] : MIMO_TOOLS,
     toolChoice: "auto",
+    usageContext: options.usageContext,
   };
   const result = options.providerId
     ? await callApiProvider(options.providerId, request)
@@ -87,7 +88,7 @@ async function buildMiMoMessages(history, imageUrls, userMsg, userName, options)
 
   const visionDesc = Object.prototype.hasOwnProperty.call(options, 'visionContext')
     ? options.visionContext
-    : await resolveVisionContext(imageUrls);
+    : await resolveVisionContext(imageUrls, { usageContext: options.usageContext });
   if (imageUrls?.length) {
     msgs.push(buildImageContextMessage(visionDesc, { imageCount: imageUrls.length }));
   }
@@ -135,6 +136,7 @@ export async function tryMiMo(userMsg, userName, history, imageUrls, groupId, is
     task: options.task || (options.replyMode === "interjection" ? "interjection" : "group_chat"),
     position: options.position || "primary",
     reasoningSignals: { hasImages: Boolean(imageUrls?.length) },
+    usageContext: buildMiMoUsageContext(options),
     ...(Object.prototype.hasOwnProperty.call(options, 'visionContext')
       ? { visionContext: options.visionContext }
       : {}),
@@ -150,12 +152,21 @@ export async function tryMiMo(userMsg, userName, history, imageUrls, groupId, is
       task: mimoOptions.task,
       position: mimoOptions.position,
       reasoningSignals: mimoOptions.reasoningSignals,
+      usageContext: mimoOptions.usageContext,
     });
     return await parseInitialMiMoResult(system, msgs, response, maxTok, userMsg, userName, mimoOptions);
   } catch (e) {
     logE('tryMiMo error:', e.message);
     return null;
   }
+}
+
+function buildMiMoUsageContext(options) {
+  return {
+    userId: options.currentUserId,
+    task: options.task || (options.replyMode === "interjection" ? "interjection" : "group_chat"),
+    position: options.position || "primary",
+  };
 }
 
 // ── tool_call 多轮编排 ──

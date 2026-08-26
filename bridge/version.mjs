@@ -4,24 +4,24 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.2-summary-recovery";
-export const VERSION_NAME = "summary-recovery";
+export const VERSION = "1.4.3-prompt-cache";
+export const VERSION_NAME = "prompt-cache";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "群日报深度分析的输出预算提升到 8192，避免模型把额度耗在内部推理后没有最终正文。",
-  "日报备用模型固定走省额度恢复通道，关闭思考并把输出额度优先留给可发送正文。",
-  "两家模型都不可用时，本地日报会列出主要主题、讨论时段、相关消息数和参与人数，不再发送后台故障占位文案。",
-  "reasoning_content 和其他私有推理字段继续只记录长度，绝不会进入 QQ 消息。",
-  "原子发送标记、昨日补跑、逐群锁、白名单和 Linux 时钟保护保持不变。",
+  "统一采集 MiMo、DeepSeek 及兼容协议返回的 Prompt Cache 命中、未命中、输入、输出和推理用量。",
+  "普通用户可用 @夜星 缓存命中 查看自己今天、近 7 天和分供应商命中率，不能查询其他群友。",
+  "系统提示词把稳定的身份、安全和回答规则移到动态猫娘动作、群氛围之前，提高可复用前缀长度。",
+  "缓存统计只保存按日数字和加盐匿名用户键，最多保留 30 天；忘记我会立即重置个人可见统计。",
+  "不会缓存聊天答案、提示词或 reasoning_content；日报恢复链、白名单与 Linux 运行保护保持不变。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Raises the deep daily-summary output budget to 8192 so private reasoning cannot consume the entire final-answer allowance.",
-  "Runs the summary fallback as a non-thinking recovery path that prioritizes sendable final text.",
-  "Produces a structured local report with topics, time windows, message counts and participation when both providers fail.",
-  "Keeps reasoning_content and all other private reasoning fields out of QQ messages.",
-  "Preserves the isolated Linux server deployment, upload_file_stream transfers, loopback-only browser, no automatic model credentials migration, atomic sent markers and clock safeguards.",
+  "Collects provider-reported prompt-cache hit, miss, input, output and reasoning usage through the shared API gateway.",
+  "Adds a sender-only cache command with today, seven-day and per-provider hit rates.",
+  "Moves stable identity, safety and answer rules before dynamic persona and group state to create a longer reusable prefix.",
+  "Stores only daily numeric aggregates and salted user identifiers for up to 30 days; forget-me resets visible personal metrics.",
+  "Preserves the isolated Linux server deployment, upload_file_stream transfers, loopback-only browser, no automatic model credentials migration and private-reasoning protection.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([
@@ -47,7 +47,7 @@ export function buildVersionText(lang = "zh", version = VERSION) {
       formatNumbered(VERSION_NOTES_EN),
       "",
       "Commands:",
-      "- Group: @Yexing help / update list / update jm / relationship / my-profile / privacy",
+      "- Group: @Yexing help / cache stats / update list / update jm / relationship / my-profile / privacy",
       "- Style: @Yexing 回复风格 简短 技术 少吐槽 / 设置称呼 <name> / 忘记我",
       "- Admin: @Yexing memory status / memory summary QQ number / memory clear user QQ number / memory clear group",
       "",
@@ -67,7 +67,7 @@ export function buildVersionText(lang = "zh", version = VERSION) {
     formatNumbered(VERSION_NOTES_ZH),
     "",
     "命令：",
-    "- 群聊：@夜星 help / 状态 / 测试 / 更新 / 更新列表 / 更新 jm / 关系",
+    "- 群聊：@夜星 help / 状态 / 缓存命中 / 测试 / 更新 / 更新列表 / 更新 jm / 关系",
     "- 个性化：@夜星 我的档案 / 设置称呼 <名字> / 回复风格 简短 技术 少吐槽 / 隐私 / 忘记我",
     "- 管理：@夜星 memory status / memory summary QQ号 / memory clear user QQ号 / memory clear group",
     "",

@@ -55,8 +55,9 @@ describe("capability center", () => {
     const privateCatalog = buildCapabilityCatalog({ cfg, surface: "private", userId: 200 });
     const jmPrivate = privateCatalog.capabilities.find(item => item.id === "resources.jm");
     assert.equal(jmPrivate.status, "available");
-    assert.equal(JSON.stringify(privateCatalog).includes("100"), false);
-    assert.equal(JSON.stringify(privateCatalog).includes("200"), false);
+    const publicData = JSON.stringify(privateCatalog).replace(/"generatedAt":"[^"]+",?/, "");
+    assert.equal(publicData.includes("100"), false);
+    assert.equal(publicData.includes("200"), false);
   });
 
   it("suggests only close command-like typos", () => {

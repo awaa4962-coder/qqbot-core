@@ -117,8 +117,14 @@ export function buildModelFallbackHistory(history, imageUrls, visionContext) {
   return appendImageContext(history, visionContext, { imageCount: imageUrls.length });
 }
 
-export async function resolveChatVisionContext(imageUrls) {
-  return await resolveVisionContext(imageUrls || []);
+export async function resolveChatVisionContext(imageUrls, options = {}) {
+  return await resolveVisionContext(imageUrls || [], {
+    usageContext: {
+      userId: options.userId,
+      task: MODEL_TASKS.GROUP_CHAT,
+      position: "primary",
+    },
+  });
 }
 
 export async function callRawModelProvider(provider, request = {}) {
@@ -188,6 +194,7 @@ function buildRawRequest(request) {
     timeoutMs: request.timeoutMs || 30000,
     thinking: request.options?.thinking,
     tools: request.options?.allowTools === false ? [] : request.tools,
+    usageContext: request.options?.usageContext || request.usageContext,
   };
 }
 

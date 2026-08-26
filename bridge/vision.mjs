@@ -30,7 +30,7 @@ async function _downloadImages(imageUrls, label) {
   return { contents, fingerprints };
 }
 
-export async function tryMiMoVision(imageUrls) {
+export async function tryMiMoVision(imageUrls, options = {}) {
   if (!imageUrls?.length) return null;
   try {
     const downloaded = await _downloadImages(imageUrls, 'tryMiMoVision');
@@ -42,6 +42,7 @@ export async function tryMiMoVision(imageUrls) {
       maxTokens: 300,
       temperature: 0.7,
       timeoutMs: 30000,
+      usageContext: options.usageContext,
     };
     const result = await callVisionText(request);
     if (!result.ok) {

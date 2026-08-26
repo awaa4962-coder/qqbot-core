@@ -268,6 +268,7 @@ export const CFG = {
   memeEvidenceMinItems: readBoundedNumber('QQBOT_MEME_MIN_EVIDENCE', 3, 1, 10),
   memeExpiryDays: readBoundedNumber('QQBOT_MEME_EXPIRY_DAYS', 90, 7, 365),
   imageMemeCacheFile: path.join(DATA_ROOT, '.qqfriend', 'image-memes.json'),
+  apiUsageDir: path.join(DATA_ROOT, '.qqfriend', 'api-usage'),
   stickerCatalogFile: path.join(DATA_ROOT, '.qqfriend', 'stickers', 'catalog.json'),
   stickerTempDir: path.join(
     process.env.QQBOT_TEMP_DIR || process.env.TEMP || process.env.TMP || path.join(DATA_ROOT, '.qqfriend'),

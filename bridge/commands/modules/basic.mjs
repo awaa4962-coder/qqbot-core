@@ -16,6 +16,7 @@ import {
 } from "../../user-preferences.mjs";
 import { VERSION, buildVersionQueryText, detectVersionLang, isVersionQueryCommand } from "../../version.mjs";
 import { buildMemeSearchReply, buildMemeStatusReply, getMemeStore } from "../../knowledge/memes/index.mjs";
+import { buildUserCacheStatsText } from "../../api-providers/usage-metrics.mjs";
 import { extractRawCommandArg } from "../normalize.mjs";
 import { isMemeCommand, isPreferenceCommand } from "../registry.mjs";
 
@@ -30,10 +31,18 @@ export function buildUserCommandReply(cmd, options) {
   }
   if (cmd === "status" || cmd === "状态") return "夜星在线，桥接器运行正常。";
   if (cmd === "ping" || cmd === "测试") return "pong";
+  if (isCacheStatsCommand(cmd)) {
+    const builder = options.cacheStatsBuilder || buildUserCacheStatsText;
+    return builder(options.userId, options.cacheUsageOptions || {});
+  }
   if (isMemeCommand(cmd)) return buildMemeCommandReply(cmd, options);
   if (isPreferenceCommand(cmd)) return buildPreferenceCommandReply(cmd, options);
   if (isVersionQueryCommand(cmd)) return buildVersionQueryText(cmd, detectVersionLang(cmd), options.version || VERSION);
   return null;
+}
+
+function isCacheStatsCommand(cmd) {
+  return ["缓存", "缓存命中", "缓存命中率", "我的缓存", "cache", "cache stats"].includes(cmd);
 }
 
 function buildMemeCommandReply(cmd, options) {

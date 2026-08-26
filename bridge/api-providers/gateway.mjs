@@ -4,6 +4,7 @@ import { callGeminiNative } from "./adapters/gemini-native.mjs";
 import { callOpenAiChat } from "./adapters/openai-chat.mjs";
 import { callOpenAiResponses } from "./adapters/openai-responses.mjs";
 import { applyReasoningPolicy } from "./reasoning-policy.mjs";
+import { recordApiUsage } from "./usage-metrics.mjs";
 import {
   getProvider,
   getTaskRoute,
@@ -32,6 +33,7 @@ export async function callApiProvider(providerId, request = {}, options = {}) {
       logE("api-provider", provider.id, "failed:", result.error);
       return { ...result, provider: provider.id, raw: null };
     }
+    recordSuccessfulUsage(provider, request, result, options);
     log("api-provider", provider.id, "ok", result.durationMs + "ms");
     return { ...result, provider: provider.id };
   } catch (error) {
@@ -55,6 +57,8 @@ export async function callTaskApi(task, position, request = {}, options = {}) {
   const result = await callApiProvider(providerId, resolved.request, {
     ...sharedOptions,
     provider,
+    usageTask: task,
+    usagePosition: slot,
   });
   return { ...result, reasoningPolicy: resolved.meta };
 }
@@ -73,4 +77,18 @@ function failed(provider, error) {
     error: String(error || "API 调用失败"),
     durationMs: 0,
   };
+}
+
+function recordSuccessfulUsage(provider, request, result, options) {
+  recordApiUsage({
+    provider: provider.id,
+    task: options.usageTask || request.usageContext?.task || "direct",
+    position: options.usagePosition || request.usageContext?.position || "direct",
+    userId: request.usageContext?.userId,
+    usage: result.raw?.usage || result.data?.usage || result.usage,
+    durationMs: result.durationMs,
+  }, {
+    dir: options.usageMetricsDir,
+    salt: options.usageMetricsSalt,
+  });
 }

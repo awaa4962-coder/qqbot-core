@@ -1,6 +1,7 @@
 import { groupChats, saveGroupChats, saveUsers, users } from "./storage.mjs";
 import { clearConversationThreads } from "./cognition/index.mjs";
 import { clearUserMemoryProfile, getActiveMemoryContext } from "./memory-profile.mjs";
+import { clearUserCacheUsage } from "./api-providers/usage-metrics.mjs";
 
 const DEFAULT_STYLE = Object.freeze({
   length: "normal",
@@ -166,7 +167,8 @@ export function buildPrivacyText() {
     "2. 群内关系只在当前群展示，私聊内容不拿到群里说。",
     "3. API key、手机号、身份证、密码等敏感内容会被过滤。",
     "4. 回复风格和称呼只影响夜星怎么回复你，不改变安全规则。",
-    "5. 发送 @夜星 忘记我 可以清理你的画像、偏好、关系缓存和个人聊天记忆。",
+    "5. API 缓存统计只保存加盐匿名键和 token 数，最多保留 30 天，不保存提示词或回复正文。",
+    "6. 发送 @夜星 忘记我 可以清理你的画像、偏好、关系缓存、缓存统计和个人聊天记忆。",
   ].join("\n");
 }
 
@@ -194,6 +196,7 @@ export function forgetUserData(uid, options = {}) {
   }
   clearUserMemoryProfile(id);
   clearConversationThreads(id, { userStore, save: false });
+  if (!options.skipSave) clearUserCacheUsage(id, options.cacheUsageOptions || {});
   if (!options.skipSave) {
     saveUsers();
     saveGroupChats();

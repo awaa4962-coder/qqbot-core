@@ -8,9 +8,24 @@ import {
   selectPersonaCue,
 } from "../bridge/persona-style.mjs";
 import { buildChatSystemPrompt } from "../bridge/system-prompts/chat.mjs";
+import { CONTEXT_SAFETY } from "../bridge/system-prompts/identity.mjs";
 import { buildInterjectionSystemPrompt } from "../bridge/system-prompts/interjection.mjs";
 
 describe("catgirl persona style", () => {
+  it("keeps the safety and answer rules in a stable cacheable prefix", () => {
+    const soft = buildChatSystemPrompt({ mood: "正常", personaCue: PERSONA_CUES.SOFT });
+    const hiss = buildChatSystemPrompt({
+      mood: "群聊活跃",
+      personaCue: PERSONA_CUES.HISS,
+      isLongGroup: true,
+    });
+    const prefixEnd = soft.indexOf(CONTEXT_SAFETY) + CONTEXT_SAFETY.length;
+    assert.ok(prefixEnd > CONTEXT_SAFETY.length);
+    assert.equal(soft.slice(0, prefixEnd), hiss.slice(0, prefixEnd));
+    assert.ok(soft.indexOf("当前氛围") > prefixEnd);
+    assert.ok(soft.indexOf("本轮猫娘表现") > prefixEnd);
+  });
+
   it("classifies playful, provoked and serious moments", () => {
     assert.equal(classifyPersonaMoment("给我摸摸尾巴"), "playful");
     assert.equal(classifyPersonaMoment("你这只笨猫"), "provoked");
