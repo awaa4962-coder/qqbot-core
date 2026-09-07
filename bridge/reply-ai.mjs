@@ -44,6 +44,9 @@ export async function aiReply(group_id, userId, userMsg, userName, imageUrls, re
     mentions,
     mode: isPassiveInterjection ? "interjection" : "group-at",
     currentMessageId: runtime.messageId,
+    replyToMessageId: runtime.replyToMessageId,
+    replySpeaker: runtime.replySpeaker,
+    replyUserId: runtime.replyUserId,
     hasImages: Boolean(imageUrls?.length),
     imageCount: imageUrls?.length || 0,
   });

@@ -105,7 +105,7 @@ only the application layer without network access:
 docker build --pull=false \
   --build-arg BASE_IMAGE=qqfriend-bridge:linux-preview \
   -f Dockerfile.overlay \
-  -t qqfriend-bridge:1.4.4-linux-diagnostics ../..
+  -t qqfriend-bridge:1.4.5-context-selection ../..
 ```
 
 Use this only when `package-lock.json` and `scripts/requirements-jm.txt` have no

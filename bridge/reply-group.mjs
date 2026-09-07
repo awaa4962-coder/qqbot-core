@@ -84,6 +84,7 @@ function logGroupMemberMessage(ctx) {
     ctx.user_id, "member", ctx.images.length ? ctx.images : null, {
       mentions: ctx.mentions,
       messageId: ctx.message_id,
+      replyToMessageId: ctx.replyData?.id,
     });
   observeMemoryEvent({
     uid: ctx.user_id,
@@ -129,13 +130,16 @@ async function handleMentionedGroupMessage(ctx, replyState) {
     replyState.replyText,
     true,
     ctx.mentions,
-    { messageId: ctx.message_id }
+    replyRuntime(ctx)
   );
   return true;
 }
 
 function pullRecentImagesIntoContext(ctx) {
-  const recentImgs = pullRecentImages(ctx.group_id);
+  if (ctx.images.length) return;
+  const recentImgs = pullRecentImages(ctx.group_id, {
+    uid: ctx.user_id, userMsg: ctx.text, mentions: ctx.mentions, replyToMessageId: ctx.replyData?.id,
+  });
   if (recentImgs.length) ctx.images.push(...recentImgs);
 }
 
@@ -185,7 +189,7 @@ async function handleRandomInterjection(ctx, previewSent, replyState = {}) {
     replyState.replyText || "",
     false,
     ctx.mentions,
-    { messageId: ctx.message_id }
+    replyRuntime(ctx)
   );
 }
 
@@ -195,6 +199,10 @@ function createPendingReplyState(ctx) {
     replyToId: ctx.message_id,
     contextResolved: false,
   };
+}
+
+function replyRuntime(ctx) {
+  return { messageId: ctx.message_id, replyToMessageId: ctx.replyData?.id, replySpeaker: ctx.replySpeaker, replyUserId: ctx.replyUserId };
 }
 
 async function ensureReplyState(ctx, state) {

@@ -28,7 +28,17 @@ function safeDetails(details) {
   for (const key of NUMBERS) {
     if (typeof details[key] === "number" && Number.isFinite(details[key])) safe[key] = Math.max(0, Math.min(1e9, details[key]));
   }
+  if (Array.isArray(details.sources)) safe.sources = safeSources(details.sources);
   return safe;
+}
+
+function safeSources(sources) {
+  const kinds = new Set(["quote", "thread", "memory", "group", "image"]);
+  const reasons = new Set(["reply_chain", "continuation", "keywords", "synonyms", "mention", "recent", "image_reference"]);
+  return sources.filter(item => kinds.has(item?.kind) && reasons.has(item.reason)).slice(0, 24).map(item => ({
+    kind: item.kind, reason: item.reason, messageId: numericId(item.messageId), userId: numericId(item.userId),
+    score: Number.isFinite(item.score) ? Math.max(0, Math.min(12, item.score)) : 0, clipped: item.clipped === true,
+  }));
 }
 
 function numericId(value) {

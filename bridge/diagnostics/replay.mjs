@@ -5,12 +5,14 @@ import { CFG } from "../config.mjs";
 import { VERSION } from "../version.mjs";
 import { callTaskApi } from "../api-providers/gateway.mjs";
 import { enforceContextBudget } from "../context/budget.mjs";
-import { buildCurrentInput, buildGroupBackgroundBlock, buildQuotedMessageBlock } from "../context/messages.mjs";
+import { buildCurrentInput, buildGroupBackgroundBlock, buildQuotedMessageBlock, formatSpeakerLine } from "../context/messages.mjs";
 import { formatConversationThreadBlock } from "../cognition/thread-manager.mjs";
 import { buildChatSystemPrompt } from "../system-prompts/chat.mjs";
 import { buildImageContextMessage } from "../system-prompts/image-context.mjs";
 import { buildOutputPacket } from "../output-pipeline.mjs";
 import { REPLAY_CASES } from "./replay-cases.mjs";
+import { selectConversationThread, selectGroupConversation, selectionSource } from "../context/conversation-selection.mjs";
+import { retrieveRelevantUserMemories } from "../context-retriever.mjs";
 
 const REVIEWS = new Set(["unreviewed", "better", "same", "worse", "off_topic", "wrong_person", "over_persona"]);
 const DAILY_LIMIT = 20;
@@ -18,9 +20,11 @@ const DAILY_LIMIT = 20;
 export function buildReplayPacket(example) {
   const layers = [];
   if (example.quote) layers.push({ role: "user", content: buildQuotedMessageBlock(example.quote, "示例发言人"), contextPriority: 100 });
-  if (example.turns) layers.push({ role: "user", content: formatConversationThreadBlock({ scope: "synthetic", turns: example.turns, turnCount: example.turns.length }), contextPriority: 88 });
+  const thread = selectConversationThread({ scope: "synthetic", turns: example.turns }, { userMsg: example.input });
+  if (thread) layers.push({ role: "user", content: formatConversationThreadBlock(thread), contextPriority: 88 });
   if (example.background) layers.push({ role: "user", content: buildGroupBackgroundBlock(example.background), contextPriority: 40 });
   if (example.image !== undefined) layers.push({ ...buildImageContextMessage(example.image), contextPriority: 95 });
+  appendReplayRetrieval(layers, example);
   const currentInput = buildCurrentInput("示例用户", example.input, "11");
   const bounded = enforceContextBudget(layers, currentInput, { mode: "group-at" });
   const messages = [
@@ -29,9 +33,30 @@ export function buildReplayPacket(example) {
     { role: "user", content: currentInput },
   ];
   return {
-    messages, budget: bounded.budget,
+    messages, budget: bounded.budget, sources: bounded.sources,
     fingerprint: createHash("sha256").update(JSON.stringify(messages)).digest("hex").slice(0, 16),
   };
+}
+
+function appendReplayRetrieval(layers, example) {
+  if (example.memoryRows) {
+    const memories = retrieveRelevantUserMemories("11", example.input, {
+      users: { "11": { chats: example.memoryRows } }, groupId: "synthetic",
+    });
+    layers.push({ role: "user", contextPriority: 70,
+      content: "[当前发言人相关记忆]\n" + memories.map(formatSpeakerLine).join("\n"),
+      contextSources: memories.map(item => selectionSource(item, "memory", item.matchReason, item.score)),
+    });
+  }
+  if (example.groupRows) {
+    const selected = selectGroupConversation(example.groupRows, {
+      userMsg: example.input, replyText: example.quote, replyToMessageId: example.replyToMessageId, now: 5000,
+    });
+    layers.push({ role: "user", contextPriority: 40,
+      content: buildGroupBackgroundBlock(selected.items.map(item => formatSpeakerLine(item.message))),
+      contextSources: selected.items.map(item => selectionSource(item.message, "group", item.reason, item.score)),
+    });
+  }
 }
 
 export function runReplayChecks() {
@@ -41,12 +66,19 @@ export function runReplayChecks() {
       id: example.id, name: example.name,
       ok: packet.budget.chars <= packet.budget.maxChars &&
         packet.messages.at(-1).content.includes(example.input) &&
-        packet.messages.at(-1).content.includes("reply_target=当前发言人"),
+        packet.messages.at(-1).content.includes("reply_target=当前发言人") && replaySelectionMatches(example, packet),
     };
   });
   checks.push({ id: "reasoning-only", name: "推理字段不能成为正文", ok: !buildOutputPacket({ content: "", reasoning_content: "private synthetic reasoning" }).ok });
   checks.push({ id: "final-only", name: "只采用最终正文", ok: buildOutputPacket({ content: "答案是 42。", reasoning_content: "private synthetic reasoning" }).text === "答案是 42。" });
   return { ok: checks.every(item => item.ok), checks, callsModel: false, sendsMessage: false };
+}
+
+function replaySelectionMatches(example, packet) {
+  const sourceIds = new Set(packet.sources.map(item => item.messageId));
+  return (example.expectedSources || []).every(id => sourceIds.has(id)) &&
+    (example.excludedSources || []).every(id => !sourceIds.has(id)) &&
+    (!example.excludedContext || !JSON.stringify(packet.messages).includes(example.excludedContext));
 }
 
 export function createReplayService(options = {}) {

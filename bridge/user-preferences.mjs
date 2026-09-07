@@ -2,6 +2,7 @@ import { groupChats, saveGroupChats, saveUsers, users } from "./storage.mjs";
 import { clearConversationThreads } from "./cognition/index.mjs";
 import { clearUserMemoryProfile, getActiveMemoryContext } from "./memory-profile.mjs";
 import { clearUserCacheUsage } from "./api-providers/usage-metrics.mjs";
+import { clearMessageFeatureCache } from "./context/relevance.mjs";
 
 const DEFAULT_STYLE = Object.freeze({
   length: "normal",
@@ -173,6 +174,7 @@ export function buildPrivacyText() {
 }
 
 export function forgetUserData(uid, options = {}) {
+  clearMessageFeatureCache();
   const id = String(uid || "");
   if (!id) return { ok: false, text: "没有找到可清理的用户。" };
   const userStore = options.users || users;

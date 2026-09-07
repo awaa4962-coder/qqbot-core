@@ -43,6 +43,7 @@ export function buildReplyContextPacket(options = {}) {
       imageCount: Number(options.imageCount || 0),
     },
     budget: bounded.budget,
+    retrieval: { sources: bounded.sources },
   };
 }
 
@@ -51,6 +52,7 @@ function traceContextPacket(bounded, options) {
     status: "ok", chars: bounded.budget.chars, messages: bounded.messages.length,
     pruned: bounded.budget.prunedMessageCount, truncated: bounded.budget.truncatedMessageCount,
     images: Number(options.imageCount || 0), mentions: options.mentions?.length || 0,
+    sources: bounded.sources,
   });
 }
 

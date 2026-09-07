@@ -32,7 +32,7 @@ test("replay preflight is deterministic and uses bounded synthetic input", () =>
 test("reading and checking replay never call models or write a file", async t => {
   let calls = 0;
   const { service, filename } = harness(t, { callModel: async () => { calls++; return reply(); } });
-  assert.equal(service.snapshot().cases.length, 8);
+  assert.equal(service.snapshot().cases.length, REPLAY_CASES.length);
   await service.act({ action: "check" });
   assert.equal(calls, 0);
   assert.equal(fs.existsSync(filename), false);

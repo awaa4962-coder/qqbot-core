@@ -12,7 +12,8 @@ import {
 import { CFG } from "./config.mjs";
 import { wallAgeMs } from "./runtime-clock.mjs";
 import { users, groupChats } from "./storage.mjs";
-import { RETRIEVAL_KEYWORD_RULES } from "./knowledge/topic-rules.mjs";
+import { compareRelevance, currentTopicText, isContinuation, messageFeatures, retrievalFeatures } from "./context/relevance.mjs";
+import { selectConversationThread, selectGroupConversation, selectionSource } from "./context/conversation-selection.mjs";
 import { buildMemorySummary, getActiveMemoryContext } from "./memory-profile.mjs";
 import { buildMemeContextBlock } from "./knowledge/memes/index.mjs";
 import { buildMentionContextBlock } from "./mentions/index.mjs";
@@ -37,7 +38,9 @@ export function buildLayeredReplyContext(options = {}) {
 
   const currentInput = buildCurrentInput(userName, userMsg, uid);
   const layers = [];
-  const thread = isPassiveInterjection ? null : getConversationThread(uid, groupId);
+  const thread = isPassiveInterjection ? null : selectConversationThread(getConversationThread(uid, groupId), {
+    ...options, userMsg, selfUin: CFG.selfUin,
+  });
   if (isPassiveInterjection) {
     appendQuotedLayer(layers, options);
     appendMinimalPreferenceLayer(layers, uid);
@@ -92,12 +95,15 @@ function appendMentionLayer(layers, options) {
 
 function appendQuotedLayer(layers, options) {
   if (!options.replyText) return;
-  pushLayer(layers, buildQuotedMessageBlock(options.replyText, options.replySpeaker || "unknown"), 100);
+  pushLayer(layers, buildQuotedMessageBlock(options.replyText, options.replySpeaker || "unknown"), 100, "user", [
+    selectionSource({ messageId: options.replyToMessageId, uid: options.replyUserId }, "quote", "reply_chain"),
+  ]);
 }
 
 function appendThreadLayer(layers, options) {
   const threadBlock = formatConversationThreadBlock(options.thread);
-  if (threadBlock) pushLayer(layers, threadBlock, 88);
+  if (threadBlock) pushLayer(layers, threadBlock, 88, "user", options.thread.turns.map(turn =>
+    selectionSource({ ...turn, uid: options.uid }, "thread", "continuation")));
 }
 
 function appendPreferenceLayer(layers, uid) {
@@ -116,48 +122,61 @@ function appendMemoryLayer(layers, uid, groupId) {
 }
 
 function appendUserHistoryLayer(layers, options) {
-  const relevant = retrieveRelevantUserMemories(options.uid, options.userMsg, {
+  if (isOtherPersonQuote(options)) return;
+  const relevant = retrieveRelevantUserMemories(options.uid, memoryQuery(options), {
     groupId: options.groupId,
     currentMessageId: options.currentMessageId,
     currentText: options.userMsg,
     excludeMessageIds: options.excludeMessageIds,
   });
   if (relevant.length) {
-    pushLayer(layers, "[当前发言人相关记忆]\n" + relevant.map(formatSpeakerLine).join("\n"), 70);
+    pushLayer(layers, "[当前发言人相关记忆，当前输入和主动设置优先]\n" + relevant.map(formatSpeakerLine).join("\n"), 70, "user",
+      relevant.map(item => selectionSource(item, "memory", item.matchReason, item.score)));
     return;
   }
+  if (currentTopicText(options.userMsg).switched || options.replyToMessageId) return;
   const weighted = recentHistoryWeighted(options.uid, options.groupId, {
     currentMessageId: options.currentMessageId,
     currentText: options.userMsg,
     excludeMessageIds: options.excludeMessageIds,
+    limit: 4,
   });
-  for (const item of weighted.history) pushLayer(layers, item.content, 60, item.role);
+  weighted.history.forEach((item, index) => pushLayer(layers, item.content, 60, item.role, [weighted.sources[index]]));
+}
+
+function isOtherPersonQuote(options) {
+  return Boolean(options.replyToMessageId && options.replyUserId &&
+    String(options.replyUserId) !== String(options.uid) && String(options.replyUserId) !== String(CFG.selfUin));
 }
 
 function appendGroupBackgroundLayer(layers, groupId, options) {
   if (groupId === "private") return;
-  const groupRecent = recentGroupChat(groupId, 20, {
-    currentMessageId: options.currentMessageId,
-    currentText: options.userMsg,
-    excludeMessageIds: options.excludeMessageIds,
-  });
-  const groupCtx = buildGroupBackgroundBlock(groupRecent.map(function(m) { return m.content; }));
-  if (groupCtx) pushLayer(layers, groupCtx, 40);
+  const selected = selectGroupConversation(groupChats[groupId] || [], { ...options, selfUin: CFG.selfUin });
+  const groupCtx = buildGroupBackgroundBlock(selected.items.map(item => formatSpeakerLine(item.message)));
+  if (groupCtx) pushLayer(layers, groupCtx, 40, "user", selected.items.map(item =>
+    selectionSource(item.message, "group", item.reason, item.score)));
+}
+
+function memoryQuery(options) {
+  if (currentTopicText(options.userMsg).switched) return options.userMsg;
+  if (options.replyText) return options.replyText + " " + options.userMsg;
+  if (isContinuation(options.userMsg) && options.thread?.turns?.length) {
+    return options.thread.turns[0].userSummary + " " + options.userMsg;
+  }
+  return options.userMsg;
 }
 
 export function retrieveRelevantUserMemories(uid, query, options = {}) {
-  const user = users[String(uid)];
+  const user = (options.users || users)[String(uid)];
   if (!user?.chats?.length) return [];
-  const keywords = extractKeywords(query);
-  if (!keywords.length) return [];
+  const features = retrievalFeatures(query);
   const groupId = String(options.groupId || "");
   const scored = [];
   for (const chat of user.chats) {
     if (!options.allowCrossGroup && groupId && String(chat.group) !== groupId) continue;
     if (isCurrentMemory(chat, options)) continue;
-    const text = String(chat.text || "");
-    const score = scoreMemory(text, keywords, chat, groupId);
-    if (score > 0) scored.push({ chat, score });
+    const match = compareRelevance(features, messageFeatures(chat));
+    if (match.score > 0) scored.push({ chat, score: match.score, matchReason: match.reason });
   }
   scored.sort(function(a, b) {
     if (b.score !== a.score) return b.score - a.score;
@@ -169,6 +188,9 @@ export function retrieveRelevantUserMemories(uid, query, options = {}) {
     text: item.chat.text,
     group: item.chat.group,
     ts: item.chat.ts,
+    messageId: item.chat.messageId || "",
+    score: item.score,
+    matchReason: item.matchReason,
   })).reverse();
 }
 
@@ -198,9 +220,9 @@ function normalizeMessageId(value) {
   return String(value);
 }
 
-function pushLayer(layers, content, contextPriority, role = "user") {
+function pushLayer(layers, content, contextPriority, role = "user", contextSources = []) {
   if (!content) return;
-  layers.push({ role, content, contextPriority });
+  layers.push({ role, content, contextPriority, contextSources });
 }
 
 export function buildMemoryContextBlock(uid, groupId) {
@@ -281,31 +303,6 @@ function normalizeContextLine(value) {
     .replace(/[\p{P}\p{S}]+/gu, "")
     .toLowerCase()
     .slice(0, 180);
-}
-
-function extractKeywords(text) {
-  const value = String(text || "").toLowerCase();
-  const keywords = new Set();
-  for (const [keyword, pattern] of RETRIEVAL_KEYWORD_RULES) {
-    if (pattern.test(value)) keywords.add(keyword);
-  }
-  for (const token of value.split(/[^\p{L}\p{N}_-]+/u)) {
-    if (token.length >= 3 && token.length <= 24) keywords.add(token);
-  }
-  return [...keywords].slice(0, 12);
-}
-
-function scoreMemory(text, keywords, chat, groupId) {
-  const value = String(text || "").toLowerCase();
-  let score = 0;
-  for (const keyword of keywords) {
-    if (value.includes(keyword)) score += keyword.length > 3 ? 2 : 1;
-  }
-  if (score <= 0) return 0;
-  if (groupId && String(chat.group) === groupId) score += 1;
-  const ageMs = wallAgeMs(chat.ts);
-  if (ageMs < 24 * 60 * 60 * 1000) score += 1;
-  return score;
 }
 
 function deriveMood(groupId) {

@@ -103,8 +103,20 @@
       const detail = document.createElement("span");
       detail.textContent = stepDetails(step);
       li.append(detail); list.append(li);
+      if (step.sources?.length) {
+        const sources = document.createElement("span");
+        sources.className = "trace-sources";
+        sources.textContent = step.sources.map(sourceLabel).join("；");
+        li.append(sources);
+      }
     }
     box.append(list);
+  }
+
+  function sourceLabel(source) {
+    const kinds = { quote: "引用", thread: "对话线程", memory: "个人历史", group: "群聊", image: "图片" };
+    const reasons = { reply_chain: "引用链", continuation: "承接", keywords: "关键词", synonyms: "同义表达", mention: "被提及者", recent: "最近背景", image_reference: "明确看图指向" };
+    return `${kinds[source.kind] || "上下文"} ${source.messageId || "旧记录"} · ${reasons[source.reason] || "相关"}${source.clipped ? " · 所在层已裁剪" : ""}`;
   }
 
   function stepDetails(step) {
@@ -135,6 +147,8 @@
     $("replayInput").textContent = item.input;
     $("replayExpectations").replaceChildren();
     item.expectations.forEach(text => { const li = document.createElement("li"); li.textContent = text; $("replayExpectations").append(li); });
+    $("replaySources").hidden = !item.packet.sources?.length;
+    $("replaySources").textContent = (item.packet.sources || []).map(sourceLabel).join("；");
     for (const [field, key] of [["Baseline", "baseline"], ["Candidate", "candidate"]]) {
       const answer = item[key];
       $("replay" + field).textContent = answer?.text || (key === "baseline" ? "尚未保存基线" : "尚未生成候选");

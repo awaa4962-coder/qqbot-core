@@ -63,7 +63,7 @@ describe("context retriever", () => {
       groupId: "1",
       userName: "alice",
       userMsg: "jm cannot download",
-      replyText: "previous message",
+      replyText: "background from another speaker about jm download",
     });
     const joined = ctx.history.map(item => item.content).join("\n");
     assert.match(joined, /用户主动设置/);

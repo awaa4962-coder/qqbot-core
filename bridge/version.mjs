@@ -4,31 +4,25 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.4-linux-diagnostics";
-export const VERSION_NAME = "linux-diagnostics";
+export const VERSION = "1.4.5-context-selection";
+export const VERSION_NAME = "context-selection";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "Linux 控制台诊断页新增真实消息记录，可查看准入、路由、上下文、模型、正文检查和发送结果。",
-  "新增 8 个合成对话样例，支持候选生成、基线保存和人工评价，回放不会向 QQ 发送消息。",
-  "消息诊断只保留最多 300 条、24 小时的内存元数据；不保存聊天正文、完整提示词、密钥或模型推理。",
-  "后续以 Linux 服务器为主要更新目标，Windows 安装暂停更新。",
-  "统一采集 MiMo、DeepSeek 及兼容协议返回的 Prompt Cache 命中、未命中、输入、输出和推理用量。",
-  "普通用户可用 @夜星 缓存命中 查看自己今天、近 7 天和分供应商命中率，不能查询其他群友。",
-  "系统提示词把稳定的身份、安全和回答规则移到动态猫娘动作、群氛围之前，提高可复用前缀长度。",
-  "缓存统计只保存按日数字和加盐匿名用户键，最多保留 30 天；忘记我会立即重置个人可见统计。",
-  "不会缓存聊天答案、提示词或 reasoning_content；日报恢复链、白名单与 Linux 运行保护保持不变。",
+  "记忆召回增加中文分词和双向同义表达匹配，修复压缩包、archive 等说法变化导致的漏召回。",
+  "群聊按引用链、被提及对象和相关发言选择背景，明确换话题时停止带入旧任务。",
+  "图片优先使用当前或引用图片；补取历史图片时只选明确指向的人最近一条图片消息。",
+  "诊断页显示上下文来源和入选原因，合成回放增加到 11 个场景；不记录真实聊天正文或模型推理。",
+  "Linux 优先更新，Windows 暂停；DeepSeek 兜底、白名单、缓存统计和关系评分保持不变。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Adds bounded per-message diagnostics and an eight-case synthetic replay workbench to the Linux browser console.",
-  "Replay supports candidate generation, pinned baselines and human review without sending messages to QQ.",
-  "Prioritizes Linux server updates; the installed Windows bot remains frozen.",
-  "Collects provider-reported prompt-cache hit, miss, input, output and reasoning usage through the shared API gateway.",
-  "Adds a sender-only cache command with today, seven-day and per-provider hit rates.",
-  "Moves stable identity, safety and answer rules before dynamic persona and group state to create a longer reusable prefix.",
-  "Stores only daily numeric aggregates and salted user identifiers for up to 30 days; forget-me resets visible personal metrics.",
-  "Preserves the isolated Linux server deployment, upload_file_stream transfers, loopback-only browser, no automatic model credentials migration and private-reasoning protection.",
+  "Adds Chinese word segmentation and symmetric synonym matching to scoped memory retrieval.",
+  "Selects group context by reply links, mentioned participants and relevant messages; explicit topic changes stop old task carryover.",
+  "Keeps current and quoted images ahead of author-scoped historical image references.",
+  "Shows context source metadata in diagnostics and expands synthetic replay to eleven cases without logging private reasoning.",
+  "Updates Linux only and preserves DeepSeek fallback, allowlists, usage metrics and relationship scoring.",
+  "Preserves the isolated Linux server deployment, upload_file_stream transfers, loopback-only browser and no automatic migration of model credentials.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

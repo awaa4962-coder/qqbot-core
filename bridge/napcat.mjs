@@ -164,10 +164,17 @@ export async function fetchReplyData(replyData) {
       let res = text;
       if (images.length) res += ' [图片' + images.length + '张]';
       if (files.length) res += ' ' + describeFiles(files);
-      return { text: res, images: images };
+      return { text: res, images, ...replyIdentity(msg) };
     }
   } catch {}
   return { text: '', images: [] };
+}
+
+function replyIdentity(message) {
+  return {
+    userId: String(message.user_id || message.sender?.user_id || ''),
+    nickname: String(message.sender?.card || message.sender?.nickname || ''),
+  };
 }
 
 export { normalizeOutboundText, splitLongText };

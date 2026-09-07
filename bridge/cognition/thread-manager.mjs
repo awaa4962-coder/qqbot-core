@@ -1,5 +1,6 @@
 import { saveUsers, users } from "../storage.mjs";
 import { wallAgeMs } from "../runtime-clock.mjs";
+import { currentTopicText } from "../context/relevance.mjs";
 
 const GROUP_THREAD_TTL_MS = 90 * 60 * 1000;
 const PRIVATE_THREAD_TTL_MS = 6 * 60 * 60 * 1000;
@@ -189,7 +190,7 @@ function upsertTurn(thread, turn) {
 }
 
 function resolveTopic(text, previousTopic) {
-  const value = String(text || "").trim();
+  const value = currentTopicText(text).text;
   for (const [label, pattern] of TOPIC_RULES) {
     if (pattern.test(value)) return label;
   }

@@ -1,6 +1,7 @@
 import { users, groupChats } from "../storage.mjs";
 import { fmtMsg, formatSpeakerLine } from "./messages.mjs";
 import { wallAgeMs } from "../runtime-clock.mjs";
+import { selectionSource } from "./conversation-selection.mjs";
 
 export function recentGroupChat(group_id, limit = 30, options = {}) {
   const gid = String(group_id);
@@ -34,11 +35,12 @@ export function recentHistoryWeighted(uid, currentGroup, options = {}) {
   const current = String(currentGroup);
   const weighted = collectWeightedUserChats(user.chats, current, options);
   const history = weighted.map(function(item) {
-    return { role: "user", content: "[当前发言人的近期发言]\n" + formatSpeakerLine(item.msg) };
+    return { role: "user", content: "[当前发言人的近期发言]\n" + formatSpeakerLine({ ...item.msg, uid: String(uid) }) };
   });
   return {
     history,
     mood: deriveGroupMood(current),
+    sources: weighted.map(item => selectionSource({ ...item.msg, uid: String(uid) }, "memory", "recent")),
   };
 }
 
@@ -56,7 +58,7 @@ function collectWeightedUserChats(chats, currentGroup, options) {
     weighted.push({ msg: chat, weight: weightRecentChat(ageHours) });
   }
   weighted.sort(function(a, b) { return b.weight - a.weight; });
-  const top = weighted.slice(0, 15);
+  const top = weighted.slice(0, options.limit || 15);
   top.sort(function(a, b) { return a.msg.ts - b.msg.ts; });
   return top;
 }

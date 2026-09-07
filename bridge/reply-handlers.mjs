@@ -4,7 +4,8 @@ import { log } from "./logger.mjs";
 import { groupChats } from "./storage.mjs";
 import { normalizeMsg, cleanText } from "./context/messages.mjs";
 import { mentionedUsers, parseMentions } from "./mentions/index.mjs";
-import { wallAgeMs } from "./runtime-clock.mjs";
+import { selectRecentImageMessage, selectionSource } from "./context/conversation-selection.mjs";
+import { traceStage } from "./diagnostics/message-trace.mjs";
 import {
   getImages,
   getImageSegments,
@@ -68,6 +69,8 @@ export function parseIncomingEvent(ev) {
 export async function resolveReplyContext(ctx) {
   if (!ctx.replyData) return "";
   const replyInfo = await fetchReplyData(ctx.replyData);
+  ctx.replySpeaker = replyInfo.nickname || "unknown";
+  ctx.replyUserId = replyInfo.userId || "";
   if (replyInfo.images.length) {
     ctx.images.push(...replyInfo.images);
     log("pulled", replyInfo.images.length, "images from replied message");
@@ -75,15 +78,11 @@ export async function resolveReplyContext(ctx) {
   return replyInfo.text;
 }
 
-export function pullRecentImages(groupId) {
+export function pullRecentImages(groupId, options = {}) {
   const recentMsgs = groupChats[String(groupId)] || [];
-  const urls = [];
-  for (let i = recentMsgs.length - 1; i >= 0; i--) {
-    const m = recentMsgs[i];
-    const age = wallAgeMs(m.ts);
-    if (age > 300000) continue;
-    if (m.imageUrls?.length) urls.push(...m.imageUrls);
-  }
+  const message = selectRecentImageMessage(recentMsgs, options);
+  const urls = [...new Set(message?.imageUrls || [])].slice(0, 3);
+  if (urls.length) traceStage("context", { status: "ok", images: urls.length, sources: [selectionSource(message, "image", "image_reference")] });
   if (urls.length) log("pulled", urls.length, "recent images into context");
   return urls;
 }

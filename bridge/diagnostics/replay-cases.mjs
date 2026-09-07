@@ -39,4 +39,31 @@ export const REPLAY_CASES = Object.freeze([
     id: "vision-missing", name: "识图失败边界", input: "这是谁？", image: "",
     expectations: ["知道图片识别未成功", "不声称认出人物", "必要时请求更清楚的图片"],
   },
+  {
+    id: "synonym-recall", name: "同义表达召回", input: "这个 archive 还是打不开，之前说缺什么？",
+    memoryRows: [
+      { group: "synthetic", messageId: "9101", text: "解压工具提示分卷缺失，应该先下载完整分卷。", ts: 1000 },
+      { group: "synthetic", messageId: "9102", text: "今天晚饭准备吃面。", ts: 2000 },
+      { group: "other", messageId: "9103", text: "另一个群的 archive 私有信息。", ts: 3000 },
+    ],
+    expectedSources: ["9101"], excludedSources: ["9102", "9103"],
+    expectations: ["召回分卷缺失的信息", "不混入晚饭或其他群的记录", "说明下一步核对分卷是否齐全"],
+  },
+  {
+    id: "quoted-topic", name: "引用链与旁支话题", input: "他换完之后好了吗？", quote: "换条显示器线试试。", replyToMessageId: "9202",
+    groupRows: [
+      { uid: "12", messageId: "9201", text: "更新驱动之后还是黑屏。", ts: 1000 },
+      { uid: "13", messageId: "9202", replyToMessageId: "9201", text: "换条显示器线试试。", ts: 2000 },
+      { uid: "14", messageId: "9203", text: "今晚火锅加点土豆。", ts: 3000 },
+      { uid: "12", messageId: "9204", replyToMessageId: "9202", text: "线换了，还是黑屏。", ts: 4000 },
+    ],
+    expectedSources: ["9201", "9204"], excludedSources: ["9203"],
+    expectations: ["依据后续反馈回答还没好", "知道是小组成员的经历，不能冒充自己", "不把火锅话题混进来"],
+  },
+  {
+    id: "thread-reset", name: "旧任务退出", input: "先不聊下载了，换个话题，17加25是多少？",
+    turns: [{ userSummary: "压缩包下载失败了。", assistantSummary: "检查网络后再尝试。" }],
+    excludedContext: "检查网络后再尝试",
+    expectations: ["直接回答 42", "上下文不注入旧下载任务", "不重复上一轮排查建议"],
+  },
 ]);
