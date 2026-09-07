@@ -14,6 +14,7 @@
     if (["runMemeWebUpdate", "researchMemeWeb"].includes(action)) return 3 * 60 * 1000;
     if (["syncStickers", "analyzeStickers"].includes(action)) return 230 * 1000;
     if (action === "health") return 90 * 1000;
+    if (action === "replayAction") return 120 * 1000;
     if (["restartBridge", "createBackup"].includes(action)) return 90 * 1000;
     return 30 * 1000;
   }
@@ -59,6 +60,12 @@
     if (action === "manageStickers") return apiPost("/admin/stickers", payload);
     if (isMemeAction(action)) return apiPost("/admin/memes", payload);
     if (action === "diagnose") return apiPost("/admin/diagnose/reply", payload);
+    if (action === "getMessageTraces") {
+      const query = Object.entries(payload).map(([key, value]) => encodeURIComponent(key) + "=" + encodeURIComponent(value)).join("&");
+      return apiRequest("/admin/diagnose/traces?" + query);
+    }
+    if (action === "getReplay") return apiRequest("/admin/diagnose/replay");
+    if (action === "replayAction") return apiPost("/admin/diagnose/replay", payload);
     if (action === "createBackup") return apiPost("/admin/backups", { action: "create" });
     if (action === "health") return runBrowserHealthCheck();
     if (action === "openLogs") return { message: "日志已显示在控制台的日志页。" };

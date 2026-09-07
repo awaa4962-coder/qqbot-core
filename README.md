@@ -19,6 +19,8 @@ QQFriend 是“夜星”QQ 机器人的本地运行核心。它接收 NapCat 的
 
 ## 能力概览
 
+当前开发目标为 Linux 服务器，Windows 安装暂停更新。Linux 控制台的「诊断」页可查看实际消息阶段记录，并使用合成样例生成对照、保存基线和评价答案。更新顺序见 [Linux 推进计划](deploy/linux/ROADMAP.md)。
+
 | 方向 | 当前能力 |
 | --- | --- |
 | 对话与模型 | MiMo 主对话、DeepSeek 兜底、按任务切换模型与思考强度，兼容 OpenAI Chat / Responses、Anthropic 和 Gemini 协议 |
@@ -195,6 +197,7 @@ npm.cmd ci
 npm.cmd run lint
 npm.cmd test
 npm.cmd run release:check
+npm.cmd run replay:check
 ```
 
 测试不连接真实 NapCat，不调用真实模型 API，也不依赖真实密钥。发布检查会额外验证运行配置、JM 依赖、敏感路径、ZIP 路径和发布清单。

@@ -346,6 +346,37 @@
         </section>
 
         <section class="view" data-view-panel="diagnostics" hidden>
+          <section class="surface workspace-surface linux-diagnostics" id="messageTracePanel" hidden>
+            <div class="section-head"><div><p class="eyebrow">实际处理记录</p><h2>最近消息</h2></div><button type="button" data-diagnostic-action="traces">刷新记录</button></div>
+            <div class="trace-filters">
+              <label>结果<select id="traceStatus"><option value="all">全部结果</option><option value="sent">已发送</option><option value="failed">失败</option><option value="partial">部分成功</option><option value="ignored">未触发</option><option value="no_reply">未产生回复</option><option value="processing">处理中</option></select></label>
+              <label>群号<input id="traceGroup" inputmode="numeric" placeholder="全部群与私聊"></label>
+              <label>消息编号<input id="traceMessage" inputmode="numeric" placeholder="全部消息"></label>
+            </div>
+            <p id="traceNotice" class="diagnostic-notice" role="status" aria-live="polite">尚未读取</p>
+            <div class="trace-workbench">
+              <div class="trace-table-wrap"><table class="trace-table"><thead><tr><th>时间 / 范围</th><th>路径</th><th>结果</th><th>耗时</th></tr></thead><tbody id="traceRows"></tbody></table></div>
+              <aside id="traceDetail" class="trace-detail" aria-label="消息处理详情">选择一条记录</aside>
+            </div>
+          </section>
+          <section class="surface workspace-surface linux-diagnostics" id="replayPanel" hidden>
+            <div class="section-head"><div><p class="eyebrow">合成样例 · 不发送到 QQ</p><h2>对话回放</h2></div><button type="button" data-diagnostic-action="check">检查样例输入</button></div>
+            <div class="replay-toolbar">
+              <label>样例<select id="replayCase"></select></label>
+              <button type="button" class="primary" data-diagnostic-action="generate" title="调用当前群聊模型，失败时使用备用；每次只生成一个样例">生成候选（API）</button>
+              <button type="button" data-diagnostic-action="baseline">设为基线</button>
+              <button type="button" data-diagnostic-action="replay">刷新</button>
+            </div>
+            <p id="replayNotice" class="diagnostic-notice" role="status" aria-live="polite">尚未读取</p>
+            <p id="replayInput" class="replay-input"></p>
+            <ul id="replayExpectations" class="replay-expectations"></ul>
+            <div class="replay-comparison">
+              <article><h3>基线回复</h3><p id="replayBaselineMeta" class="replay-meta"></p><pre id="replayBaseline">尚未保存基线</pre></article>
+              <article><h3>候选回复</h3><p id="replayCandidateMeta" class="replay-meta"></p><pre id="replayCandidate">尚未生成候选</pre></article>
+            </div>
+            <div class="replay-review"><label>人工评价<select id="replayReview"><option value="unreviewed">未评价</option><option value="better">更好了</option><option value="same">差不多</option><option value="worse">变差了</option><option value="off_topic">答偏了</option><option value="wrong_person">认错人</option><option value="over_persona">人设过头</option></select></label><button type="button" data-diagnostic-action="review">保存评价</button><span id="replayQuota"></span></div>
+            <details class="technical-details"><summary>查看本次样例输入</summary><pre class="output details-output" id="replayPacket"></pre></details>
+          </section>
           <section class="surface workspace-surface">
             <div class="section-head"><div><p class="eyebrow">消息链路</p><h2>模拟一条消息</h2></div><button type="button" class="primary" data-action="diagnose">开始诊断</button></div>
             <div class="diagnose-form">
@@ -405,5 +436,7 @@
   <div class="toast" id="toast" role="status" aria-live="polite">就绪</div>
   <script src="./host-client.js?v=20260819-linux"></script>
   <script src="./app.js?v=20260819-linux"></script>
+  <link rel="stylesheet" href="./diagnostics.css?v=20260907">
+  <script src="./diagnostics.js?v=20260907"></script>
 </body>
 </html>

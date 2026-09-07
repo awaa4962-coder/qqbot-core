@@ -127,3 +127,31 @@ test("admin diagnose route returns dry-run payload", async () => {
   assert.equal(writes[0].payload.dryRun, true);
   assert.equal(writes[0].payload.safety.sendsMessage, false);
 });
+
+test("message traces and replay endpoints share the admin token guard", async () => {
+  for (const pathname of ["/admin/diagnose/traces", "/admin/diagnose/replay"]) {
+    for (const authorized of [false, true]) {
+      const writes = [];
+      const req = {
+        method: "GET", url: pathname, socket: { remoteAddress: "127.0.0.1" },
+        headers: authorized ? { "x-qqfriend-admin-token": "test-token" } : {},
+      };
+      await handleAdminApiRequest(req, {}, {
+        pathname, url: new URL("http://localhost" + pathname), requiredToken: "test-token",
+        sendJson(_res, code, payload) { writes.push({ code, payload }); },
+      });
+      assert.equal(writes[0].code, authorized ? 200 : 403);
+      if (authorized && pathname.endsWith("replay")) assert.equal(writes[0].payload.synthetic, true);
+      if (authorized && pathname.endsWith("traces")) assert.equal(writes[0].payload.persistent, false);
+    }
+  }
+});
+
+test("replay generation is not accessible from a public address", async () => {
+  const writes = [];
+  await handleAdminApiRequest({ method: "POST", url: "/admin/diagnose/replay", socket: { remoteAddress: "203.0.113.10" }, headers: { "x-qqfriend-admin-token": "test-token" } }, {}, {
+    pathname: "/admin/diagnose/replay", requiredToken: "test-token",
+    sendJson(_res, code) { writes.push(code); },
+  });
+  assert.deepEqual(writes, [403]);
+});

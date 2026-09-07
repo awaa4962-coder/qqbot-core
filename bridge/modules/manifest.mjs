@@ -2,6 +2,15 @@
 
 export const MODULE_DEFINITIONS = Object.freeze([
   {
+    id: "diagnostics", name: "消息诊断与对话回放", category: "operations", enabled: true,
+    entrypoints: ["bridge/diagnostics/", "bridge/admin-api/routes.mjs"],
+    commands: [], configFields: [], editableConfigFields: [],
+    healthChecks: ["bounded trace snapshots", "npm run replay:check"],
+    diagnostics: ["admin/diagnose/traces", "admin/diagnose/replay"],
+    tests: ["test/message-trace.test.mjs", "test/diagnostic-replay.test.mjs", "test/admin-diagnose.test.mjs"],
+    riskLevel: "medium", privacy: "in-memory trace metadata only; replay uses synthetic fixtures and stores final text without private reasoning",
+  },
+  {
     id: "commands",
     name: "命令系统",
     category: "core",

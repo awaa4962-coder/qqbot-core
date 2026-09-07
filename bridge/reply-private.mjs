@@ -10,12 +10,17 @@ import { handlePrivateJmTransferCommand } from "./jm-provider.mjs";
 import { getPreferredDisplayName } from "./user-preferences.mjs";
 import { isSuccessfulOutbound, recordConversationTurn } from "./cognition/index.mjs";
 import { maybeSendStickerAfterReply } from "./features/stickers/index.mjs";
+import { traceStage } from "./diagnostics/message-trace.mjs";
 
 export async function handlePrivateMessage(ctx) {
-  if (await handlePrivateJmTransferCommand(ctx)) return;
+  if (await handlePrivateJmTransferCommand(ctx)) {
+    traceStage("route", { status: "ok", route: "jm" });
+    return;
+  }
   if (isAdminUser(ctx.user_id) && await trySendPrivateCommand(ctx)) return;
 
   if (!CFG.friendWhitelist.includes(ctx.user_id)) {
+    traceStage("route", { status: "skipped", reason: "private_not_whitelisted" });
     log("private msg from non-whitelist:", ctx.user_id);
     return;
   }
@@ -71,6 +76,7 @@ export async function tryDeepSeekFriend(userId, userMsg) {
 }
 
 async function handlePrivateFileMessage(ctx) {
+  traceStage("route", { status: "ok", route: "private_file" });
   const fileDesc = describeFiles(ctx.files);
   let fileContent = "";
   for (const f of ctx.files) {
@@ -98,6 +104,7 @@ async function handlePrivateFileMessage(ctx) {
 }
 
 async function handlePrivateChatMessage(ctx) {
+  traceStage("route", { status: "ok", route: "private_chat" });
   const fullMsg = ctx.text + (ctx.images.length ? " [图片" + ctx.images.length + "张]" : "");
   const { history, userName } = buildPrivateReplyContext(ctx, fullMsg);
   const reply = await callFallbackChat({
@@ -148,6 +155,7 @@ function recordPrivateTurn(ctx, userText, assistantText) {
 async function trySendPrivateCommand(ctx) {
   const reply = await buildPrivateCommandReplyAsync(ctx, { users, groupChats });
   if (!reply) return false;
+  traceStage("route", { status: "ok", route: "command" });
   await sendPrivateMsg(ctx.user_id, reply);
   log("private command reply sent to", ctx.user_id);
   return true;

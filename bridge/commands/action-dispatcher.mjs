@@ -7,6 +7,7 @@ import { handleResourceTransferCommand, parseResourceTransferCommand } from "../
 import { groupChats, logGroupMsg, users } from "../storage.mjs";
 import { buildCommandReplyAsync } from "./dispatcher.mjs";
 import { prepareCommandText } from "./normalize.mjs";
+import { traceStage } from "../diagnostics/message-trace.mjs";
 
 const SPECIAL_GROUP_ACTIONS = Object.freeze([
   { id: "jm", parse: parseJmCommand, handle: handleJmTransferCommand },
@@ -42,6 +43,7 @@ function commandTextFromContext(ctx, options) {
 }
 
 async function executeSpecialGroupAction(action, ctx, commandText, options) {
+  traceStage("route", { status: "ok", route: action.id });
   return await action.handle(ctx, {
     ...options,
     commandText,
@@ -64,6 +66,7 @@ async function dispatchCatalogCommand(ctx, commandText, options) {
     mentionedUsers: ctx.mentionedUsers || [],
   });
   if (!reply) return false;
+  traceStage("route", { status: "ok", route: "command" });
 
   const sender = options.sender || sendMsg;
   await sender(ctx.group_id, reply, options.replyToId ?? ctx.message_id);

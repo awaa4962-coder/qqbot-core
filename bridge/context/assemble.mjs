@@ -1,6 +1,7 @@
 import { buildLayeredReplyContext } from "../context-retriever.mjs";
 import { enforceContextBudget } from "./budget.mjs";
 import { deriveReplyMode, isPassiveMode } from "./policy.mjs";
+import { traceStage } from "../diagnostics/message-trace.mjs";
 
 export function buildReplyContextPacket(options = {}) {
   const mode = deriveReplyMode(options);
@@ -21,6 +22,7 @@ export function buildReplyContextPacket(options = {}) {
     ...(options.contextBudget || {}),
   });
   const messages = bounded.messages;
+  traceContextPacket(bounded, options);
   return {
     mode,
     messages,
@@ -42,6 +44,14 @@ export function buildReplyContextPacket(options = {}) {
     },
     budget: bounded.budget,
   };
+}
+
+function traceContextPacket(bounded, options) {
+  traceStage("context", {
+    status: "ok", chars: bounded.budget.chars, messages: bounded.messages.length,
+    pruned: bounded.budget.prunedMessageCount, truncated: bounded.budget.truncatedMessageCount,
+    images: Number(options.imageCount || 0), mentions: options.mentions?.length || 0,
+  });
 }
 
 function buildThreadMetadata(thread) {

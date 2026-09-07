@@ -4,7 +4,8 @@ import { callGeminiNative } from "./adapters/gemini-native.mjs";
 import { callOpenAiChat } from "./adapters/openai-chat.mjs";
 import { callOpenAiResponses } from "./adapters/openai-responses.mjs";
 import { applyReasoningPolicy } from "./reasoning-policy.mjs";
-import { recordApiUsage } from "./usage-metrics.mjs";
+import { normalizeProviderUsage, recordApiUsage } from "./usage-metrics.mjs";
+import { traceStage } from "../diagnostics/message-trace.mjs";
 import {
   getProvider,
   getTaskRoute,
@@ -21,6 +22,18 @@ const ADAPTERS = Object.freeze({
 });
 
 export async function callApiProvider(providerId, request = {}, options = {}) {
+  const metadata = { provider: providerId, task: options.usageTask, position: options.usagePosition };
+  traceStage("model", { ...metadata, status: "started" });
+  const result = await invokeApiProvider(providerId, request, options);
+  const usage = normalizeProviderUsage(result.raw?.usage || result.usage);
+  traceStage("model", {
+    ...metadata, status: result.ok ? "ok" : "failed", httpStatus: Number(result.status || 0),
+    promptTokens: usage.promptTokens, cachedTokens: usage.cachedTokens, completionTokens: usage.completionTokens,
+  });
+  return result;
+}
+
+async function invokeApiProvider(providerId, request = {}, options = {}) {
   const provider = options.provider || getProvider(providerId, options);
   if (!provider || provider.enabled === false) return failed(providerId, "API 实例不存在或已停用");
   const adapter = ADAPTERS[provider.protocol];

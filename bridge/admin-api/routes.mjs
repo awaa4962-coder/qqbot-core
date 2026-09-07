@@ -23,6 +23,8 @@ import { loadStickerPreview } from "../features/stickers/index.mjs";
 import { buildProjectSelfDescription, buildWorkflowDescription } from "../self-description.mjs";
 import { getMemeStore } from "../knowledge/memes/index.mjs";
 import { CFG } from "../config.mjs";
+import { listMessageTraces } from "../diagnostics/message-trace.mjs";
+import { replayService } from "../diagnostics/replay.mjs";
 
 const GET_ROUTES = new Map([
   ["/admin/status", handleStatusRoute],
@@ -39,6 +41,8 @@ const GET_ROUTES = new Map([
   ["/admin/api-providers", handleApiProvidersReadRoute],
   ["/admin/memes", handleMemesReadRoute],
   ["/admin/stickers", handleStickersReadRoute],
+  ["/admin/diagnose/traces", handleTracesRoute],
+  ["/admin/diagnose/replay", handleReplayReadRoute],
 ]);
 
 const POST_ROUTES = new Map([
@@ -47,6 +51,7 @@ const POST_ROUTES = new Map([
   ["/admin/memes", handleMemesSaveRoute],
   ["/admin/stickers", handleStickersSaveRoute],
   ["/admin/diagnose/reply", handleReplyDiagnoseRoute],
+  ["/admin/diagnose/replay", handleReplayPostRoute],
   ["/admin/command-scaffold", handleCommandScaffoldRoute],
   ["/admin/backups", handleBackupsPostRoute],
 ]);
@@ -237,6 +242,28 @@ async function handleReplyDiagnoseRoute(req, res, context) {
     sendJson(res, 200, buildReplyDiagnosis(payload), 2);
   } catch (error) {
     sendJson(res, 400, { error: error.message });
+  }
+}
+
+function handleTracesRoute(_req, res, context) {
+  const query = Object.fromEntries(context.url.searchParams);
+  context.sendJson(res, 200, listMessageTraces(query), 2);
+}
+
+function handleReplayReadRoute(_req, res, context) {
+  try {
+    context.sendJson(res, 200, replayService.snapshot(), 2);
+  } catch (error) {
+    context.sendJson(res, 400, { error: error.message });
+  }
+}
+
+async function handleReplayPostRoute(req, res, context) {
+  try {
+    const payload = await readJsonRequestBody(req);
+    context.sendJson(res, 200, await replayService.act(payload), 2);
+  } catch (error) {
+    context.sendJson(res, 400, { error: error.message });
   }
 }
 

@@ -18,6 +18,7 @@ import { interjectionToleranceFactor } from "./context-retriever.mjs";
 import { hydrateMentions } from "./mentions/index.mjs";
 import { aiReply } from "./reply-ai.mjs";
 import { observeGroupStickerCandidates } from "./features/stickers/index.mjs";
+import { traceStage } from "./diagnostics/message-trace.mjs";
 
 export async function handleGroupMessage(ctx, rawMessage) {
   if (shouldIgnoreGroupMessage(ctx)) return;
@@ -25,7 +26,10 @@ export async function handleGroupMessage(ctx, rawMessage) {
   await hydrateMentions(ctx.mentions, { groupId: ctx.group_id, getGroupMemberInfo });
   logGroupAttachments(ctx);
   ctx.duplicateInfo = logGroupMemberMessage(ctx);
-  if (ctx.duplicateInfo?.duplicate && !ctx.isAtMe) return;
+  if (ctx.duplicateInfo?.duplicate && !ctx.isAtMe) {
+    traceStage("route", { status: "skipped", reason: "duplicate_text" });
+    return;
+  }
 
   const replyState = createPendingReplyState(ctx);
   if (await dispatchGroupCommand(ctx, { replyToId: replyState.replyToId })) return;
@@ -33,7 +37,10 @@ export async function handleGroupMessage(ctx, rawMessage) {
 
   const previewState = await handleGroupPreviews(ctx, rawMessage);
 
-  if (previewState.sent && !ctx.isAtMe) return;
+  if (previewState.sent && !ctx.isAtMe) {
+    traceStage("route", { status: "ok", route: "preview" });
+    return;
+  }
   if (await handleMentionedGroupMessage(ctx, replyState)) return;
   if (await handlePureFileMessage(ctx)) return;
 
@@ -107,6 +114,7 @@ async function handleGroupPreviews(ctx, rawMessage) {
 
 async function handleMentionedGroupMessage(ctx, replyState) {
   if (!ctx.isAtMe) return false;
+  traceStage("route", { status: "ok", route: "group_at" });
   await ensureReplyState(ctx, replyState);
   pullRecentImagesIntoContext(ctx);
 
@@ -133,6 +141,7 @@ function pullRecentImagesIntoContext(ctx) {
 
 async function handlePureFileMessage(ctx) {
   if (ctx.text || !ctx.files.length || ctx.images.length) return false;
+  traceStage("route", { status: "ok", route: "file" });
   const fileDesc = describeFiles(ctx.files);
   await sendMsg(ctx.group_id, ctx.nickname + " 发了文件: " + fileDesc);
   return true;
@@ -152,6 +161,10 @@ async function handleRandomInterjection(ctx, previewSent, replyState = {}) {
     messageId: ctx.message_id,
     hasImages: ctx.images.length > 0,
     probabilityFactor: interjectionToleranceFactor(memory.groupProfile),
+  });
+  traceStage("route", {
+    route: "interjection", status: decision.ok ? "ok" : "skipped",
+    reason: decision.reason, probability: decision.probability,
   });
   if (!decision.ok) {
     if (decision.kind !== "ordinary" || ctx.images.length) {

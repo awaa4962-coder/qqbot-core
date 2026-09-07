@@ -139,6 +139,22 @@ test('browser host routes Linux status calls and keeps service control terminal-
   await assert.rejects(harness.host.call('startAll'), /Docker Compose.*systemd/);
 });
 
+test('Linux diagnostics host routes encoded filters and explicit replay actions', async () => {
+  const requests = [];
+  const harness = await createBrowserHostHarness(async (url, options) => {
+    requests.push({ url, options });
+    return jsonResponse(200, { items: [], cases: [] });
+  });
+  await harness.host.call('getMessageTraces', { groupId: '22', messageId: '1&status=sent' });
+  await harness.host.call('getReplay');
+  await harness.host.call('replayAction', { action: 'generate', caseId: 'speaker' });
+  assert.equal(requests[0].url, '/admin/diagnose/traces?groupId=22&messageId=1%26status%3Dsent');
+  assert.equal(requests[1].url, '/admin/diagnose/replay');
+  assert.equal(requests[2].options.method, 'POST');
+  assert.deepEqual(JSON.parse(requests[2].options.body), { action: 'generate', caseId: 'speaker' });
+  assert.equal(harness.host.timeoutFor('replayAction'), 120_000);
+});
+
 test('browser host prompts after 403 and keeps the admin token in session storage', async () => {
   const requests = [];
   const harness = await createBrowserHostHarness(async (url, options) => {

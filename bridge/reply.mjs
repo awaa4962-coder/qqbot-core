@@ -5,6 +5,7 @@ import { markEventFailed, markEventProcessed } from "./pipeline-state.mjs";
 import { parseIncomingEvent } from "./reply-handlers.mjs";
 import { handleGroupMessage } from "./reply-group.mjs";
 import { handlePrivateMessage } from "./reply-private.mjs";
+import { traceStage, withMessageTrace } from "./diagnostics/message-trace.mjs";
 
 export {
   aiReply,
@@ -24,7 +25,12 @@ export async function processEvent(ev) {
 
   const ctx = parseIncomingEvent(ev);
   if (!isMessageEvent(ctx)) return { ok: false, reason: "not_message_event" };
+  return await withMessageTrace(ctx, () => processMessageContext(ctx, ev));
+}
+
+async function processMessageContext(ctx, ev) {
   const admission = admitMessageContext(ctx);
+  traceStage("admission", { status: admission.ok ? "ok" : "skipped", reason: admission.reason });
   if (!admission.ok) return admission;
 
   incProcessingCount();

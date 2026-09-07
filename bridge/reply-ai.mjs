@@ -16,6 +16,7 @@ import { isSuccessfulOutbound, recordConversationTurn } from "./cognition/index.
 import { selectPersonaCue } from "./persona-style.mjs";
 import { maybeSendStickerAfterReply } from "./features/stickers/index.mjs";
 import { wallAgeMs } from "./runtime-clock.mjs";
+import { traceStage } from "./diagnostics/message-trace.mjs";
 
 const PROFILE_REFRESH_MS = 6 * 60 * 60 * 1000;
 const PROFILE_REFRESH_MESSAGES = 30;
@@ -173,6 +174,7 @@ async function resolveAiReply(ctx) {
     },
   });
   let reply = modelResult.text;
+  traceStage("output", { status: reply ? "ok" : "failed", position: modelResult.position, reason: reply ? undefined : "model_unavailable" });
   if (reply) log("aiReply route:", modelResult.position);
 
   if (!reply && ctx.isPassiveInterjection) {

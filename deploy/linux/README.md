@@ -2,6 +2,17 @@
 
 This deployment is isolated from the Windows installation. It creates fresh Linux state and never copies API keys, QQ login data, chat history, or user memory automatically.
 
+As of 2026-09-07, Linux is the primary update target and the installed Windows
+bot is frozen. See [ROADMAP.md](ROADMAP.md) for the staged work.
+
+The browser console's Diagnostics page now includes recent message traces and
+synthetic conversation replay. Traces contain metadata only, remain in memory
+for at most 24 hours / 300 records, and reset on restart. Replay candidates,
+pinned baselines and fixed-choice reviews live under
+`$QQBOT_DATA_DIR/.qqfriend/diagnostics/replay.json`, never in a release bundle.
+`npm run replay:check` is offline. Generating a selected candidate explicitly
+calls the configured group model (with fallback), but never sends to QQ.
+
 ## Recommended layout
 
 - `qqfriend-bridge`: Node.js bridge and browser console.
@@ -94,7 +105,7 @@ only the application layer without network access:
 docker build --pull=false \
   --build-arg BASE_IMAGE=qqfriend-bridge:linux-preview \
   -f Dockerfile.overlay \
-  -t qqfriend-bridge:1.4.3-prompt-cache ../..
+  -t qqfriend-bridge:1.4.4-linux-diagnostics ../..
 ```
 
 Use this only when `package-lock.json` and `scripts/requirements-jm.txt` have no

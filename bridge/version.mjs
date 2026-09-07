@@ -4,11 +4,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.3-prompt-cache";
-export const VERSION_NAME = "prompt-cache";
+export const VERSION = "1.4.4-linux-diagnostics";
+export const VERSION_NAME = "linux-diagnostics";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
+  "Linux 控制台诊断页新增真实消息记录，可查看准入、路由、上下文、模型、正文检查和发送结果。",
+  "新增 8 个合成对话样例，支持候选生成、基线保存和人工评价，回放不会向 QQ 发送消息。",
+  "消息诊断只保留最多 300 条、24 小时的内存元数据；不保存聊天正文、完整提示词、密钥或模型推理。",
+  "后续以 Linux 服务器为主要更新目标，Windows 安装暂停更新。",
   "统一采集 MiMo、DeepSeek 及兼容协议返回的 Prompt Cache 命中、未命中、输入、输出和推理用量。",
   "普通用户可用 @夜星 缓存命中 查看自己今天、近 7 天和分供应商命中率，不能查询其他群友。",
   "系统提示词把稳定的身份、安全和回答规则移到动态猫娘动作、群氛围之前，提高可复用前缀长度。",
@@ -17,6 +21,9 @@ export const VERSION_NOTES_ZH = Object.freeze([
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
+  "Adds bounded per-message diagnostics and an eight-case synthetic replay workbench to the Linux browser console.",
+  "Replay supports candidate generation, pinned baselines and human review without sending messages to QQ.",
+  "Prioritizes Linux server updates; the installed Windows bot remains frozen.",
   "Collects provider-reported prompt-cache hit, miss, input, output and reasoning usage through the shared API gateway.",
   "Adds a sender-only cache command with today, seven-day and per-provider hit rates.",
   "Moves stable identity, safety and answer rules before dynamic persona and group state to create a longer reusable prefix.",

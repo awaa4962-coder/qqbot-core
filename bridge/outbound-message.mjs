@@ -2,6 +2,7 @@ import { CFG } from "./config.mjs";
 import { log, logE } from "./logger.mjs";
 import { buildNapCatHeaders } from "./napcat-auth.mjs";
 import { markOutboundAttempt, markOutboundSuccess } from "./pipeline-state.mjs";
+import { traceStage } from "./diagnostics/message-trace.mjs";
 
 const DEFAULT_MAX_LEN = 900;
 const HARD_MAX_LEN = 1200;
@@ -144,11 +145,13 @@ async function sendPayloadWithRetry({ url, payload, label, options }) {
   let lastError = "";
   for (let attempt = 1; attempt <= attempts; attempt++) {
     markOutboundAttempt();
+    traceStage("send", { status: "started", attempt });
     const outcome = await sendPayloadOnce(url, payload);
     lastResult = outcome.result;
     lastError = outcome.error;
     if (outcome.ok) {
       markOutboundSuccess();
+      traceStage("send", { status: "ok", attempt });
       log(label + ":", lastResult?.status || lastResult?.retcode || "ok");
       return lastResult;
     }
@@ -158,6 +161,7 @@ async function sendPayloadWithRetry({ url, payload, label, options }) {
     }
   }
   logE(label + " failed:", lastError || "unknown error");
+  traceStage("send", { status: "failed", reason: "send_failed", attempt: attempts });
   return lastResult;
 }
 

@@ -1,5 +1,6 @@
 import { log } from "./logger.mjs";
 import { isUnsafeReasoningText, sanitizeAssistantReply } from "./thinking.mjs";
+import { traceStage } from "./diagnostics/message-trace.mjs";
 
 export { sanitizeAssistantReply };
 
@@ -104,6 +105,15 @@ function finalizeCleanReply(cleaned, options = {}) {
 }
 
 export function buildOutputPacket(raw, options = {}) {
+  const packet = buildPacket(raw, options);
+  traceStage("output", {
+    status: packet.ok ? "ok" : "failed", reason: packet.reason,
+    chars: packet.text?.length || 0, reasoningLength: privateReasoningLength(messageFromRaw(raw)),
+  });
+  return packet;
+}
+
+function buildPacket(raw, options = {}) {
   const meta = extractAssistantContent(raw, options);
   const lengths = {
     raw: meta.rawLength || 0,

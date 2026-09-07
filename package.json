@@ -1,6 +1,6 @@
 {
   "name": "qqfriend",
-  "version": "1.4.3-prompt-cache",
+  "version": "1.4.4-linux-diagnostics",
   "description": "夜星 QQ 机器人桥接器",
   "type": "module",
   "main": "napcat_bridge.mjs",
@@ -22,7 +22,8 @@
     "smoke:linux": "node scripts/linux-smoke.mjs",
     "command:scaffold": "node scripts/scaffold-command.mjs",
     "self:describe": "node scripts/generate-self-description.mjs",
-    "meme:audit": "node scripts/audit-meme-matches.mjs"
+    "meme:audit": "node scripts/audit-meme-matches.mjs",
+    "replay:check": "node scripts/check-replay.mjs"
   },
   "dependencies": {
     "7zip-bin": "^5.2.0",
