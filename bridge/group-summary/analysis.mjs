@@ -4,7 +4,7 @@ import { redactSummaryText } from "./formatter.mjs";
 import { boundedEvidenceText } from "./journal.mjs";
 import { buildSummaryStats } from "./stats.mjs";
 import { getSummaryStyle } from "./styles.mjs";
-import { dateLabel } from "./date.mjs";
+import { dateLabel, dateRange, formatDate } from "./date.mjs";
 
 const UPDATE_RE = /仍|还是|没好|失败|修好|解决|确认|决定|完成|纠正|其实|改成|不对|验证|恢复/;
 
@@ -73,6 +73,9 @@ function selectDiscussionEvidence(discussion) {
 
 export function buildStructuredSummaryPrompt(bundle, options) {
   const style = getSummaryStyle(options.style);
+  const reportStart = dateRange(options.dateText).start;
+  const previousDate = formatDate(new Date(reportStart - 86400000));
+  const nextDate = formatDate(new Date(reportStart + 86400000));
   const lines = bundle.discussions.map(discussion => {
     const messages = discussion.messages.map(item => {
       const time = new Date(Number(item.ts)).toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
@@ -81,6 +84,7 @@ export function buildStructuredSummaryPrompt(bundle, options) {
     return discussion.id + "\n" + messages.join("\n");
   }).join("\n\n");
   return `为 ${options.dateText} 的群聊制作简明、可核对的日报。采集记录仅代表机器人实际收到的内容，不等于全天完整记录。
+日期基准是聊天发生日，不是日报发送日：今天/今晚=${options.dateText}，昨天=${previousDate}，明天/明晚=${nextDate}。正文和标题将明确的相对日期写成月日（跨年写年份），不要沿用“今晚、明晚、明天”等会随阅读日期漂移的说法；时间无法确认时不自行推定。
 只根据下面证据，最多选择 ${style.maxTopics} 个有实际信息的讨论。优先说明新进展，之后说明依据和仍未知的部分。
 同一件事合并；不同人的经历分清。建议不等于执行，执行不等于解决。后来的明确否定和纠正优先于早先判断。
 “结案、搞定”等孤立口头语、复读、反讽、表情接龙不能证明事情解决。没有后续验证时不能写已解决或形成共识。
@@ -138,7 +142,7 @@ function localTopicLabel(text, index) {
 
 export function renderSummaryDocument(document, bundle, options) {
   const lines = [`【${dateLabel(options.dateText)} 群聊日报】`];
-  if (document.headline) lines.push("", "今日重点", document.headline);
+  if (document.headline) lines.push("", "当日重点", document.headline);
   if (document.local) lines.push("", "以下仅列采集线索，不推测讨论结果。");
   if (document.topics.length) lines.push("", document.local ? "采集线索" : "讨论进展", ...document.topics.map(item => "• " + item.title + "：" + item.body));
   else lines.push("", "采集到的有效讨论较少，暂不推测当天主线。");

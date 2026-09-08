@@ -6,7 +6,7 @@ import { Readable } from "node:stream";
 import test from "node:test";
 import { formatDate } from "../bridge/group-summary/date.mjs";
 import { captureSummaryMessage, cleanupSummaryFiles, forgetSummaryUser, loadSummaryCapture } from "../bridge/group-summary/journal.mjs";
-import { buildDiscussionBundle, parseSummaryDocument, renderSummaryDocument } from "../bridge/group-summary/analysis.mjs";
+import { buildDiscussionBundle, buildStructuredSummaryPrompt, parseSummaryDocument, renderSummaryDocument } from "../bridge/group-summary/analysis.mjs";
 import { prepareSummaryEvidence } from "../bridge/group-summary/evidence.mjs";
 import { createDailySummaryGuard } from "../bridge/group-summary/guard.mjs";
 import { publishSummary, readSummaryDelivery, resolveSummaryDelivery } from "../bridge/group-summary/publisher.mjs";
@@ -126,6 +126,15 @@ test("structured document rejects unknown, cross-discussion and malformed eviden
 test("draft evidence drops legacy image URLs and sanitizes nickname credentials", () => {
   const bundle = buildDiscussionBundle([{ uid: "1", nickname: "sk-abcdefghijklmnop", text: "显示器排查", ts: base, imageUrls: ["https://example.com/private-token"] }]);
   assert.doesNotMatch(JSON.stringify(bundle), /abcdefghijklmnop|private-token|imageUrls/);
+});
+
+test("summary prompt anchors relative dates to the report day across a year boundary", () => {
+  const bundle = buildDiscussionBundle(messages());
+  const prompt = buildStructuredSummaryPrompt(bundle, { dateText: "2026-12-31" });
+  assert.match(prompt, /今天\/今晚=2026-12-31/);
+  assert.match(prompt, /昨天=2026-12-30/);
+  assert.match(prompt, /明天\/明晚=2027-01-01/);
+  assert.match(prompt, /不是日报发送日/);
 });
 
 test("preview creates private revisions without QQ sends and preserves prior versions", async t => {
