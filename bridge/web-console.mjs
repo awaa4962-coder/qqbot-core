@@ -22,6 +22,8 @@ const ASSETS = new Map([
   ["/console/host-client.js", ["host-client.js", "text/javascript; charset=utf-8"]],
   ["/console/diagnostics.js", ["diagnostics.js", "text/javascript; charset=utf-8"]],
   ["/console/diagnostics.css", ["diagnostics.css", "text/css; charset=utf-8"]],
+  ["/console/summaries.js", ["summaries.js", "text/javascript; charset=utf-8"]],
+  ["/console/summaries.css", ["summaries.css", "text/css; charset=utf-8"]],
 ]);
 
 export async function handleWebConsoleRequest(req, res, context = {}) {

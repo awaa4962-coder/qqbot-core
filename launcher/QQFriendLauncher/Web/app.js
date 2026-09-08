@@ -43,6 +43,7 @@ const PAGE_META = Object.freeze({
   memes: ["内容管理", "梗库"],
   stickers: ["回复素材", "表情"],
   diagnostics: ["排查工具", "诊断"],
+  summaries: ["群聊记录", "日报"],
   logs: ["运行记录", "日志"],
   maintenance: ["本地管理", "维护与外观"],
 });

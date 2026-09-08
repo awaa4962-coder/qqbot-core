@@ -52,6 +52,7 @@ export function parseIncomingEvent(ev) {
     user_id: Number(ev.user_id),
     group_id: ev.group_id ? Number(ev.group_id) : null,
     message_id: ev.message_id,
+    eventTime: Number(ev.time || 0) * 1000,
     sender,
     nickname: sender.card || sender.nickname || "群友",
     text,

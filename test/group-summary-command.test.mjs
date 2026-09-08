@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { afterEach, beforeEach, describe, it } from "node:test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import {
   buildCommandReply,
@@ -16,6 +19,14 @@ import {
   previewGroupSummary,
   sendGroupSummaryForDate,
 } from "../bridge/group-summary.mjs";
+
+let summaryRoot;
+beforeEach(() => { summaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-summary-command-")); });
+afterEach(() => { fs.rmSync(summaryRoot, { recursive: true, force: true }); });
+
+function modelDocument() {
+  return { choices: [{ message: { content: JSON.stringify({ headline: "", topics: [{ id: "D001", title: "机器人回复", body: "模型日报正文", status: "chat", evidenceIds: ["E0001"] }] }) } }] };
+}
 
 function sampleMessages(count = 8) {
   const base = Date.parse("2026-06-26T09:00:00+08:00");
@@ -71,11 +82,12 @@ describe("group summary commands", () => {
   it("sends summary to whitelisted target group", async () => {
     const sends = [];
     const reply = await buildGroupSummaryCommandReply("日报发送 2000000002 2026-06-26 technical", {
+      summaryRoot,
       userId: 42,
       admins: ["42"],
       groupWhitelist: [2000000002],
       summaryMessages: sampleMessages(8),
-      callPrimarySummary: async () => ({ provider: "deepseek", choices: [{ message: { content: "模型日报正文" }, finish_reason: "stop" }] }),
+      callPrimarySummary: async () => modelDocument(),
       sendGroupMessage: async (groupId, text) => {
         sends.push({ groupId, text });
         return { status: "ok" };
@@ -83,19 +95,21 @@ describe("group summary commands", () => {
     });
     assert.equal(sends.length, 1);
     assert.equal(sends[0].groupId, 2000000002);
-    assert.equal(sends[0].text, "模型日报正文");
+    assert.match(sends[0].text, /机器人回复：模型日报正文/);
+    assert.match(sends[0].text, /已采集：8 条记录/);
     assert.match(reply, /日报已发送/);
     assert.match(reply, /deepseek/);
   });
 
   it("does not report or mark a failed outbound summary as sent", async () => {
     const result = await sendGroupSummaryForDate({
+      root: summaryRoot,
       groupId: 2000000002,
       dateText: "2026-06-26",
       groupWhitelist: [2000000002],
       messages: sampleMessages(8),
-      callPrimarySummary: async () => ({ provider: "deepseek", choices: [{ message: { content: "模型日报正文" } }] }),
-      sendGroupMessage: async () => null,
+      callPrimarySummary: async () => modelDocument(),
+      sendGroupMessage: async () => ({ status: "failed", retcode: 100 }),
     });
     assert.equal(result.ok, false);
     assert.equal(result.sent, false);

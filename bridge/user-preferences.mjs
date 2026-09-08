@@ -3,6 +3,7 @@ import { clearConversationThreads } from "./cognition/index.mjs";
 import { clearUserMemoryProfile, getActiveMemoryContext } from "./memory-profile.mjs";
 import { clearUserCacheUsage } from "./api-providers/usage-metrics.mjs";
 import { clearMessageFeatureCache } from "./context/relevance.mjs";
+import { forgetSummaryUser } from "./group-summary/journal.mjs";
 
 const DEFAULT_STYLE = Object.freeze({
   length: "normal",
@@ -174,9 +175,9 @@ export function buildPrivacyText() {
 }
 
 export function forgetUserData(uid, options = {}) {
-  clearMessageFeatureCache();
   const id = String(uid || "");
   if (!id) return { ok: false, text: "没有找到可清理的用户。" };
+  clearAdditionalUserRecords(id, options);
   const userStore = options.users || users;
   const chatStore = options.groupChats || groupChats;
   if (userStore[id]) {
@@ -204,6 +205,11 @@ export function forgetUserData(uid, options = {}) {
     saveGroupChats();
   }
   return { ok: true, text: "已清理你的画像、回复偏好、关系缓存和个人聊天记忆。群聊历史中你的旧内容会被替换为清理占位。"};
+}
+
+function clearAdditionalUserRecords(id, options) {
+  clearMessageFeatureCache();
+  if (!options.skipSave) forgetSummaryUser(id, options.summaryOptions || {});
 }
 
 export function buildPreferenceContextBlock(uid, options = {}) {

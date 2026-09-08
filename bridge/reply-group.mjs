@@ -1,6 +1,7 @@
 // bridge/reply-group.mjs - group message pipeline.
 import { CFG, LONG_GROUPS } from "./config.mjs";
-import { log } from "./logger.mjs";
+import { log, logE } from "./logger.mjs";
+import { captureSummaryMessage } from "./group-summary/journal.mjs";
 import { logGroupMsg } from "./storage.mjs";
 import { describeFiles, getGroupMemberInfo, sendMsg } from "./napcat.mjs";
 import {
@@ -22,6 +23,7 @@ import { traceStage } from "./diagnostics/message-trace.mjs";
 
 export async function handleGroupMessage(ctx, rawMessage) {
   if (shouldIgnoreGroupMessage(ctx)) return;
+  try { captureSummaryMessage(ctx); } catch { logE("summary journal capture failed"); }
 
   await hydrateMentions(ctx.mentions, { groupId: ctx.group_id, getGroupMemberInfo });
   logGroupAttachments(ctx);

@@ -22,13 +22,10 @@ export function createDailySummaryGuard(options = {}) {
   if (hasValidSentMarker(sentFile, dateText, groupId)) {
     return guardResult(false, "already_sent", sentFile, attemptFile, lockDir);
   }
-  quarantineInvalidMarker(sentFile);
   const hasAttempt = hasUnconfirmedAttempt(attemptFile, dateText, groupId);
   if (hasAttempt && !options.recoverUnconfirmed) {
     return guardResult(false, "previous_attempt_unconfirmed", sentFile, attemptFile, lockDir);
   }
-  if (hasAttempt && options.recoverUnconfirmed) fs.rmSync(attemptFile, { force: true });
-  if (!hasAttempt) quarantineInvalidMarker(attemptFile);
   cleanupStaleLock(lockDir, staleMs, uptimeNow);
 
   try {
@@ -47,6 +44,9 @@ export function createDailySummaryGuard(options = {}) {
     throw error;
   }
 
+  const blocked = recheckOwnedGuard({ sentFile, attemptFile, lockDir, dateText, groupId }, options);
+  if (blocked) return guardResult(false, blocked, sentFile, attemptFile, lockDir);
+
   return {
     ...guardResult(true, "", sentFile, attemptFile, lockDir),
     markAttempt: (payload = {}) => markDailySummaryAttempt(attemptFile, { dateText, groupId, ...payload }),
@@ -57,6 +57,23 @@ export function createDailySummaryGuard(options = {}) {
     markFailed: () => fs.rmSync(attemptFile, { force: true }),
     release: () => releaseDailySummaryGuard(lockDir),
   };
+}
+
+function recheckOwnedGuard(state, options) {
+  const { sentFile, attemptFile, lockDir, dateText, groupId } = state;
+  // Recovery never erases an attempt until a new confirmed outcome is recorded.
+  if (hasValidSentMarker(sentFile, dateText, groupId)) {
+    releaseDailySummaryGuard(lockDir);
+    return "already_sent";
+  }
+  const pending = hasUnconfirmedAttempt(attemptFile, dateText, groupId);
+  if (pending && !options.recoverUnconfirmed) {
+    releaseDailySummaryGuard(lockDir);
+    return "previous_attempt_unconfirmed";
+  }
+  quarantineInvalidMarker(sentFile);
+  if (!pending) quarantineInvalidMarker(attemptFile);
+  return "";
 }
 
 export function markDailySummarySent(sentFile, payload = {}) {

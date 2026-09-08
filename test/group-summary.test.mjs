@@ -79,9 +79,11 @@ describe("group summary", () => {
       { uid: "999", nickname: "夜星", text: "机器人回复", ts: base + 180_000 },
       { uid: "4", nickname: "dog", text: "？？？", ts: base + 240_000 },
       { uid: "5", nickname: "eel", text: "晚上继续验证连接", ts: base + 300_000 },
+      { uid: "6", nickname: "f", text: "今天真的好热", ts: base + 310_000 },
+      { uid: "7", nickname: "g", text: "今天真的好热", ts: base + 320_000 },
     ], { selfUin: 999 });
 
-    assert.deepEqual(evidence.messages.map(item => item.text), ["修复已经完成!!!", "晚上继续验证连接"]);
+    assert.deepEqual(evidence.messages.map(item => item.text), ["修复已经完成!!!", "修复已经完成!", "晚上继续验证连接", "今天真的好热"]);
     assert.equal(evidence.metrics.repeatMessageCount, 1);
     assert.equal(evidence.metrics.commandMessageCount, 1);
     assert.equal(evidence.metrics.botMessageCount, 1);

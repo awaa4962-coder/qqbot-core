@@ -1,11 +1,12 @@
 import { CFG } from "../config.mjs";
-import { isSuccessfulOutbound } from "../cognition/outcome.mjs";
-import { sendMsg } from "../napcat.mjs";
 import { DEFAULT_SUMMARY_GROUP_ID, DEFAULT_SUMMARY_GROUP_NAME } from "./constants.mjs";
 import { dateLabel, formatDate } from "./date.mjs";
 import { buildSummaryDigest } from "./digest.mjs";
-import { loadSummaryMessages } from "./loader.mjs";
-import { writeManualSummary } from "./output.mjs";
+import { loadSummaryCapture } from "./journal.mjs";
+import { reportFile, saveReportRevision } from "./reports.mjs";
+import { deliveryDirectory, publishSummary } from "./publisher.mjs";
+import { summaryPrivacy } from "./state.mjs";
+import { createDailySummaryGuard } from "./guard.mjs";
 import { generateGroupSummaryResult } from "./providers.mjs";
 import { getSummaryStyle } from "./styles.mjs";
 
@@ -14,7 +15,16 @@ export async function previewGroupSummary(options = {}) {
 }
 
 export async function sendGroupSummaryForDate(options = {}) {
-  return await buildSummaryServiceResult({ ...options, dryRun: false });
+  if (options.prepared) return await publishSummary(options.prepared, options);
+  const dateText = options.dateText || formatDate();
+  const groupId = Number(options.groupId || DEFAULT_SUMMARY_GROUP_ID);
+  const guard = options.guard || createDailySummaryGuard({ dateText, groupId, rootDir: deliveryDirectory(options) });
+  if (!guard.ok) return { ok: true, sent: false, skipped: true, reason: guard.reason, publicationManaged: true, dateText, groupId };
+  try {
+    const result = await buildSummaryServiceResult(options);
+    if (!result.ok) return result;
+    return await publishSummary(result, { ...options, guard });
+  } finally { if (!options.guard) guard.release(); }
 }
 
 async function buildSummaryServiceResult(options) {
@@ -33,7 +43,12 @@ async function buildSummaryServiceResult(options) {
     };
   }
 
-  const messages = options.messages || loadSummaryMessages(dateText, groupId);
+  options.onProgress?.("collecting");
+  const capture = options.capture || (options.messages ? {
+    messages: options.messages, privacyEpoch: summaryPrivacy(options).epoch,
+    coverage: { source: "provided", captured: options.messages.length, complete: false },
+  } : loadSummaryCapture(dateText, groupId, options));
+  const messages = capture.messages;
   if (!messages.length) {
     return {
       ok: false,
@@ -56,6 +71,8 @@ async function buildSummaryServiceResult(options) {
     label: dateLabel(dateText),
     style: style.id,
     digest,
+    structured: options.structured !== false,
+    coverage: capture.coverage,
   });
   const summary = generated.text;
   if (!summary) {
@@ -72,7 +89,6 @@ async function buildSummaryServiceResult(options) {
     };
   }
 
-  const outputFile = writeManualSummary(dateText, summary, { groupId });
   const result = {
     ok: true,
     sent: false,
@@ -83,29 +99,15 @@ async function buildSummaryServiceResult(options) {
     styleLabel: style.label,
     provider: generated.provider,
     messages: messages.length,
-    outputFile,
+    outputFile: reportFile(dateText, groupId, options),
     digest,
     summary,
+    document: generated.document || null, bundle: generated.bundle || null,
+    privacyEpoch: capture.privacyEpoch, coverage: capture.coverage,
   };
-  if (options.dryRun) return result;
-
-  const sender = options.sendGroupMessage || sendMsg;
-  if (typeof options.beforeSend === "function") {
-    await options.beforeSend({
-      dateText,
-      groupId,
-      messages: messages.length,
-      outputFile,
-      provider: generated.provider,
-    });
-  }
-  result.result = await sender(groupId, summary);
-  result.sent = isSuccessfulOutbound(result.result);
-  if (!result.sent) {
-    result.ok = false;
-    result.error = "send_failed";
-    result.message = "日报已经生成，但发送失败，未写入已发送标记，可以稍后重试。";
-  }
+  options.onProgress?.("saving");
+  const revision = saveReportRevision(result, options);
+  result.revisionId = revision.id;
   return result;
 }
 

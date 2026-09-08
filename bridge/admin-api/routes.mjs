@@ -25,6 +25,7 @@ import { getMemeStore } from "../knowledge/memes/index.mjs";
 import { CFG } from "../config.mjs";
 import { listMessageTraces } from "../diagnostics/message-trace.mjs";
 import { replayService } from "../diagnostics/replay.mjs";
+import { summaryManager } from "./summary-manager.mjs";
 
 const GET_ROUTES = new Map([
   ["/admin/status", handleStatusRoute],
@@ -43,6 +44,7 @@ const GET_ROUTES = new Map([
   ["/admin/stickers", handleStickersReadRoute],
   ["/admin/diagnose/traces", handleTracesRoute],
   ["/admin/diagnose/replay", handleReplayReadRoute],
+  ["/admin/summaries", handleSummariesReadRoute],
 ]);
 
 const POST_ROUTES = new Map([
@@ -52,6 +54,7 @@ const POST_ROUTES = new Map([
   ["/admin/stickers", handleStickersSaveRoute],
   ["/admin/diagnose/reply", handleReplyDiagnoseRoute],
   ["/admin/diagnose/replay", handleReplayPostRoute],
+  ["/admin/summaries", handleSummariesPostRoute],
   ["/admin/command-scaffold", handleCommandScaffoldRoute],
   ["/admin/backups", handleBackupsPostRoute],
 ]);
@@ -248,6 +251,16 @@ async function handleReplyDiagnoseRoute(req, res, context) {
 function handleTracesRoute(_req, res, context) {
   const query = Object.fromEntries(context.url.searchParams);
   context.sendJson(res, 200, listMessageTraces(query), 2);
+}
+
+function handleSummariesReadRoute(_req, res, context) {
+  try { context.sendJson(res, 200, summaryManager.snapshot(Object.fromEntries(context.url.searchParams))); }
+  catch (error) { context.sendJson(res, 400, { error: error.message }); }
+}
+
+async function handleSummariesPostRoute(req, res, context) {
+  try { context.sendJson(res, 200, await summaryManager.act(await readJsonRequestBody(req))); }
+  catch (error) { context.sendJson(res, 400, { error: error.message }); }
 }
 
 function handleReplayReadRoute(_req, res, context) {

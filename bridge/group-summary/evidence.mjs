@@ -1,7 +1,7 @@
 const DEFAULT_REPEAT_WINDOW_MS = 20 * 60 * 1000;
 
 const COMMAND_RE = /^(?:[/\\]\s*)?(?:help|status|ping|version|runtime|admin\b|jm\b|日报(?:帮助|预览|发送)?|群报|词云|资源|梗库|更新(?:列表)?|帮助|状态|测试|版本|管理|运行|好感度|关系|熟悉度|my-status|my-profile|隐私|忘记我)(?:\s|$)/i;
-const NON_TEXT_RE = /^(?:\[非文本消息\]|\[图片\]|\[表情\]|\[文件\])$/i;
+const NON_TEXT_RE = /^(?:\[非文本消息\]|\[图片\]|\[表情\]|\[文件\]|\[已按用户请求清除\])$/i;
 const PURE_NOISE_RE = /^[\p{P}\p{S}\s]+$/u;
 
 export function prepareSummaryEvidence(messages = [], options = {}) {
@@ -36,7 +36,9 @@ export function prepareSummaryEvidence(messages = [], options = {}) {
       continue;
     }
 
-    const repeatKey = buildRepeatKey(text);
+    const key = buildRepeatKey(text);
+    const repeatKey = /确认|完成|修好|解决|不行|没好|还是|恢复|通过|纠正|不对|其实|赞同|反对/.test(text)
+      ? summaryUserKey(item) + ":" + String(item.replyToMessageId || "") + ":" + key : key;
     const previous = repeatKey ? recentByKey.get(repeatKey) : null;
     if (previous && entry.ts - previous.lastTs <= repeatWindowMs) {
       metrics.repeatMessageCount++;

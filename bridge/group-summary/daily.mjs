@@ -1,14 +1,14 @@
 import { CFG } from "../config.mjs";
 import { resolveSummaryDate } from "./date.mjs";
 import { createDailySummaryGuard } from "./guard.mjs";
-import { loadSummaryMessages } from "./loader.mjs";
+import { loadSummaryCapture } from "./journal.mjs";
 import { sendGroupSummaryForDate } from "./service.mjs";
 
 export async function runDailySummaries(options = {}) {
   const dateText = options.dateText || resolveSummaryDate(options.now);
   const groupIds = normalizeGroupIds(options.groupIds || CFG.summaryGroupWhitelist);
   const createGuard = options.createGuard || createDailySummaryGuard;
-  const loadMessages = options.loadMessages || loadSummaryMessages;
+  const loadMessages = options.loadMessages || loadSummaryCapture;
   const sendSummary = options.sendSummary || sendGroupSummaryForDate;
   const log = options.log || (() => {});
   const results = [];
@@ -39,17 +39,21 @@ async function runDailySummaryForGroup(options) {
   if (!guard.ok) return skippedResult(guard.reason, options);
 
   try {
-    const messages = loadMessages(dateText, groupId);
+    const loaded = loadMessages(dateText, groupId);
+    const capture = Array.isArray(loaded) ? null : loaded;
+    const messages = capture ? capture.messages : loaded;
     if (!messages.length) return skippedResult("no_messages", options);
     log("start", { dateText, groupId, messages: messages.length });
     const result = await sendSummary({
       dateText,
       groupId,
       messages,
+      capture,
+      guard,
       beforeSend: payload => guard.markAttempt?.(payload),
     });
     markSentWhenSuccessful(guard, result);
-    log(result.ok && result.sent ? "sent" : "failed", { dateText, groupId, result });
+    log(result.ok && result.sent ? "sent" : "failed", { dateText, groupId, result: { ok: result.ok, sent: result.sent, provider: result.provider, error: result.error, revisionId: result.revisionId } });
     return { groupId, ...result };
   } catch (error) {
     log("error", { dateText, groupId, error: error.message });
@@ -65,6 +69,7 @@ function skippedResult(reason, options) {
 }
 
 function markSentWhenSuccessful(guard, result) {
+  if (result.publicationManaged) return;
   if (!result.ok || !result.sent) {
     guard.markFailed?.();
     return;

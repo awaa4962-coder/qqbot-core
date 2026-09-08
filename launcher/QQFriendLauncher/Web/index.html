@@ -26,6 +26,7 @@
         <button type="button" class="view-tab" data-view="memes"><span>梗库</span><i id="memeNavCount">-</i></button>
         <button type="button" class="view-tab" data-view="stickers"><span>表情</span><i id="stickerNavCount">-</i></button>
         <button type="button" class="view-tab" data-view="diagnostics"><span>诊断</span></button>
+        <button type="button" class="view-tab" data-view="summaries" id="summaryNav" hidden><span>日报</span></button>
         <button type="button" class="view-tab" data-view="logs"><span>日志</span></button>
       </nav>
 
@@ -391,6 +392,40 @@
           </section>
         </section>
 
+        <section class="view" data-view-panel="summaries" hidden>
+          <section class="surface workspace-surface" id="summaryWorkbench">
+            <div class="section-head"><div><p class="eyebrow">按群与日期</p><h2>日报工作台</h2></div><button type="button" data-summary-action="refresh">刷新</button></div>
+            <div class="summary-toolbar">
+              <label>目标群<select id="summaryGroup"></select></label>
+              <label>日期<input type="date" id="summaryDate"></label>
+              <button type="button" class="primary" data-summary-action="generate">生成草稿</button>
+            </div>
+            <p id="summaryCoverage" class="summary-meta">尚未读取采集记录</p>
+            <p id="summaryProgress" class="summary-progress" role="status" aria-live="polite">尚未读取</p>
+            <div class="summary-versions">
+              <label>当前版本<select id="summaryRevision"></select></label>
+              <label>对照版本<select id="summaryCompare"></select></label>
+            </div>
+            <div class="summary-editors">
+              <label>日报正文<textarea id="summaryBody" rows="14" maxlength="6000" placeholder="暂无草稿"></textarea></label>
+              <label>历史版本<textarea id="summaryPrevious" rows="14" readonly placeholder="暂无对照版本"></textarea></label>
+            </div>
+            <div class="summary-toolbar">
+              <button type="button" data-summary-action="save">保存为新版本</button>
+              <label>单个讨论<select id="summaryTopic"></select></label>
+              <button type="button" data-summary-action="regenerate-topic">重写该讨论</button>
+            </div>
+            <div class="summary-publish">
+              <div><strong id="summaryDelivery">尚未发送</strong><p id="summaryDeliveryDetail" class="summary-meta"></p></div>
+              <button type="button" class="primary" data-summary-action="send">发送到目标群</button>
+              <button type="button" data-summary-action="resume" hidden>继续未发送部分</button>
+              <button type="button" data-summary-action="confirm-delivered" hidden>确认该段已送达</button>
+              <button type="button" data-summary-action="confirm-not-delivered" hidden>确认该段未送出</button>
+            </div>
+            <details class="technical-details"><summary>查看所选版本的证据</summary><div id="summaryEvidence" class="summary-evidence"></div></details>
+          </section>
+        </section>
+
         <section class="view" data-view-panel="logs" hidden>
           <section class="surface workspace-surface">
             <div class="section-head"><div><p class="eyebrow">运行记录</p><h2>Bridge 日志</h2></div><div class="action-row"><button type="button" id="logFollowButton" data-log-action="follow">跟随最新</button><button type="button" data-action="refreshLogs">刷新日志</button></div></div>
@@ -439,5 +474,7 @@
   <script src="./app.js?v=20260819-linux"></script>
   <link rel="stylesheet" href="./diagnostics.css?v=20260907">
   <script src="./diagnostics.js?v=20260907"></script>
+  <link rel="stylesheet" href="./summaries.css?v=20260908">
+  <script src="./summaries.js?v=20260908"></script>
 </body>
 </html>

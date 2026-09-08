@@ -32,6 +32,7 @@ export async function buildGroupSummaryCommandReply(cmd, options = {}) {
   const parsed = parseGroupSummaryCommand(cmd, options);
   if (!parsed.ok) return parsed.text;
   if (parsed.action === "help") return buildGroupSummaryHelpText();
+  if (parsed.action === "preview" && options.groupId && Number(options.groupId) !== parsed.groupId) return "跨群日报预览请使用服务器控制台或管理员私聊。";
 
   const runner = parsed.action === "send" ? sendGroupSummaryForDate : previewGroupSummary;
   const result = await runner({
@@ -45,6 +46,7 @@ export async function buildGroupSummaryCommandReply(cmd, options = {}) {
     callPrimarySummary: options.callPrimarySummary,
     callFallbackSummary: options.callFallbackSummary,
     sendGroupMessage: options.sendGroupMessage,
+    root: options.summaryRoot,
   });
 
   return formatSummaryCommandResult(parsed.action, result);
@@ -61,7 +63,7 @@ export function parseGroupSummaryCommand(cmd, options = {}) {
   }
   action = action === "发送" ? "send" : "preview";
 
-  let groupId = Number(options.defaultSummaryGroupId || DEFAULT_SUMMARY_GROUP_ID);
+  let groupId = defaultCommandGroup(options);
   let dateText = resolveSummaryDate(options.now);
   let style = "casual";
 
@@ -86,6 +88,8 @@ export function parseGroupSummaryCommand(cmd, options = {}) {
   return { ok: true, action, groupId, dateText, style };
 }
 
+function defaultCommandGroup(options) { return Number(options.defaultSummaryGroupId || options.groupId || DEFAULT_SUMMARY_GROUP_ID); }
+
 function parseDateToken(token, now = new Date()) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(token)) return token;
   if (token === "今天") return resolveDateOffset(now, 0);
@@ -108,6 +112,7 @@ function resolveDateOffset(now, offsetDays) {
 
 function formatSummaryCommandResult(action, result) {
   if (!result.ok) return result.message || "日报命令执行失败。";
+  if (result.skipped) return "日报未重复发送：" + ({ already_sent: "该群这一天已发送", already_running: "已有任务运行", previous_attempt_unconfirmed: "上一轮发送待核实" }[result.reason] || result.reason);
   const title = action === "send" ? "日报已发送" : "日报预览完成";
   const lines = [
     title,
@@ -117,7 +122,6 @@ function formatSummaryCommandResult(action, result) {
     "生成：" + result.provider,
     "消息：" + result.messages,
   ];
-  if (result.outputFile) lines.push("文件：" + result.outputFile);
   if (action === "preview") {
     lines.push("", "——", result.summary);
   }

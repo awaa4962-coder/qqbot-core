@@ -65,6 +65,11 @@
       return apiRequest("/admin/diagnose/traces?" + query);
     }
     if (action === "getReplay") return apiRequest("/admin/diagnose/replay");
+    if (action === "getSummaries") {
+      const query = Object.entries(payload).map(([key, value]) => encodeURIComponent(key) + "=" + encodeURIComponent(value)).join("&");
+      return apiRequest("/admin/summaries?" + query);
+    }
+    if (action === "summaryAction") return apiPost("/admin/summaries", payload);
     if (action === "replayAction") return apiPost("/admin/diagnose/replay", payload);
     if (action === "createBackup") return apiPost("/admin/backups", { action: "create" });
     if (action === "health") return runBrowserHealthCheck();

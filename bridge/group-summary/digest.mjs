@@ -26,6 +26,7 @@ export function buildSummaryDigest(messages = [], options = {}) {
     if (isSummaryBotMessage(item, options)) continue;
     humanSpeakers.add(summaryUserKey(item));
     if (Array.isArray(item.imageUrls)) imageCount += item.imageUrls.length;
+    else imageCount += Number(item.imageCount || 0);
   }
 
   for (const item of evidence.messages) {

@@ -4,24 +4,24 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.5-context-selection";
-export const VERSION_NAME = "context-selection";
+export const VERSION = "1.4.6-summary-workbench";
+export const VERSION_NAME = "summary-workbench";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "记忆召回增加中文分词和双向同义表达匹配，修复压缩包、archive 等说法变化导致的漏召回。",
-  "群聊按引用链、被提及对象和相关发言选择背景，明确换话题时停止带入旧任务。",
-  "图片优先使用当前或引用图片；补取历史图片时只选明确指向的人最近一条图片消息。",
-  "诊断页显示上下文来源和入选原因，合成回放增加到 11 个场景；不记录真实聊天正文或模型推理。",
-  "Linux 优先更新，Windows 暂停；DeepSeek 兜底、白名单、缓存统计和关系评分保持不变。",
+  "日报增加按日脱敏记录，保留七个自然日，区分采集不足、容量上限和长消息截短。",
+  "按引用关系和相关内容整理讨论，保留独立确认与后续纠正，日报以实际进展为主，不再凑字数。",
+  "Linux 网页新增日报工作台，支持生成进度、版本对照、正文编辑和单个讨论重写。",
+  "定时、手动和启动补发共用发送账本；部分失败只续发剩余分段，未知结果需要先核实。",
+  "Windows 继续暂停更新；模型主备、白名单、关系评分和私有推理隔离保持不变。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Adds Chinese word segmentation and symmetric synonym matching to scoped memory retrieval.",
-  "Selects group context by reply links, mentioned participants and relevant messages; explicit topic changes stop old task carryover.",
-  "Keeps current and quoted images ahead of author-scoped historical image references.",
-  "Shows context source metadata in diagnostics and expands synthetic replay to eleven cases without logging private reasoning.",
-  "Updates Linux only and preserves DeepSeek fallback, allowlists, usage metrics and relationship scoring.",
+  "Adds bounded, redacted daily evidence journals with seven-calendar-day retention and honest coverage metadata.",
+  "Builds discussion evidence and validates structured summary references without treating valid references as proof of factual correctness.",
+  "Adds a Linux summary workbench with progress, revision comparison, editing and per-discussion regeneration.",
+  "Unifies scheduled and manual publication; resumes confirmed failed segments and requires verification for ambiguous sends.",
+  "Preserves model fallback, allowlists, relationship scoring and private reasoning isolation while Windows remains frozen.",
   "Preserves the isolated Linux server deployment, upload_file_stream transfers, loopback-only browser and no automatic migration of model credentials.",
 ]);
 

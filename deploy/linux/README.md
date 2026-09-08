@@ -105,7 +105,7 @@ only the application layer without network access:
 docker build --pull=false \
   --build-arg BASE_IMAGE=qqfriend-bridge:linux-preview \
   -f Dockerfile.overlay \
-  -t qqfriend-bridge:1.4.5-context-selection ../..
+  -t qqfriend-bridge:1.4.6-summary-workbench ../..
 ```
 
 Use this only when `package-lock.json` and `scripts/requirements-jm.txt` have no
@@ -134,6 +134,10 @@ sudo systemctl enable --now qqfriend.service qqfriend-summary.timer
 ```
 
 ## Update and rollback
+
+The Linux browser now includes an editable [summary workbench](SUMMARY-WORKBENCH.md).
+Keep `state/qqfriend/logs/summary-state` in update backups together with configuration
+and data; these delivery markers prevent duplicate automatic reports after updates.
 
 Do not overwrite a working installation in place. Build the new Bridge image first, run `npm run release:check`, back up `state/`, and only then recreate the Bridge container. NapCat QQ data and configuration live in bind mounts and survive container replacement.
 
