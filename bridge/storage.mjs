@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import { CFG } from './config.mjs';
 import { logE } from './logger.mjs';
+import { createJsonSaver } from './persistence/json-file.mjs';
 
 // ── 全局状态 ──
 export let users = {};
@@ -24,97 +25,32 @@ try {
 } catch { groupChats = {}; }
 
 // ── 防抖存档（v17: 异步批量，避免每条消息都同步写盘）──
-let _saveUsersDirty = _usersNeedTimestampRepair;
-let _saveUsersTimer = null;
-let _saveGroupChatsDirty = _groupChatsNeedTimestampRepair;
-let _saveGroupChatsTimer = null;
 const SAVE_DEBOUNCE_MS = 5000;
-const _saveInProgress = { users: false, chats: false };
+const usersSaver = createJsonSaver(() => CFG.memoryFile, () => users, {
+  debounceMs: SAVE_DEBOUNCE_MS,
+  onError: error => logE('saveUsers write failed:', error.message),
+});
+const chatsSaver = createJsonSaver(() => CFG.chatLogFile, () => groupChats, {
+  debounceMs: SAVE_DEBOUNCE_MS,
+  onError: error => logE('saveGroupChats write failed:', error.message),
+});
 
 export function saveUsers() {
-  _saveUsersDirty = true;
-  if (_saveUsersTimer) return;
-  _saveUsersTimer = setTimeout(async () => {
-    _saveUsersTimer = null;
-    if (!_saveUsersDirty) return;
-    if (_saveInProgress.users) {
-      saveUsers();
-      return;
-    }
-    _saveUsersDirty = false;
-    _saveInProgress.users = true;
-    try {
-      const tmp = CFG.memoryFile + '.tmp.' + process.pid;
-      await fs.promises.writeFile(tmp, JSON.stringify(users, null, 2), 'utf-8');
-      await fs.promises.rename(tmp, CFG.memoryFile);
-    } catch (e) {
-      logE('saveUsers async write failed:', e.message);
-      _saveUsersDirty = true;
-    }
-    _saveInProgress.users = false;
-  }, SAVE_DEBOUNCE_MS);
-  _saveUsersTimer.unref?.();
+  usersSaver.markDirty();
 }
 
 export function saveGroupChats() {
-  _saveGroupChatsDirty = true;
-  if (_saveGroupChatsTimer) return;
-  _saveGroupChatsTimer = setTimeout(async () => {
-    _saveGroupChatsTimer = null;
-    if (!_saveGroupChatsDirty) return;
-    if (_saveInProgress.chats) {
-      saveGroupChats();
-      return;
-    }
-    _saveGroupChatsDirty = false;
-    _saveInProgress.chats = true;
-    try {
-      const tmp = CFG.chatLogFile + '.tmp.' + process.pid;
-      await fs.promises.writeFile(tmp, JSON.stringify(groupChats, null, 2), 'utf-8');
-      await fs.promises.rename(tmp, CFG.chatLogFile);
-    } catch (e) {
-      logE('saveGroupChats async write failed:', e.message);
-      _saveGroupChatsDirty = true;
-    }
-    _saveInProgress.chats = false;
-  }, SAVE_DEBOUNCE_MS);
-  _saveGroupChatsTimer.unref?.();
+  chatsSaver.markDirty();
 }
 
 // 立即存档（进程退出前调用）
 export function flushSavesSync() {
-  if (_saveUsersTimer) {
-    clearTimeout(_saveUsersTimer);
-    _saveUsersTimer = null;
-  }
-  if (_saveGroupChatsTimer) {
-    clearTimeout(_saveGroupChatsTimer);
-    _saveGroupChatsTimer = null;
-  }
-  if (_saveUsersDirty) {
-    try {
-      const tmp = CFG.memoryFile + '.tmp.' + process.pid;
-      fs.writeFileSync(tmp, JSON.stringify(users, null, 2), 'utf-8');
-      fs.renameSync(tmp, CFG.memoryFile);
-      _saveUsersDirty = false;
-    } catch (e) {
-      console.error('[flush] users save failed:', e.message);
-    }
-  }
-  if (_saveGroupChatsDirty) {
-    try {
-      const tmp = CFG.chatLogFile + '.tmp.' + process.pid;
-      fs.writeFileSync(tmp, JSON.stringify(groupChats, null, 2), 'utf-8');
-      fs.renameSync(tmp, CFG.chatLogFile);
-      _saveGroupChatsDirty = false;
-    } catch (e) {
-      console.error('[flush] chats save failed:', e.message);
-    }
-  }
+  usersSaver.flushSync();
+  chatsSaver.flushSync();
 }
 
-if (_saveUsersDirty) saveUsers();
-if (_saveGroupChatsDirty) saveGroupChats();
+if (_usersNeedTimestampRepair) saveUsers();
+if (_groupChatsNeedTimestampRepair) saveGroupChats();
 
 export function getUser(uid, nickname) {
   if (!users[uid]) {

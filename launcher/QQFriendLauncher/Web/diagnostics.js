@@ -1,3 +1,5 @@
+import { callManagedAction, taskPhaseLabel } from "./ui/tasks.js";
+
 (function () {
   "use strict";
   const host = window.QQFriendHost;
@@ -167,7 +169,9 @@
   }
 
   async function replayAction(name) {
-    const data = await host.call("replayAction", { action: name, caseId: $("replayCase").value, review: $("replayReview").value });
+    const data = await callManagedAction("replayAction", { action: name, caseId: $("replayCase").value, review: $("replayReview").value }, {
+      onProgress: task => notice("replayNotice", taskPhaseLabel(task.phase)),
+    });
     if (name === "check") {
       const failed = data.checks.filter(item => !item.ok);
       notice("replayNotice", failed.length ? `检查失败：${failed.map(item => item.name).join("、")}` : `${data.checks.length} 项输入和输出边界检查通过 · 未调用模型；答案质量请人工比较`, failed.length > 0);
@@ -176,6 +180,19 @@
       notice("replayNotice", { generate: "候选回复已生成，未发送到 QQ", baseline: "基线已保存", review: "评价已保存" }[name]);
     }
   }
+
+  window.addEventListener("qqfriend:task", async event => {
+    const { task, type } = event.detail;
+    if (task.module !== "replay") return;
+    if (type === "started") busy.add("replay");
+    if (type === "complete" || type === "error") {
+      busy.delete("replay");
+      try { renderReplay(await host.call("getReplay")); } catch { notice("replayNotice", "读取回放结果失败，请刷新", true); }
+    }
+    notice("replayNotice", task.error || taskPhaseLabel(task.phase), task.phase === "failed" || type === "error");
+    replayPanel.setAttribute("aria-busy", String(busy.has("replay")));
+    updateReplayButtons();
+  });
 
   document.addEventListener("click", event => {
     const button = event.target.closest("[data-diagnostic-action]");

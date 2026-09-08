@@ -4,23 +4,23 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.6-summary-workbench";
-export const VERSION_NAME = "summary-workbench";
+export const VERSION = "1.4.7-modular-runtime";
+export const VERSION_NAME = "modular-runtime";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "日报增加按日脱敏记录，保留七个自然日，区分采集不足、容量上限和长消息截短。",
-  "按引用关系和相关内容整理讨论，保留独立确认与后续纠正，日报以实际进展为主，不再凑字数。",
-  "Linux 网页新增日报工作台，支持生成进度、版本对照、正文编辑和单个讨论重写。",
-  "定时、手动和启动补发共用发送账本；部分失败只续发剩余分段，未知结果需要先核实。",
+  "Linux 控制台按页面拆分，公共操作反馈统一，前端 JavaScript 纳入发布检查。",
+  "日报、梗库更新、表情分析和回放共用任务执行器；刷新后继续查看任务，超时不自动重做。",
+  "JM 群聊与私聊共用下载传输流程，白名单、大写 FS 密码及一天后清理规则不变。",
+  "记忆拆分存储、更新、查询和展示，存档共用原子写入；旧模型与日报接口保留兼容入口。",
   "Windows 继续暂停更新；模型主备、白名单、关系评分和私有推理隔离保持不变。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Adds bounded, redacted daily evidence journals with seven-calendar-day retention and honest coverage metadata.",
-  "Builds discussion evidence and validates structured summary references without treating valid references as proof of factual correctness.",
-  "Adds a Linux summary workbench with progress, revision comparison, editing and per-discussion regeneration.",
-  "Unifies scheduled and manual publication; resumes confirmed failed segments and requires verification for ambiguous sends.",
+  "Splits the Linux console into page modules and includes browser JavaScript in release lint checks.",
+  "Shares task execution across summaries, meme updates, sticker operations and replay with reload recovery and no automatic retry.",
+  "Shares JM group/private transfers while preserving allowlists, uppercase FS and one-day cleanup.",
+  "Separates memory responsibilities, shares atomic persistence and keeps legacy API and summary interfaces compatible.",
   "Preserves model fallback, allowlists, relationship scoring and private reasoning isolation while Windows remains frozen.",
   "Preserves the isolated Linux server deployment, upload_file_stream transfers, loopback-only browser and no automatic migration of model credentials.",
 ]);

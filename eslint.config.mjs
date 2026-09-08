@@ -47,6 +47,22 @@ export default [
       "max-lines-per-function": ["warn", { max: 120, skipBlankLines: true, skipComments: true }],
     },
   },
+  // 浏览器模块也检查导入、作用域和未定义变量。
+  {
+    files: ["launcher/QQFriendLauncher/Web/**/*.js"],
+    languageOptions: {
+      ecmaVersion: 2024, sourceType: "module",
+      globals: {
+        window: "readonly", document: "readonly", console: "readonly", URL: "readonly",
+        MutationObserver: "readonly", IntersectionObserver: "readonly", CustomEvent: "readonly",
+      },
+    },
+    rules: {
+      "no-undef": "error", "no-duplicate-imports": "error",
+      "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      "no-shadow": "warn",
+    },
+  },
   // 辅助脚本宽松一点
   {
     files: ["gen_*.mjs", "test_*.mjs", "debug_*.mjs", "search_*.mjs", "daily_summary.mjs"],

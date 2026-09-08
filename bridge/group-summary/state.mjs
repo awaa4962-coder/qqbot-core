@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 import { CFG } from "../config.mjs";
 import { dateRange, formatDate } from "./date.mjs";
+import { readJsonFile, writeJsonFileSync } from "../persistence/json-file.mjs";
 
 export function summaryRoot(options = {}) {
   return path.resolve(options.root || path.join(CFG.dataRoot, ".qqfriend", "summaries"));
@@ -17,8 +17,7 @@ export function summaryKey(dateText, groupId) {
 
 export function readSummaryJson(filename, fallback = null, maxBytes = 8 * 1024 * 1024) {
   try {
-    if (fs.statSync(filename).size > maxBytes) throw new Error("日报文件超过读取上限");
-    return JSON.parse(fs.readFileSync(filename, "utf8"));
+    return readJsonFile(filename, fallback, { maxBytes });
   } catch (error) {
     if (error.code === "ENOENT") return fallback;
     throw new Error("日报状态文件读取失败", { cause: error });
@@ -26,12 +25,7 @@ export function readSummaryJson(filename, fallback = null, maxBytes = 8 * 1024 *
 }
 
 export function writeSummaryJson(filename, value) {
-  fs.mkdirSync(path.dirname(filename), { recursive: true, mode: 0o700 });
-  const temporary = filename + ".tmp." + randomUUID();
-  try {
-    fs.writeFileSync(temporary, JSON.stringify(value), { mode: 0o600 });
-    fs.renameSync(temporary, filename);
-  } finally { fs.rmSync(temporary, { force: true }); }
+  writeJsonFileSync(filename, value);
 }
 
 // This lock covers synchronous file mutations only, never a model/network call.

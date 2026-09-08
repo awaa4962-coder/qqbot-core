@@ -1,5 +1,5 @@
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createTaskRunner } from "../tasks/runner.mjs";
 import { CFG } from "../config.mjs";
 import { buildOutputPacket } from "../output-pipeline.mjs";
 import { loadSummaryCapture } from "../group-summary/journal.mjs";
@@ -13,10 +13,17 @@ import { redactSummaryText } from "../group-summary/formatter.mjs";
 import { assertSummaryEpoch, readSummaryJson, summaryKey, summaryPrivacy, summaryRoot, withSummaryWriteLock, writeSummaryJson } from "../group-summary/state.mjs";
 
 export function createSummaryManager(options = {}) {
-  const bootId = randomUUID();
   const jobFile = path.join(summaryRoot(options), "jobs.json");
-  const running = new Map();
   const groups = () => (options.whitelist || CFG.summaryGroupWhitelist).map(String);
+  const tasks = createTaskRunner({
+    read: () => readSummaryJson(jobFile, []), write: jobs => writeSummaryJson(jobFile, jobs),
+    mutate: operation => withSummaryWriteLock(options, operation),
+    keyFor: job => summaryKey(job.dateText, job.groupId), maxConcurrent: 2,
+    busyMessage: "这个群和日期已有任务运行",
+    failureMessage: "日报任务失败，请检查记录是否变化或模型是否可用",
+    resultError: result => result.message || "日报任务失败",
+    describeResult: result => ({ revisionId: result.revisionId || "", sent: Boolean(result.sent), reason: result.reason || "" }),
+  });
 
   function scope(input = {}) {
     const groupId = String(input.groupId || groups()[0] || "");
@@ -24,20 +31,6 @@ export function createSummaryManager(options = {}) {
     summaryKey(dateText, groupId);
     if (!groups().includes(groupId)) throw new Error("该群未启用日报");
     return { dateText, groupId };
-  }
-
-  function jobs() {
-    return readSummaryJson(jobFile, []).map(job =>
-      !["done", "failed"].includes(job.phase) && (job.bootId !== bootId || !running.has(summaryKey(job.dateText, job.groupId)))
-        ? { ...job, phase: "interrupted" } : job);
-  }
-
-  function saveJob(job) {
-    withSummaryWriteLock(options, () => {
-      const list = readSummaryJson(jobFile, []).filter(item => item.id !== job.id);
-      list.push(job);
-      writeSummaryJson(jobFile, list.slice(-30));
-    });
   }
 
   function snapshot(input = {}) {
@@ -48,7 +41,7 @@ export function createSummaryManager(options = {}) {
     return {
       ...target, groups: groups(), coverage: capture.coverage,
       revisions: report.revisions.map(publicRevision),
-      jobs: jobs().filter(job => job.groupId === target.groupId && job.dateText === target.dateText).map(({ bootId: _bootId, ...job }) => job),
+      jobs: tasks.list().filter(job => job.groupId === target.groupId && job.dateText === target.dateText),
       delivery: readSummaryDelivery(target.dateText, target.groupId, options),
     };
   }
@@ -75,23 +68,8 @@ export function createSummaryManager(options = {}) {
 
   function start(input) {
     const target = scope(input);
-    const key = summaryKey(target.dateText, target.groupId);
-    if (running.has(key)) throw new Error("这个群和日期已有任务运行");
-    if (running.size >= 2) throw new Error("已有两个日报任务运行，请稍后再试");
-    const job = { id: randomUUID(), bootId, ...target, action: input.action, phase: "queued", startedAt: Date.now(), error: "" };
-    saveJob(job);
-    const task = Promise.resolve().then(() => execute(input, target, phase => { job.phase = phase; saveJob(job); }))
-      .then(result => {
-        job.phase = result.ok ? "done" : "failed";
-        job.error = result.ok ? "" : result.message || "日报任务失败";
-        job.revisionId = result.revisionId || "";
-        job.sent = Boolean(result.sent);
-        job.reason = result.reason || "";
-      }).catch(() => { job.phase = "failed"; job.error = "日报任务失败，请检查记录是否变化或模型是否可用"; })
-      .finally(() => { job.finishedAt = Date.now(); running.delete(key); saveJob(job); });
-    task.catch(() => {});
-    running.set(key, task);
-    return { jobId: job.id, ...target, phase: "queued" };
+    return tasks.start({ scope: summaryKey(target.dateText, target.groupId), action: input.action, meta: target,
+      run: ({ progress }) => execute(input, target, progress) });
   }
 
   async function act(input = {}) {
@@ -108,7 +86,7 @@ export function createSummaryManager(options = {}) {
     return { revisionId: revision.id, ...snapshot(target) };
   }
 
-  return { snapshot, act, wait: async () => { await Promise.all([...running.values()]); } };
+  return { snapshot, act, wait: tasks.wait };
 }
 
 function revisionResult(revision) {

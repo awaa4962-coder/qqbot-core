@@ -25,6 +25,8 @@ QQFriend 是“夜星”QQ 机器人的本地运行核心。它接收 NapCat 的
 
 Linux 网页「日报」支持按群和日期生成草稿、显示进度、编辑正文、比较版本、查看证据及单个讨论重写。预览不会发送到 QQ，发送需要单独操作；已发送的群和日期不会重复发布。详情见 [日报工作台](deploy/linux/SUMMARY-WORKBENCH.md)。
 
+控制台现已按页面模块组织；梗库更新、表情分析与回放等耗时操作显示后台任务状态，刷新后继续查看原任务，不会自动重新执行。代码边界、兼容接口和验证方式见 [模块维护说明](deploy/linux/MODULAR-RUNTIME.md)。
+
 | 方向 | 当前能力 |
 | --- | --- |
 | 对话与模型 | MiMo 主对话、DeepSeek 兜底、按任务切换模型与思考强度，兼容 OpenAI Chat / Responses、Anthropic 和 Gemini 协议 |

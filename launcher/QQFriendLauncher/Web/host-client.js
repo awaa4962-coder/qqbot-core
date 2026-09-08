@@ -70,6 +70,8 @@
       return apiRequest("/admin/summaries?" + query);
     }
     if (action === "summaryAction") return apiPost("/admin/summaries", payload);
+    if (action === "startTask") return apiPost("/admin/tasks", payload);
+    if (action === "getTasks") return apiRequest("/admin/tasks" + (payload.id ? "?id=" + encodeURIComponent(payload.id) : ""));
     if (action === "replayAction") return apiPost("/admin/diagnose/replay", payload);
     if (action === "createBackup") return apiPost("/admin/backups", { action: "create" });
     if (action === "health") return runBrowserHealthCheck();

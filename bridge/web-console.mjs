@@ -26,6 +26,14 @@ const ASSETS = new Map([
   ["/console/summaries.css", ["summaries.css", "text/css; charset=utf-8"]],
 ]);
 
+const MODULE_ASSETS = [
+  "ui/state.js", "ui/metadata.js", "ui/dom.js", "ui/appearance.js", "ui/activity.js", "ui/actions.js",
+  "ui/tasks.js", "ui/background-feedback.js",
+  "pages/overview.js", "pages/configuration.js", "pages/capabilities.js", "pages/api.js",
+  "pages/logs.js", "pages/stickers.js", "pages/memes.js", "pages/diagnose-message.js",
+];
+for (const filename of MODULE_ASSETS) ASSETS.set("/console/" + filename, [filename, "text/javascript; charset=utf-8"]);
+
 export async function handleWebConsoleRequest(req, res, context = {}) {
   const enabled = context.enabled ?? CFG.webConsoleEnabled;
   const pathname = context.pathname || "/";

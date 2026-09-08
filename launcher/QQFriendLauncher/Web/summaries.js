@@ -1,3 +1,5 @@
+import { waitForTask } from "./ui/tasks.js";
+
 (function () {
   "use strict";
   const host = window.QQFriendHost;
@@ -9,8 +11,8 @@
   let dirty = false;
   let loading = false;
   let jobId = "";
-  let pollTimer = null;
-  const phaseNames = { queued: "排队中", collecting: "整理采集记录", analyzing: "主模型分析中", fallback: "备用模型分析中", saving: "保存草稿", sending: "发送中", done: "任务完成", failed: "任务失败", interrupted: "任务中断，请重新生成或核实发送状态" };
+  let pollingJobId = "";
+  const phaseNames = { queued: "排队中", collecting: "整理采集记录", analyzing: "主模型分析中", fallback: "备用模型分析中", saving: "保存草稿", sending: "发送中", overdue: "等待较久，任务仍在收尾，请勿重复提交", done: "任务完成", failed: "任务失败", interrupted: "任务中断，请重新生成或核实发送状态" };
   const deliveryNames = { not_sent: "尚未发送", sent: "已发送", failed: "发送明确失败，可以重试", partial: "部分已发送，可继续剩余分段", unconfirmed: "发送待核实，不会自动重发", invalid_marker: "发送记录异常，请先核实" };
 
   function status(text, error = false) { $("summaryProgress").textContent = text; $("summaryProgress").dataset.error = String(error); }
@@ -118,22 +120,22 @@
   }
 
   function schedulePoll() {
-    window.clearTimeout(pollTimer);
-    pollTimer = window.setTimeout(async () => {
-      try {
-        await refresh(null, true);
-        const job = snapshot.jobs.find(item => item.id === jobId);
-        if (!job) { jobId = ""; status("任务状态已失效，请刷新确认。", true); controls(); return; }
-        status(job.error || phaseNames[job.phase] || job.phase, ["failed", "interrupted"].includes(job.phase));
-        if (["done", "failed", "interrupted"].includes(job.phase)) {
-          jobId = "";
-          if (job.revisionId) { selectedId = job.revisionId; $("summaryRevision").value = selectedId; renderRevision(); }
-          if (job.reason) status("未重复发送，原任务状态：" + job.reason);
-          controls(); return;
-        }
-        schedulePoll();
-      } catch (error) { jobId = ""; status(error.message || "读取任务状态失败", true); controls(); }
-    }, 1200);
+    if (!jobId || pollingJobId === jobId) return;
+    const expectedId = jobId;
+    pollingJobId = expectedId;
+    waitForTask(async () => {
+      await refresh(null, true);
+      const job = snapshot.jobs.find(item => item.id === expectedId);
+      if (!job) throw new Error("任务状态已失效，请刷新确认。");
+      return job;
+    }, { onProgress: job => status(job.error || phaseNames[job.phase] || job.phase, ["failed", "interrupted"].includes(job.phase)) })
+      .then(job => {
+        jobId = "";
+        if (job.revisionId) { selectedId = job.revisionId; $("summaryRevision").value = selectedId; renderRevision(); }
+        if (job.reason) status("未重复发送，原任务状态：" + job.reason);
+      })
+      .catch(error => { jobId = ""; status(error.message || "读取任务状态失败", true); })
+      .finally(() => { pollingJobId = ""; controls(); });
   }
 
   document.addEventListener("click", event => { const button = event.target.closest("[data-summary-action]"); if (button) act(button.dataset.summaryAction); });

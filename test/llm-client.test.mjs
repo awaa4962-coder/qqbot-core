@@ -3,6 +3,7 @@ import { afterEach, describe, it } from "node:test";
 
 import { deepseekChat } from "../bridge/clients/providers/deepseek.mjs";
 import { mimoVision } from "../bridge/clients/providers/mimo.mjs";
+import { llmCall } from "../bridge/clients/llm-client.mjs";
 
 const originalFetch = globalThis.fetch;
 
@@ -23,6 +24,22 @@ function mockFetchBody() {
 }
 
 describe("llm client provider token fields", () => {
+  it("shares safe transport without adding retries to legacy calls", async () => {
+    const calls = [];
+    globalThis.fetch = async (_url, options) => { calls.push(options); return { ok: false, status: 503, json: async () => ({}) }; };
+    const result = await llmCall({ provider: "test", apiKey: "test-only", endpoint: "https://example.com/v1/chat/completions", model: "synthetic", messages: [] });
+    assert.equal(result.ok, false);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].redirect, "error");
+    assert.equal(calls[0].headers.Authorization, "Bearer test-only");
+  });
+
+  it("legacy endpoint validation rejects private URLs before network access", async () => {
+    globalThis.fetch = () => assert.fail("must not fetch an unapproved local endpoint");
+    const result = await llmCall({ provider: "test", apiKey: "test-only", endpoint: "http://127.0.0.1/v1/chat/completions", model: "synthetic", messages: [] });
+    assert.equal(result.ok, false);
+  });
+
   it("uses max_completion_tokens for MiMo requests", async () => {
     const readBody = mockFetchBody();
     await mimoVision([], { maxTokens: 123 });

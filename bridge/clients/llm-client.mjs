@@ -1,7 +1,7 @@
-// bridge/clients/llm-client.mjs — 统一 LLM 调用客户端
-// 所有模型调用通过此层，统一 timeout、错误处理、返回结构
+// Compatibility client. Task routing uses api-providers; legacy callers share its transport.
 import { buildBearerAuth, maskSecret } from "./auth.mjs";
 import { logE } from "../logger.mjs";
+import { postProviderJson } from "../api-providers/transport.mjs";
 
 // ── 认证安全 helper ──
 
@@ -36,29 +36,21 @@ export async function llmCall(opts) {
   } = opts;
 
   try {
-    const r = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Authorization": buildBearerAuth(apiKey),
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    const r = await postProviderJson({ name: provider, endpoint, model, auth: "bearer", allowLocal: opts.allowLocal === true }, apiKey, {
         model,
         messages,
         [tokenField]: maxTokens,
         temperature,
         ...extra,
-      }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+      }, { timeoutMs, maxAttempts: 1 });
 
     if (!r.ok) {
-      logE(`llmCall [${provider}] HTTP ${r.status}: ${r.statusText}`);
-      return { ok: false, text: null, raw: null, provider, error: `HTTP ${r.status}` };
+      const error = r.status ? `HTTP ${r.status}` : "API request failed";
+      logE(`llmCall [${provider}] failed:`, error);
+      return { ok: false, text: null, raw: null, provider, error };
     }
 
-    const d = await r.json();
-    return parseLlmSuccess(d, provider);
+    return parseLlmSuccess(r.data, provider);
   } catch (e) {
     logE(`llmCall [${provider}] error:`, e.message);
     return { ok: false, text: null, raw: null, provider, error: e.message };

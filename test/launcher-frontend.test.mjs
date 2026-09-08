@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { test } from 'node:test';
 import { clearTimeout, setTimeout } from 'node:timers';
 import { URL } from 'node:url';
@@ -12,6 +12,15 @@ const runtimeServicePath = new URL('../launcher/QQFriendLauncher/Services/Launch
 const napCatClientPath = new URL('../launcher/QQFriendLauncher/Services/NapCatClient.cs', import.meta.url);
 const launcherConfigPath = new URL('../launcher/QQFriendLauncher/Config/LauncherConfig.cs', import.meta.url);
 const launcherFormPath = new URL('../launcher/QQFriendLauncher/App/LauncherForm.cs', import.meta.url);
+
+async function readConsoleModules() {
+  const files = [appPath];
+  for (const directory of ['ui', 'pages']) {
+    const root = new URL(`../launcher/QQFriendLauncher/Web/${directory}/`, import.meta.url);
+    for (const name of await readdir(root)) if (name.endsWith('.js')) files.push(new URL(name, root));
+  }
+  return (await Promise.all(files.map(file => readFile(file, 'utf8')))).join('\n');
+}
 
 async function createHostHarness() {
   const source = await readFile(hostClientPath, 'utf8');
@@ -208,7 +217,7 @@ test('launcher frontend separates daily work into focused views', async () => {
   assert.match(html, /id="removeCapturedStickerButton"/);
   assert.match(html, /Key 只写入本机，不会回显/);
   assert.match(html, /host-client\.js/);
-  const app = await readFile(appPath, 'utf8');
+  const app = await readConsoleModules();
   assert.match(app, /图片语境/);
   assert.match(app, /不存图片/);
   assert.match(app, /function renderCapabilities/);
@@ -236,7 +245,7 @@ test('launcher frontend separates daily work into focused views', async () => {
 
 test('launcher confirms stop and keeps intentional stop state coherent', async () => {
   const html = await readFile(indexPath, 'utf8');
-  const source = await readFile(appPath, 'utf8');
+  const source = await readConsoleModules();
 
   assert.match(source, /action === "stopBridge"/);
   assert.match(source, /action === "stopAll"/);

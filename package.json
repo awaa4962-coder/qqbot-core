@@ -1,6 +1,6 @@
 {
   "name": "qqfriend",
-  "version": "1.4.6-summary-workbench",
+  "version": "1.4.7-modular-runtime",
   "description": "夜星 QQ 机器人桥接器",
   "type": "module",
   "main": "napcat_bridge.mjs",
@@ -14,7 +14,7 @@
     "summary:daily": "node daily_summary.mjs",
     "summary:date": "node scripts/send-summary-for-date.mjs",
     "test": "node scripts/run-tests.mjs",
-    "lint": "eslint bridge/ test/ scripts/ *.mjs",
+    "lint": "eslint bridge/ test/ scripts/ launcher/QQFriendLauncher/Web/ *.mjs",
     "check:jm": "node scripts/check-jm-runtime.mjs",
     "check:jm:install": "node scripts/check-jm-runtime.mjs --install",
     "check:runtime": "node scripts/runtime-check.mjs",

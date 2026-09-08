@@ -16,6 +16,9 @@ function makeTempProject() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-release-"));
   const files = {
     "bridge/admin-commands.mjs": "export const ok = true;\n",
+    "bridge/memory-profile/store.mjs": "export const profiles = {};\n",
+    "bridge/tasks/runner.mjs": "export const ready = true;\n",
+    "launcher/QQFriendLauncher/Web/ui/tasks.js": "export const ready = true;\n",
     "test/core.test.mjs": "import assert from 'node:assert/strict';\nassert.ok(true);\n",
     "scripts/runtime-check.mjs": "console.log('ok');\n",
     ".github/workflows/ci.yml": "name: ci\n",
@@ -84,6 +87,9 @@ describe("collectReleaseFiles", () => {
     const files = collectReleaseFiles(root);
 
     assert.equal(files.includes("bridge/admin-commands.mjs"), true);
+    assert.equal(files.includes("bridge/memory-profile/store.mjs"), true);
+    assert.equal(files.includes("bridge/tasks/runner.mjs"), true);
+    assert.equal(files.includes("launcher/QQFriendLauncher/Web/ui/tasks.js"), true);
     assert.equal(files.includes("package.json"), true);
     assert.equal(files.some(file => file.startsWith(".env_")), false);
     assert.equal(files.some(file => file.startsWith("node_modules/")), false);
