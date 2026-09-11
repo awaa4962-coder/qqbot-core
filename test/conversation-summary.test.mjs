@@ -135,6 +135,15 @@ test("selection budget is balanced between targets and truncation is disclosed",
   assert.match(summaryFooter(bundle), /部分内容/);
 });
 
+test("prompt supplies relative-date lookup per source day instead of using send day", t => {
+  const stamp = Date.parse("2026-12-31T23:00:00+08:00");
+  const options = fixture(t, { records: [row(U1, "明晚九点见", "one", { ts: stamp })] });
+  const bundle = selectSummaryRecords(GROUP, [members[0]], { from: stamp - 1, to: stamp + 1 }, options);
+  const input = buildConversationSummaryRequest(bundle).messages[0].content;
+  assert.match(input, /"消息日期":"2026-12-31"/);
+  assert.match(input, /"明天或明晚":"2027-01-01"/);
+});
+
 test("journal and live rolling records merge without reintroducing forgotten messages", t => {
   const options = fixture(t, { groupChats: { [GROUP]: [row(U2, "尚未落盘的新消息", "live")] } });
   captureSummaryMessage({ group_id: GROUP, user_id: Number(U1), message_id: "journal", text: "按日记录", eventTime: NOW - 90000 }, { ...options, now: NOW });
