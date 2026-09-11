@@ -21,7 +21,7 @@ test("browser modules link correctly and every imported asset is explicitly serv
       if(!modules.has(file)) modules.set(file,new vm.SourceTextModule(fs.readFileSync(file,'utf8'),{identifier:file}));
       return modules.get(file);
     }
-    const entry=new vm.SourceTextModule("import './app.js'; import './diagnostics.js'; import './summaries.js';",{identifier:path.join(root,'entry.js')});
+    const entry=new vm.SourceTextModule("import './app.js'; import './diagnostics.js'; import './summaries.js'; import './conversation-summaries.js';",{identifier:path.join(root,'entry.js')});
     await entry.link((specifier, module)=>load(path.resolve(path.dirname(module.identifier),specifier)));
     console.log(JSON.stringify([...modules.keys()].map(file=>path.relative(root,file).split(path.sep).join('/'))));
   `;

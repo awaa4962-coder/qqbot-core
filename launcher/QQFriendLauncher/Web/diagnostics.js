@@ -18,7 +18,7 @@ import { callManagedAction, taskPhaseLabel } from "./ui/tasks.js";
     processing: "处理中", sent: "已发送", partial: "部分成功", failed: "失败", ignored: "未触发", no_reply: "未产生回复", processed: "处理结束",
     received: "接收", admission: "准入", route: "路由", context: "上下文", model: "模型", output: "正文检查", send: "发送", complete: "结束",
     started: "开始", ok: "成功", skipped: "跳过", primary: "主模型", fallback: "备用模型", local: "本地恢复", unavailable: "模型不可用", model_unavailable: "模型未产生可用正文",
-    group_at: "群聊 @", interjection: "自动插话", private_chat: "私聊", private_file: "私聊文件", command: "命令", preview: "链接预览", file: "文件", jm: "JM", "resource-transfer": "资源转发", "link-preview": "链接预览", wordcloud: "词云",
+    group_at: "群聊 @", interjection: "自动插话", private_chat: "私聊", private_file: "私聊文件", command: "命令", preview: "链接预览", file: "文件", jm: "JM", "resource-transfer": "资源转发", "link-preview": "链接预览", wordcloud: "词云", "conversation-summary": "成员聊天总结",
     group_not_whitelisted: "群不在白名单", blacklisted_user: "发送人被屏蔽", self_message: "机器人自身消息", duplicate_event: "重复投递", duplicate_text: "复读消息", private_not_whitelisted: "私聊不在白名单",
     ingress_rate_limited: "入口限流", scope_rate_limited: "当前会话限流", priority_rate_limited: "优先通道限流",
     accepted: "已接纳", preview_sent: "链接预览抑制插话", mentioned: "已进入 @ 回复", short: "消息太短", empty: "内容为空", no_probability: "该场景不自动插话", cooldown: "插话冷却中", random: "本次未命中插话概率", triggered: "触发插话",

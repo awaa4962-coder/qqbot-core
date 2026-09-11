@@ -31,3 +31,12 @@
 @media (max-width: 1000px) { .trace-workbench { grid-template-columns: 1fr; } .trace-detail { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 16px; } }
 @media (max-width: 600px) { .replay-comparison { grid-template-columns: 1fr; gap: 12px; } .trace-filters label, .replay-toolbar label, .replay-review label { flex: 1 1 100%; } .trace-table th, .trace-table td { padding: 8px 4px; font-size: 12px; } }
 @media (prefers-reduced-motion: reduce) { .linux-diagnostics[aria-busy="true"] > .section-head h2::after { animation: none; } }
+@media (max-width: 760px) {
+  #conversationSummaryPanel .trace-table { min-width: 0; }
+  #conversationSummaryPanel thead { display: none; }
+  #conversationSummaryPanel tbody,
+  #conversationSummaryPanel tr,
+  #conversationSummaryPanel td { display: block; width: 100%; }
+  #conversationSummaryPanel td { padding: 7px 0; overflow-wrap: anywhere; }
+  #conversationSummaryPanel td::before { content: attr(data-label); display: block; font-weight: 600; margin-bottom: 3px; }
+}

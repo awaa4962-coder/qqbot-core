@@ -25,6 +25,7 @@ const TASK_IDS = Object.freeze([
   "private_chat",
   "file_chat",
   "group_summary",
+  "conversation_summary",
   "relationship_comment",
   "sticker_select",
   "vision",
@@ -46,6 +47,7 @@ export function createDefaultApiConfig() {
       private_chat: route("deepseek", null, "private_chat"),
       file_chat: route("deepseek", null, "file_chat"),
       group_summary: route("deepseek", "mimo", "group_summary"),
+      conversation_summary: route("deepseek", "mimo", "conversation_summary"),
       relationship_comment: route("mimo", "deepseek", "relationship_comment"),
       sticker_select: route("mimo", "deepseek", "sticker_select"),
       vision: route("mimo", null, "vision"),
@@ -255,6 +257,7 @@ function normalizeStoredConfig(value, defaults) {
     updatedAt: typeof source.updatedAt === "string" ? source.updatedAt : null,
   };
   base.routes = normalizeRoutes(source.routes || {}, base, { partial: true });
+  if (!Object.prototype.hasOwnProperty.call(source.routes || {}, "conversation_summary")) base.routes.conversation_summary = { ...base.routes.group_summary };
   return base;
 }
 
@@ -476,6 +479,7 @@ function taskName(id) {
     private_chat: "私聊",
     file_chat: "文件理解",
     group_summary: "群日报",
+    conversation_summary: "成员聊天总结",
     relationship_comment: "关系短评",
     sticker_select: "表情选择",
     vision: "图片识别",

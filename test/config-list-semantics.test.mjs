@@ -20,6 +20,7 @@ test("missing feature lists inherit the main group whitelist", async () => {
     assert.deepEqual(value.summary, [123456]);
     assert.deepEqual(value.resource, [123456]);
     assert.deepEqual(value.feature, [123456]);
+    assert.deepEqual(value.conversation, [123456]);
     assert.deepEqual(value.sticker, [123456]);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -33,6 +34,7 @@ test("present but empty feature lists stay disabled", async () => {
     ".env_summary_groups",
     ".env_resource_groups",
     ".env_feature_groups",
+    ".env_conversation_summary_groups",
     ".env_sticker_groups",
   ]) {
     fs.writeFileSync(path.join(root, file), "", "utf8");
@@ -42,6 +44,7 @@ test("present but empty feature lists stay disabled", async () => {
     assert.deepEqual(value.summary, []);
     assert.deepEqual(value.resource, []);
     assert.deepEqual(value.feature, []);
+    assert.deepEqual(value.conversation, []);
     assert.deepEqual(value.sticker, []);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -55,6 +58,7 @@ async function readConfig(configRoot) {
     "summary: CFG.summaryGroupWhitelist,",
     "resource: CFG.resourceGroupWhitelist,",
     "feature: CFG.featureGroupWhitelist,",
+    "conversation: CFG.conversationSummaryGroupWhitelist,",
     "sticker: CFG.stickerGroupWhitelist,",
     "}));",
   ].join("\n");
@@ -64,6 +68,7 @@ async function readConfig(configRoot) {
     "QQBOT_SUMMARY_GROUPS",
     "QQBOT_RESOURCE_GROUPS",
     "QQBOT_FEATURE_GROUPS",
+    "QQBOT_CONVERSATION_SUMMARY_GROUPS",
     "QQBOT_STICKER_GROUPS",
   ]) delete env[name];
   const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", source], {

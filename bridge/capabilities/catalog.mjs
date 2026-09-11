@@ -56,6 +56,12 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
     access: "feature-groups",
   }),
   capability({
+    id: "group.conversation-summary", category: "group", name: "成员聊天总结",
+    summary: "选一人或多人，用自然的话讲清他们在本群聊了什么；默认最近两小时。",
+    scopes: ["group"], examples: ["@夜星 总结我", "@夜星 总结 @某人 昨天", "@夜星 分别总结 @甲 @乙 今天"],
+    keywords: ["总结", "总结我", "成员总结", "分别总结", "聊天总结"], access: "conversation-summary-groups",
+  }),
+  capability({
     id: "group.link-preview",
     category: "group",
     name: "链接预览",
@@ -362,6 +368,7 @@ function resolveAccessAvailability(item, options, cfg) {
   if (item.access === "feature-groups") {
     return whitelistAvailability(cfg.featureGroupWhitelist, options, "词云", false);
   }
+  if (item.access === "conversation-summary-groups") return whitelistAvailability(cfg.conversationSummaryGroupWhitelist, options, "成员聊天总结", false);
   if (item.access === "resource-groups") {
     return whitelistAvailability(cfg.resourceGroupWhitelist, options, "资源转发", false);
   }

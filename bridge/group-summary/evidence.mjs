@@ -1,6 +1,6 @@
 const DEFAULT_REPEAT_WINDOW_MS = 20 * 60 * 1000;
 
-const COMMAND_RE = /^(?:[/\\]\s*)?(?:help|status|ping|version|runtime|admin\b|jm\b|日报(?:帮助|预览|发送)?|群报|词云|资源|梗库|更新(?:列表)?|帮助|状态|测试|版本|管理|运行|好感度|关系|熟悉度|my-status|my-profile|隐私|忘记我)(?:\s|$)/i;
+const COMMAND_RE = /^(?:[/\\]\s*)?(?:help|status|ping|version|runtime|admin\b|jm\b|总结帮助|总结我|分别总结|总结|日报(?:帮助|预览|发送)?|群报|词云|资源|梗库|更新(?:列表)?|帮助|状态|测试|版本|管理|运行|好感度|关系|熟悉度|my-status|my-profile|隐私|忘记我)(?:\s|$)/i;
 const NON_TEXT_RE = /^(?:\[非文本消息\]|\[图片\]|\[表情\]|\[文件\]|\[已按用户请求清除\])$/i;
 const PURE_NOISE_RE = /^[\p{P}\p{S}\s]+$/u;
 

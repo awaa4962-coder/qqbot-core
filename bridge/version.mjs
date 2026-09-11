@@ -4,23 +4,23 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.7-modular-runtime";
-export const VERSION_NAME = "modular-runtime";
+export const VERSION = "1.4.8-member-summary";
+export const VERSION_NAME = "member-summary";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "Linux 控制台按页面拆分，公共操作反馈统一，前端 JavaScript 纳入发布检查。",
-  "日报、梗库更新、表情分析和回放共用任务执行器；刷新后继续查看任务，超时不自动重做。",
-  "JM 群聊与私聊共用下载传输流程，白名单、大写 FS 密码及一天后清理规则不变。",
-  "记忆拆分存储、更新、查询和展示，存档共用原子写入；旧模型与日报接口保留兼容入口。",
+  "新增成员聊天总结：@机器人 总结我，或 总结 @某人 @某人，普通群成员可用。",
+  "默认最近两小时，可选今天、昨天和最近若干分钟/小时/天，支持分别总结，最多五人。",
+  "聊天原话和必要引用背景交给 API，用自然的话讲清事情，不做人物画像或固定分析模板。",
+  "Linux 前端增加聊天总结群白名单、独立模型插槽和只读任务状态；不改变每日群报推送范围。",
   "Windows 继续暂停更新；模型主备、白名单、关系评分和私有推理隔离保持不变。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Splits the Linux console into page modules and includes browser JavaScript in release lint checks.",
-  "Shares task execution across summaries, meme updates, sticker operations and replay with reload recovery and no automatic retry.",
-  "Shares JM group/private transfers while preserving allowlists, uppercase FS and one-day cleanup.",
-  "Separates memory responsibilities, shares atomic persistence and keeps legacy API and summary interfaces compatible.",
+  "Adds mention-gated member conversation summaries for ordinary group members, with up to five targets.",
+  "Supports recent time windows, calendar dates and combined or separate summaries of captured group text.",
+  "Sends selected messages and necessary context directly to the configured API with a natural-language prompt, without profile inference.",
+  "Adds an independent group allowlist, model route and read-only task status to the Linux console; daily report delivery remains separate.",
   "Preserves model fallback, allowlists, relationship scoring and private reasoning isolation while Windows remains frozen.",
   "Preserves the isolated Linux server deployment, upload_file_stream transfers, loopback-only browser and no automatic migration of model credentials.",
 ]);

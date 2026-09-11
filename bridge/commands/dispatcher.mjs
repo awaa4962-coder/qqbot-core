@@ -16,10 +16,12 @@ import {
   buildRelationshipCommandReplyAsync,
 } from "./modules/relationship.mjs";
 import { buildUnknownCommandSuggestion } from "../capabilities/catalog.mjs";
+import { isConversationSummaryCommand, conversationSummaryHelp } from "../features/conversation-summary/command.mjs";
 
 export function buildCommandReply(commandText, options = {}) {
   const cmd = normalizeCommand(commandText, options);
   if (!cmd) return null;
+  if (isConversationSummaryCommand(cmd)) return conversationSummaryGuide(options);
   if (!isKnownCommand(cmd)) return buildUnknownCommandSuggestion(cmd, capabilityOptions(options));
 
   const adminReply = buildAdminCommandReply(cmd, { ...options, rawCommandText: commandText });
@@ -37,6 +39,7 @@ export function buildCommandReply(commandText, options = {}) {
 export async function buildCommandReplyAsync(commandText, options = {}) {
   const cmd = normalizeCommand(commandText, options);
   if (!cmd) return null;
+  if (isConversationSummaryCommand(cmd)) return conversationSummaryGuide(options);
   if (!isKnownCommand(cmd)) return buildUnknownCommandSuggestion(cmd, capabilityOptions(options));
 
   const adminReply = buildAdminCommandReply(cmd, { ...options, rawCommandText: commandText });
@@ -81,6 +84,10 @@ export async function buildPrivateCommandReplyAsync(ctx, options = {}) {
 function buildGroupSummarySyncReply(options) {
   if (!isAdminUser(options.userId, options.admins)) return "这个命令需要管理员权限。";
   return "日报命令需要异步处理，请在群聊或私聊中直接发送命令。";
+}
+
+function conversationSummaryGuide(options) {
+  return options.groupId ? conversationSummaryHelp() : "请在要总结的群里 @机器人使用。成员聊天总结不读取私聊，也不跨群查记录。\n" + conversationSummaryHelp();
 }
 
 function withGroupOptions(ctx, options) {

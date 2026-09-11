@@ -2,6 +2,11 @@
 
 export const COMMAND_DEFINITIONS = Object.freeze([
   {
+    id: "conversation-summary", permission: "user", aliases: ["总结我", "总结帮助"], helpPage: 2,
+    pattern: /^(?:总结我|分别总结|总结)(?:\s|$|\[CQ:at,|@)/,
+    helpLine: "  总结我 / 总结 @某人  用人话讲讲最近聊了什么",
+  },
+  {
     id: "help-page-1",
     permission: "user",
     aliases: ["help", "帮助", "你能干嘛", "你能做什么", "你会什么", "能做什么", "怎么用", "能力", "功能"],

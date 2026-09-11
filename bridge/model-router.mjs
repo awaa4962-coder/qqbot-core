@@ -16,6 +16,7 @@ export const MODEL_TASKS = Object.freeze({
   PRIVATE_CHAT: "private_chat",
   FILE_CHAT: "file_chat",
   GROUP_SUMMARY: "group_summary",
+  CONVERSATION_SUMMARY: "conversation_summary",
   RELATIONSHIP_COMMENT: "relationship_comment",
   STICKER_SELECT: "sticker_select",
 });

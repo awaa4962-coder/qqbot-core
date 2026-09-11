@@ -189,6 +189,7 @@ export const CONFIG_FIELDS = Object.freeze({
   cfgSummaryGroups: "summaryGroupWhitelist",
   cfgResourceGroups: "resourceGroupWhitelist",
   cfgFeatureGroups: "featureGroupWhitelist",
+  cfgConversationSummaryGroups: "conversationSummaryGroupWhitelist",
   cfgLongGroups: "longGroups",
   cfgFriendWhitelist: "friendWhitelist",
   cfgJmUsers: "jmUserWhitelist",

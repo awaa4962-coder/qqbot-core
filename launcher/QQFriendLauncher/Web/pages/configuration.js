@@ -22,6 +22,7 @@ export function renderConfig(status, configSnapshot) {
     ["机器人名称", config.botNames || [], "configuration"],
     ["群白名单", config.groupWhitelist || [], "configuration"],
     ["日报群", config.summaryGroupWhitelist || [], "configuration"],
+    ["聊天总结群", config.conversationSummaryGroupWhitelist || [], "configuration"],
     ["资源 / JM 群", config.resourceGroupWhitelist || [], "configuration"],
     ["管理员", config.adminUins || [], "configuration"],
     ["功能模块", Object.entries(modules)
@@ -136,6 +137,7 @@ export function moduleLabel(name) {
     commands: "命令中心",
     cognition: "短期上下文",
     groupSummary: "每日群报",
+    conversationSummary: "成员聊天总结",
     jm: "JM 下载",
     linkPreview: "链接预览",
     imageContext: "图片语境",

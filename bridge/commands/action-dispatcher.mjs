@@ -8,8 +8,10 @@ import { groupChats, logGroupMsg, users } from "../storage.mjs";
 import { buildCommandReplyAsync } from "./dispatcher.mjs";
 import { prepareCommandText } from "./normalize.mjs";
 import { traceStage } from "../diagnostics/message-trace.mjs";
+import { handleConversationSummaryCommand, parseConversationSummaryCommand } from "../features/conversation-summary/index.mjs";
 
 const SPECIAL_GROUP_ACTIONS = Object.freeze([
+  { id: "conversation-summary", parse: parseConversationSummaryCommand, handle: handleConversationSummaryCommand },
   { id: "jm", parse: parseJmCommand, handle: handleJmTransferCommand },
   { id: "resource-transfer", parse: parseResourceTransferCommand, handle: handleResourceTransferCommand },
   { id: "link-preview", parse: parseExplicitLinkPreviewCommand, handle: handleExplicitLinkPreviewCommand },

@@ -213,6 +213,7 @@
                   <div class="list-field"><span>日报群</span><div class="list-editor" data-list-editor-for="cfgSummaryGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增日报群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgSummaryGroups" type="hidden"></div>
                   <div class="list-field"><span>资源 / JM 群</span><div class="list-editor" data-list-editor-for="cfgResourceGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增资源群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgResourceGroups" type="hidden"></div>
                   <div class="list-field"><span>功能群</span><div class="list-editor" data-list-editor-for="cfgFeatureGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增功能群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgFeatureGroups" type="hidden"></div>
+                  <div class="list-field"><span>聊天总结群</span><div class="list-editor" data-list-editor-for="cfgConversationSummaryGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增聊天总结群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgConversationSummaryGroups" type="hidden"></div>
                   <div class="list-field"><span>长上下文群</span><div class="list-editor" data-list-editor-for="cfgLongGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增长上下文群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgLongGroups" type="hidden"></div>
                 </div>
               </section>
@@ -347,6 +348,11 @@
         </section>
 
         <section class="view" data-view-panel="diagnostics" hidden>
+          <section class="surface workspace-surface linux-diagnostics" id="conversationSummaryPanel" hidden>
+            <div class="section-head"><div><p class="eyebrow">群聊命令</p><h2>成员总结任务</h2></div><button type="button" id="refreshConversationSummaries">刷新</button></div>
+            <p class="diagnostic-notice" id="conversationSummaryNotice" role="status" aria-live="polite">尚未读取</p>
+            <div class="trace-table-wrap"><table class="trace-table"><thead><tr><th>时间 / 群</th><th>人数 / 范围</th><th>状态</th><th>模型</th></tr></thead><tbody id="conversationSummaryRows"></tbody></table></div>
+          </section>
           <section class="surface workspace-surface linux-diagnostics" id="messageTracePanel" hidden>
             <div class="section-head"><div><p class="eyebrow">实际处理记录</p><h2>最近消息</h2></div><button type="button" data-diagnostic-action="traces">刷新记录</button></div>
             <div class="trace-filters">
@@ -474,6 +480,7 @@
   <script type="module" src="./app.js?v=20260908-modules"></script>
   <link rel="stylesheet" href="./diagnostics.css?v=20260907">
   <script type="module" src="./diagnostics.js?v=20260908-modules"></script>
+  <script type="module" src="./conversation-summaries.js?v=20260911"></script>
   <link rel="stylesheet" href="./summaries.css?v=20260908">
   <script type="module" src="./summaries.js?v=20260908-modules"></script>
 </body>

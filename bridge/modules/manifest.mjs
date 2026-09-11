@@ -191,6 +191,16 @@ export const MODULE_DEFINITIONS = Object.freeze([
     privacy: "uses group chat history only for aggregated terms; no raw chat export",
   },
   {
+    id: "conversation-summary", name: "成员聊天总结", category: "content", enabled: true,
+    entrypoints: ["bridge/features/conversation-summary/", "bridge/commands/action-dispatcher.mjs"],
+    commands: ["总结我", "总结 @某人", "分别总结 @甲 @乙", "总结帮助"],
+    configFields: ["conversationSummaryGroupWhitelist"], editableConfigFields: ["conversationSummaryGroupWhitelist"],
+    healthChecks: ["target and time selection", "configured primary/fallback", "privacy epoch before sending"],
+    diagnostics: ["admin/conversation-summaries", "admin/status.modules.conversationSummary"],
+    tests: ["test/conversation-summary.test.mjs"], riskLevel: "medium",
+    privacy: "current-group text only, no profile input or updates, no raw transcript in task metadata",
+  },
+  {
     id: "api-providers",
     name: "API 快拆与模型路由",
     category: "core",

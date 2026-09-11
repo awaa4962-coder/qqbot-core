@@ -27,6 +27,7 @@ import { listMessageTraces } from "../diagnostics/message-trace.mjs";
 import { replayService } from "../diagnostics/replay.mjs";
 import { summaryManager } from "./summary-manager.mjs";
 import { adminTaskManager } from "./task-manager.mjs";
+import { conversationSummaryService } from "../features/conversation-summary/service.mjs";
 
 const GET_ROUTES = new Map([
   ["/admin/status", handleStatusRoute],
@@ -47,6 +48,7 @@ const GET_ROUTES = new Map([
   ["/admin/diagnose/replay", handleReplayReadRoute],
   ["/admin/summaries", handleSummariesReadRoute],
   ["/admin/tasks", handleTasksReadRoute],
+  ["/admin/conversation-summaries", handleConversationSummariesRoute],
 ]);
 
 const POST_ROUTES = new Map([
@@ -264,6 +266,11 @@ function handleSummariesReadRoute(_req, res, context) {
 function handleTasksReadRoute(_req, res, context) {
   try { context.sendJson(res, 200, adminTaskManager.snapshot(Object.fromEntries(context.url.searchParams))); }
   catch (error) { context.sendJson(res, 400, { error: error.message }); }
+}
+
+function handleConversationSummariesRoute(_req, res, context) {
+  try { context.sendJson(res, 200, conversationSummaryService.snapshot()); }
+  catch { context.sendJson(res, 503, { error: "暂时读不到成员总结任务，请稍后刷新。" }); }
 }
 
 async function handleTasksPostRoute(req, res, context) {

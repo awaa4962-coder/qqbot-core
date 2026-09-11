@@ -59,6 +59,7 @@ function buildRuntimeModules(now, memeStore) {
     commands: { enabled: true, health: "ready" },
     jm: buildJmModule(nowMs),
     groupSummary: buildGroupSummaryModule(),
+    conversationSummary: buildWhitelistModule(CFG.conversationSummaryGroupWhitelist),
     relationship: { enabled: true, health: "ready", exportReserved: true },
     memory: {
       enabled: true,
@@ -147,6 +148,7 @@ function buildConfigStatus() {
     summaryGroupWhitelist: CFG.summaryGroupWhitelist,
     resourceGroupWhitelist: CFG.resourceGroupWhitelist,
     featureGroupWhitelist: CFG.featureGroupWhitelist,
+    conversationSummaryGroupWhitelist: CFG.conversationSummaryGroupWhitelist,
     friendWhitelistCount: CFG.friendWhitelist.length,
     adminUins: CFG.adminUins,
     botNames: CFG.botNames,

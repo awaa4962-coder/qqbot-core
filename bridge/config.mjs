@@ -220,6 +220,7 @@ const GROUP_WHITELIST = readGroupWhitelist();
 const SUMMARY_GROUP_WHITELIST = readSummaryGroupWhitelist(GROUP_WHITELIST);
 const RESOURCE_GROUP_WHITELIST = readResourceGroupWhitelist(GROUP_WHITELIST);
 const FEATURE_GROUP_WHITELIST = readFeatureGroupWhitelist(GROUP_WHITELIST);
+const CONVERSATION_SUMMARY_GROUPS = _readOptionalListState('.env_conversation_summary_groups', 'QQBOT_CONVERSATION_SUMMARY_GROUPS', parseNumberList);
 const STICKER_GROUP_WHITELIST = readStickerGroupWhitelist(GROUP_WHITELIST);
 
 export const CFG = {
@@ -239,6 +240,7 @@ export const CFG = {
   summaryScheduler: String(process.env.QQBOT_SUMMARY_SCHEDULER || 'openclaw-cron').trim() || 'openclaw-cron',
   resourceGroupWhitelist: RESOURCE_GROUP_WHITELIST,
   featureGroupWhitelist: FEATURE_GROUP_WHITELIST,
+  conversationSummaryGroupWhitelist: CONVERSATION_SUMMARY_GROUPS.configured ? CONVERSATION_SUMMARY_GROUPS.values : [...FEATURE_GROUP_WHITELIST],
   stickerGroupWhitelist: STICKER_GROUP_WHITELIST,
   resourceMaxBytes: DEFAULT_RESOURCE_MAX_BYTES,
   jmPython: readJmPython(),

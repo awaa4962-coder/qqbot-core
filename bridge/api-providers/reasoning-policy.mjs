@@ -10,6 +10,7 @@ const MODE_IDS = new Set(REASONING_MODES.map(item => item.id));
 const ECONOMY_TASKS = new Set([
   "interjection",
   "group_summary",
+  "conversation_summary",
   "relationship_comment",
   "sticker_select",
   "vision",
