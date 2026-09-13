@@ -38,21 +38,25 @@ test("declared multi-fragment topics accept only evidence in their declared sour
   assert.deepEqual(document.topics[0].evidenceIds, ["E0390", "E0406"]);
 });
 
-test("undeclared cross-fragment references still fail instead of silently expanding scope", () => {
+test("source membership is computed from known evidence without a redundant model index", () => {
   const value = merged(); delete value.topics[0].sourceDiscussionIds;
-  assert.equal(parseSummaryDocumentResult(JSON.stringify(value), bundle).reason, "invalid_topic_evidence");
+  assert.deepEqual(parseSummaryDocument(JSON.stringify(value), bundle).topics[0].sourceDiscussionIds, ["D196", "D267"]);
 });
 
-test("unknown sources, invented evidence and unused source grants fail", () => {
+test("unknown sources, invented evidence and unrelated topic anchors fail", () => {
   for (const change of [
     topic => topic.sourceDiscussionIds.push("D999"),
     topic => topic.evidenceIds.push("E9999"),
-    topic => topic.sourceDiscussionIds.push("D302"),
     topic => { topic.id = "D302"; },
   ]) {
     const value = merged(); change(value.topics[0]);
     assert.equal(parseSummaryDocument(JSON.stringify(value), bundle), null);
   }
+});
+
+test("unused but valid declared sources are pruned rather than trusted or treated as a fatal error", () => {
+  const value = merged(); value.topics[0].sourceDiscussionIds.push("D302");
+  assert.deepEqual(parseSummaryDocument(JSON.stringify(value), bundle).topics[0].sourceDiscussionIds, ["D196", "D267"]);
 });
 
 test("legacy single-source documents remain readable", () => {
@@ -74,7 +78,8 @@ test("scoped rewrites keep a stable topic identity and cannot return multiple to
 
 test("prompt uses actual identifiers and distinguishes plans from completed outcomes", () => {
   const prompt = buildStructuredSummaryPrompt(bundle, { dateText });
-  assert.match(prompt, /"id":"D196","sourceDiscussionIds":\["D196"\]/);
+  assert.match(prompt, /"id":"D196"/);
+  assert.match(prompt, /来源片段由程序计算/);
   assert.doesNotMatch(prompt, /"id":"D001"|"E0001"/);
   assert.match(prompt, /快要过万.*接近过万/);
   assert.match(prompt, /同一件事跨多个片段/);
@@ -139,6 +144,8 @@ test("single-topic rewrite includes all original sources without unrelated fragm
   assert.match(plan.prompt(), /E0390/); assert.match(plan.prompt(), /E0406/);
   assert.doesNotMatch(plan.prompt(), /E0531/);
   assert.equal(plan.parse(JSON.stringify(merged())).ok, true);
+  const escaped = merged(); escaped.topics[0].evidenceIds.push("E0531");
+  assert.equal(plan.parse(JSON.stringify(escaped)).ok, false);
 });
 
 test("admin topic rewrite preserves merged evidence and handles generation failure without losing the draft", async t => {

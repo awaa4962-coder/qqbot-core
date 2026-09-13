@@ -29,19 +29,23 @@ function finishDocument(raw, topics, options) {
 
 function parseTopic(item, bundle) {
   if (!item || typeof item !== "object") return failed("invalid_topic");
-  const sources = item.sourceDiscussionIds ?? [item.id];
   const available = new Map(bundle.discussions.map(entry => [entry.id, entry]));
-  if (!Array.isArray(sources) || !sources.length || sources.length > 24 || !sources.includes(item.id) ||
-      new Set(sources).size !== sources.length || sources.some(id => !available.has(id))) return failed("invalid_source_discussions");
-  const valid = new Set(sources.flatMap(id => available.get(id).messages.map(entry => entry.evidenceId)));
-  if (!validReferences(item.evidenceIds, valid)) return failed("invalid_topic_evidence");
-  if (sources.some(id => !available.get(id).messages.some(entry => item.evidenceIds.includes(entry.evidenceId)))) return failed("unused_source_discussion");
+  if (!available.has(item.id) || !validDeclaredSources(item.sourceDiscussionIds, available)) return failed("invalid_source_discussions");
+  const owners = new Map(bundle.discussions.flatMap(entry => entry.messages.map(message => [message.evidenceId, entry.id])));
+  if (!validReferences(item.evidenceIds, owners)) return failed("invalid_topic_evidence");
+  // Source membership comes from trusted evidence, not a second model-maintained index.
+  const sources = [...new Set(item.evidenceIds.map(id => owners.get(id)))];
+  if (!sources.includes(item.id)) return failed("topic_anchor_mismatch");
   if (!["resolved", "open", "chat"].includes(item.status)) return failed("invalid_topic_status");
   if (!validText(item.title, 60) || !validText(item.body, 800)) return failed("invalid_topic_text");
   return { ok: true, topic: {
     id: item.id, sourceDiscussionIds: sources, title: redactSummaryText(item.title), body: redactSummaryText(item.body),
     status: item.status, evidenceIds: [...new Set(item.evidenceIds)],
   } };
+}
+
+function validDeclaredSources(sources, available) {
+  return sources === undefined || (Array.isArray(sources) && sources.length > 0 && sources.length <= 24 && sources.every(id => available.has(id)));
 }
 
 export function parseSummaryDocument(text, bundle, options = {}) {
