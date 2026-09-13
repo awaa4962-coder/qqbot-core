@@ -105,11 +105,39 @@ only the application layer without network access:
 docker build --pull=false \
   --build-arg BASE_IMAGE=qqfriend-bridge:linux-preview \
   -f Dockerfile.overlay \
-  -t qqfriend-bridge:1.4.8-member-summary ../..
+  -t qqfriend-bridge:1.4.9-security-patch ../..
 ```
 
 Use this only when `package-lock.json` and `scripts/requirements-jm.txt` have no
 dependency changes. A normal clean build remains the release baseline.
+
+All image recipes run `npm run check:dependencies` (via its Node script) to
+verify the installed sharp version against the lock and reject vulnerable
+sharp/libheif versions. An overlay does not install dependencies: for the
+1.4.9 security update, rebuild with `Dockerfile`, not an old 1.4.8 base overlay.
+After switching releases, run `docker compose exec -T bridge npm run check:dependencies`
+to verify the running container, not just the source package version.
+The patched baseline is sharp 0.35.4 with libheif 1.23.2; development-only
+js-yaml is locked to 4.3.2 and remains omitted from the production image.
+CI also runs `npm audit --audit-level=high`; the local version floor is not a
+substitute for checking newly published advisories.
+
+If Docker Hub cannot be reached but the npm registry is available, an accepted
+local Bridge image can supply the unchanged OS/Python runtime while **all**
+production npm dependencies are reinstalled from the new lock:
+
+```bash
+docker build --pull=false \
+  --build-arg BASE_IMAGE=qqfriend-bridge:1.4.8-member-summary-a218154 \
+  -f Dockerfile.dependencies \
+  -t qqfriend-bridge:1.4.9-security-patch ../..
+```
+
+This is not the offline source overlay. It runs `npm ci`, rechecks bundled
+7-Zip permissions, and verifies the loaded sharp/libheif versions. Use it only
+when the selected base was already accepted and OS/Python dependencies are
+unchanged; it does not patch the base OS or Python. Validate the candidate image
+before replacing the running Bridge, and retain its previous image for rollback.
 
 From a workstation, create tunnels without exposing either console:
 

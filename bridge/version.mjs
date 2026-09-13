@@ -4,11 +4,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.8-member-summary";
-export const VERSION_NAME = "member-summary";
+export const VERSION = "1.4.9-security-patch";
+export const VERSION_NAME = "security-patch";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
+  "修复图片解码依赖 sharp/libheif 的已知安全漏洞，更新开发工具的 js-yaml 安全补丁。",
+  "Linux 镜像增加实际依赖检查，防止覆盖源码时继续使用旧图片库；图片、表情与词云功能保持不变。",
   "新增成员聊天总结：@机器人 总结我，或 总结 @某人 @某人，普通群成员可用。",
   "默认最近两小时，可选今天、昨天和最近若干分钟/小时/天，支持分别总结，最多五人。",
   "聊天原话和必要引用背景交给 API，用自然的话讲清事情，不做人物画像或固定分析模板。",
@@ -17,6 +19,8 @@ export const VERSION_NOTES_ZH = Object.freeze([
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
+  "Updates sharp/libheif and the development-only js-yaml dependency to patched versions.",
+  "Verifies installed dependencies during Linux image builds; preserves image, sticker and wordcloud behavior.",
   "Adds mention-gated member conversation summaries for ordinary group members, with up to five targets.",
   "Supports recent time windows, calendar dates and combined or separate summaries of captured group text.",
   "Sends selected messages and necessary context directly to the configured API with a natural-language prompt, without profile inference.",

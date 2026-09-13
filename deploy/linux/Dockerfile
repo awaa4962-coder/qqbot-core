@@ -35,6 +35,8 @@ COPY napcat_bridge.mjs daily_summary.mjs ./
 COPY package.json CHANGELOG.md README.md ./
 COPY launcher/QQFriendLauncher/Web ./launcher/QQFriendLauncher/Web
 
+RUN node scripts/check-dependency-security.mjs
+
 RUN mkdir -p /config /data /logs /tmp/qqfriend \
     && chown -R node:node /config /data /logs /tmp/qqfriend
 

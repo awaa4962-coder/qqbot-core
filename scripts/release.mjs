@@ -345,6 +345,7 @@ async function runRelease(root, args) {
 
   ensureDist(root);
   if (!options.zipOnly) {
+    runCheck("dependencies", npmCommand(), ["run", "check:dependencies"], checks);
     runCheck("lint", npmCommand(), ["run", "lint"], checks);
     const testOutput = runCheck("test", npmCommand(), ["test"], checks);
     tests = testCount(testOutput);

@@ -1,0 +1,23 @@
+ARG BASE_IMAGE=qqfriend-bridge:linux-preview
+FROM ${BASE_IMAGE}
+
+USER root
+WORKDIR /app
+
+# Reuse only an accepted OS/Python runtime; reinstall all production npm packages.
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts=false \
+    && SEVEN_ZIP_PATH="$(node -p "require('7zip-bin').path7za")" \
+    && chmod 0755 "$SEVEN_ZIP_PATH" \
+    && "$SEVEN_ZIP_PATH" i >/dev/null \
+    && npm cache clean --force
+
+COPY --chown=node:node bridge ./bridge
+COPY --chown=node:node scripts ./scripts
+COPY --chown=node:node napcat_bridge.mjs daily_summary.mjs ./
+COPY --chown=node:node CHANGELOG.md README.md ./
+COPY --chown=node:node launcher/QQFriendLauncher/Web ./launcher/QQFriendLauncher/Web
+
+RUN node scripts/check-dependency-security.mjs
+
+USER node
