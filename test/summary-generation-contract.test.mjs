@@ -83,6 +83,9 @@ test("prompt uses actual identifiers and distinguishes plans from completed outc
   assert.doesNotMatch(prompt, /"id":"D001"|"E0001"/);
   assert.match(prompt, /快要过万.*接近过万/);
   assert.match(prompt, /同一件事跨多个片段/);
+  assert.ok(prompt.lastIndexOf("输出前再次核对") > prompt.indexOf("E0531"));
+  assert.match(prompt, /正过去.*已到场/);
+  assert.match(prompt, /不是已正式服役/);
 });
 
 test("in-budget input preserves the whole day instead of only five fragments", () => {
