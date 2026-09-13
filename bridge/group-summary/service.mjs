@@ -79,7 +79,8 @@ async function buildSummaryServiceResult(options) {
     return {
       ok: false,
       error: "generation_failed",
-      message: "日报生成失败：" + dateText + " / " + groupId,
+      reason: generated.reason,
+      message: "模型未生成通过证据校验的日报正文，本次未发送占位提要。请稍后在日报工作台重试：" + dateText + " / " + groupId,
       dateText,
       groupId,
       style: style.id,

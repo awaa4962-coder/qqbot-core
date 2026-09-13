@@ -24,19 +24,32 @@ export async function generateGroupSummaryResult(messages, options = {}) {
   const normalized = { ...options, dateText: options.dateText || formatDate() };
   const digest = options.digest || buildSummaryDigest(messages, normalized);
   const plan = createSummaryPlan(messages, normalized, digest);
+  let failureReason = "model_unavailable";
   options.onProgress?.("analyzing");
   if (plan.shouldGenerate) {
-    const prompt = plan.prompt();
-    for (const position of ["primary", "fallback"]) {
-      options.onProgress?.(position === "primary" ? "analyzing" : "fallback");
-      const injected = position === "primary" ? options.callPrimarySummary : options.callFallbackSummary;
-      const call = injected || (value => callSummarySlot(position, value, plan));
-      const result = await trySummarySlot(call, prompt, position, SLOT_SETTINGS[position].hint);
-      const rendered = result && plan.parse(result.text);
-      if (rendered) return { ...rendered, provider: result.provider, digest };
-    }
+    const generated = await generateFromSlots(plan, options);
+    if (generated.text) return { ...generated, digest };
+    failureReason = generated.reason;
   }
+  if (plan.structured && !plan.lowData) return { text: null, provider: "none", reason: failureReason, digest };
   return { ...plan.local(), provider: plan.lowData ? "local-low-data" : "local-fallback", digest };
+}
+
+async function generateFromSlots(plan, options) {
+  const prompt = plan.prompt();
+  let reason = "model_unavailable";
+  for (const position of ["primary", "fallback"]) {
+    options.onProgress?.(position === "primary" ? "analyzing" : "fallback");
+    const injected = position === "primary" ? options.callPrimarySummary : options.callFallbackSummary;
+    const call = injected || (value => callSummarySlot(position, value, plan));
+    const result = await trySummarySlot(call, prompt, position, SLOT_SETTINGS[position].hint);
+    if (!result) continue;
+    const rendered = plan.parse(result.text);
+    if (rendered.ok) return { ...rendered.value, provider: result.provider };
+    reason = rendered.reason;
+    log("group summary " + position + " validation rejected:", JSON.stringify({ provider: result.provider, reason }));
+  }
+  return { text: null, reason };
 }
 
 export async function generateGroupSummary(messages, options = {}) {
@@ -55,7 +68,7 @@ async function trySummarySlot(call, prompt, position, providerHint) {
     log("group summary " + position + " packet:", JSON.stringify({
       provider: result.provider, ok: packet.ok, finishReason: packet.finishReason, risks: packet.risks, lengths: packet.lengths,
     }));
-    return packet.ok ? { text: packet.text, provider: result.provider } : null;
+    return packet.ok && !packet.wasTruncated ? { text: packet.text, provider: result.provider } : null;
   } catch (error) { logE("group summary " + position + " failed:", error.message); return null; }
 }
 

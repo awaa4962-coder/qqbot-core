@@ -4,11 +4,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.9-security-patch";
-export const VERSION_NAME = "security-patch";
+export const VERSION = "1.4.10-summary-evidence";
+export const VERSION_NAME = "summary-evidence";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
+  "日报修复跨片段合并与证据校验冲突，预算内保留完整有效文字，减少漏掉当天主线。",
+  "正式日报生成失败时不再发送占位提要或登记已发送；保留主备模型与安全重试边界。",
   "修复图片解码依赖 sharp/libheif 的已知安全漏洞，更新开发工具的 js-yaml 安全补丁。",
   "Linux 镜像增加实际依赖检查，防止覆盖源码时继续使用旧图片库；图片、表情与词云功能保持不变。",
   "新增成员聊天总结：@机器人 总结我，或 总结 @某人 @某人，普通群成员可用。",
@@ -19,6 +21,8 @@ export const VERSION_NOTES_ZH = Object.freeze([
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
+  "Fixes merged-topic evidence validation and includes all effective daily text within a bounded input budget.",
+  "Failed structured generation no longer publishes a placeholder or marks the report as sent; fallback and delivery guards remain intact.",
   "Updates sharp/libheif and the development-only js-yaml dependency to patched versions.",
   "Verifies installed dependencies during Linux image builds; preserves image, sticker and wordcloud behavior.",
   "Adds mention-gated member conversation summaries for ordinary group members, with up to five targets.",

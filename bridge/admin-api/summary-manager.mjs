@@ -94,13 +94,15 @@ function revisionResult(revision) {
 }
 
 async function regenerateTopic(revision, input, options) {
-  if (!revision.document?.topics.some(item => item.id === input.discussionId)) throw new Error("请先选择结构化草稿中的讨论");
+  const topic = revision.document?.topics.find(item => item.id === input.discussionId);
+  if (!topic) throw new Error("请先选择结构化草稿中的讨论");
   assertSummaryEpoch(revision.privacyEpoch, options);
   const generated = await generateGroupSummaryResult(revision.bundle.discussions.flatMap(item => item.messages), {
     ...options, structured: true, bundle: revision.bundle, onlyDiscussionId: input.discussionId,
+    onlyDiscussionIds: topic.sourceDiscussionIds || [topic.id],
     style: "technical", lowMessageLimit: 0, label: dateLabel(revision.dateText), coverage: revision.coverage,
   });
-  const replacement = generated.document.topics.find(item => item.id === input.discussionId);
+  const replacement = generated.document?.topics.find(item => item.id === input.discussionId);
   if (!replacement) throw new Error("该讨论未生成可用结果");
   const document = { ...revision.document, headline: "", headlineEvidenceIds: [], topics: revision.document.topics.map(item => item.id === input.discussionId ? replacement : item) };
   const summary = renderSummaryDocument(document, revision.bundle, options);

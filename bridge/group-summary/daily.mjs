@@ -53,7 +53,7 @@ async function runDailySummaryForGroup(options) {
       beforeSend: payload => guard.markAttempt?.(payload),
     });
     markSentWhenSuccessful(guard, result);
-    log(result.ok && result.sent ? "sent" : "failed", { dateText, groupId, result: { ok: result.ok, sent: result.sent, provider: result.provider, error: result.error, revisionId: result.revisionId } });
+    log(result.ok && result.sent ? "sent" : "failed", { dateText, groupId, result: { ok: result.ok, sent: result.sent, provider: result.provider, error: result.error, reason: result.reason, revisionId: result.revisionId } });
     return { groupId, ...result };
   } catch (error) {
     log("error", { dateText, groupId, error: error.message });
