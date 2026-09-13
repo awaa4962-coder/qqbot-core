@@ -19,28 +19,28 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+COPY --chown=node:node package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts=false \
     && SEVEN_ZIP_PATH="$(node -p "require('7zip-bin').path7za")" \
     && chmod 0755 "$SEVEN_ZIP_PATH" \
     && "$SEVEN_ZIP_PATH" i >/dev/null \
     && npm cache clean --force
 
-COPY scripts/requirements-jm.txt ./scripts/requirements-jm.txt
+COPY --chown=node:node scripts/requirements-jm.txt ./scripts/requirements-jm.txt
 RUN pip install --no-cache-dir --index-url "$PIP_INDEX_URL" -r scripts/requirements-jm.txt
 
-COPY bridge ./bridge
-COPY scripts ./scripts
-COPY napcat_bridge.mjs daily_summary.mjs ./
-COPY package.json CHANGELOG.md README.md ./
-COPY launcher/QQFriendLauncher/Web ./launcher/QQFriendLauncher/Web
-
-RUN node scripts/check-dependency-security.mjs
+COPY --chown=node:node bridge ./bridge
+COPY --chown=node:node scripts ./scripts
+COPY --chown=node:node napcat_bridge.mjs daily_summary.mjs ./
+COPY --chown=node:node package.json CHANGELOG.md README.md ./
+COPY --chown=node:node launcher/QQFriendLauncher/Web ./launcher/QQFriendLauncher/Web
 
 RUN mkdir -p /config /data /logs /tmp/qqfriend \
     && chown -R node:node /config /data /logs /tmp/qqfriend
 
 USER node
+
+RUN node scripts/check-dependency-security.mjs
 
 ENV QQBOT_CONFIG_ROOT=/config \
     QQBOT_DATA_DIR=/data \

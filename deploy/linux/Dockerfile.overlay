@@ -11,6 +11,5 @@ COPY --chown=node:node package.json package-lock.json CHANGELOG.md README.md ./
 COPY --chown=node:node launcher/QQFriendLauncher/Web ./launcher/QQFriendLauncher/Web
 
 # An offline source overlay must not disguise vulnerable or stale image binaries.
-RUN node scripts/check-dependency-security.mjs
-
 USER node
+RUN node scripts/check-dependency-security.mjs

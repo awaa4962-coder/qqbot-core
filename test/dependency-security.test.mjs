@@ -47,8 +47,16 @@ test("all Linux image recipes verify the actual image dependencies", () => {
 
 test("dependency refresh rebuilds npm packages while preserving the accepted Python runtime", () => {
   const source = fs.readFileSync(new URL("../deploy/linux/Dockerfile.dependencies", import.meta.url), "utf8");
-  assert.match(source, /COPY package\.json package-lock\.json[\s\S]*RUN npm ci --omit=dev/);
+  assert.match(source, /COPY --chown=node:node package\.json package-lock\.json[\s\S]*RUN npm ci --omit=dev/);
   assert.match(source, /chmod 0755 "\$SEVEN_ZIP_PATH"/);
   assert.doesNotMatch(source, /pip install|apt-get|USER root\s*$/);
-  assert.match(source, /USER node\s*$/);
+  assert.match(source, /USER node\s+RUN node scripts\/check-dependency-security\.mjs\s*$/);
+});
+
+test("image manifests remain readable and validation runs as the real non-root user", () => {
+  for (const name of ["Dockerfile", "Dockerfile.overlay", "Dockerfile.dependencies"]) {
+    const source = fs.readFileSync(new URL(`../deploy/linux/${name}`, import.meta.url), "utf8");
+    assert.match(source, /COPY --chown=node:node package\.json package-lock\.json/);
+    assert.match(source, /USER node\s+RUN node scripts\/check-dependency-security\.mjs/);
+  }
 });
