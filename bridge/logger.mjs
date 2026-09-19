@@ -4,6 +4,7 @@ import fs, { createWriteStream } from 'node:fs';
 import path from 'node:path';
 import { CFG } from './config.mjs';
 import { monotonicNow } from './runtime-clock.mjs';
+import { redactSensitiveText } from './privacy.mjs';
 
 fs.mkdirSync(CFG.logDir, { recursive: true });
 
@@ -20,10 +21,12 @@ function _markConsoleBroken(err) {
 process.stdout.on('error', _markConsoleBroken);
 process.stderr.on('error', _markConsoleBroken);
 
-function writeConsole(stream, line) {
+function writeConsole(stream, line, synchronous = false) {
   if (_consoleBroken) return;
   try {
-    stream.write(line + '\n');
+    const output = redactSensitiveText(line) + '\n';
+    if (synchronous) fs.writeSync(stream.fd, output);
+    else stream.write(output);
   } catch (err) {
     if (!_markConsoleBroken(err)) {
       try { logFile('C', '[console-write-error] ' + err.message); } catch {}
@@ -63,6 +66,7 @@ function _ensureLogStream() {
 }
 
 export function logFile(level, line) {
+  line = redactSensitiveText(line);
   _ensureLogStream();
   if (_logTruncated && _logStreamBytes < 1024) {
     _logStream.write(line + '\n');
@@ -108,6 +112,7 @@ function _checkLogStorm() {
     writeConsole(process.stderr, warn);
     logFile('S', warn);
   }
+  return !_logStormUntilMono || now >= _logStormUntilMono;
 }
 
 // ── 3. 处理中任务计数 ──
@@ -117,27 +122,38 @@ export function incProcessingCount() { _processingCount++; }
 export function decProcessingCount() { if (_processingCount > 0) _processingCount--; }
 
 // ── 4. 致命异常 ──
-let _fatalCount = 0;
-let _fatalWindowStart = monotonicNow();
-process.on('uncaughtException', (err) => {
-  writeConsole(process.stderr, '[FATAL] uncaughtException: ' + err.message);
-  _fatalCount++;
-  const now = monotonicNow();
-  if (now - _fatalWindowStart > 60000) { _fatalCount = 1; _fatalWindowStart = now; }
-  if (_fatalCount > 10) {
-    writeConsole(process.stderr, '[FATAL] too many fatal errors, suppressing detail');
-    return;
+let _fatalShutdown = false;
+const FATAL_EXIT_DEADLINE_MS = 1000;
+
+function handleFatal(origin, reason) {
+  if (_fatalShutdown) return;
+  _fatalShutdown = true;
+  process.exitCode = 1;
+  // Keep this timer referenced: even a stalled asynchronous cleanup must exit.
+  setTimeout(() => process.exit(1), FATAL_EXIT_DEADLINE_MS);
+  const message = fatalMessage(reason);
+  const line = '[FATAL] ' + origin + ': ' + message;
+  writeConsole(process.stderr, line, true);
+  try { logFile('F', line); } catch {}
+  try {
+    process.emit('qqfriend:fatal', { origin, message, deadlineMs: FATAL_EXIT_DEADLINE_MS });
+  } catch (error) {
+    writeConsole(process.stderr, '[FATAL] cleanup hook failed: ' + fatalMessage(error), true);
+  } finally {
+    cleanupLogger();
   }
-  try { logFile('F', '[FATAL] uncaughtException: ' + err.message + '\n' + (err.stack?.slice(0, 300)||'')); } catch {}
-});
-process.on('unhandledRejection', (reason) => {
-  writeConsole(process.stderr, '[FATAL] unhandledRejection: ' + (reason?.message || reason));
-  _fatalCount++;
-  const now = monotonicNow();
-  if (now - _fatalWindowStart > 60000) { _fatalCount = 1; _fatalWindowStart = now; }
-  if (_fatalCount > 10) return;
-  try { logFile('F', '[FATAL] unhandledRejection: ' + (reason?.message || reason) + '\n' + (reason?.stack?.slice(0, 300)||'')); } catch {}
-});
+}
+
+function fatalMessage(reason) {
+  try {
+    return redactSensitiveText(String(reason?.stack || reason?.message || reason)).slice(0, 1000);
+  } catch {
+    return 'error details unavailable';
+  }
+}
+
+process.on('uncaughtException', error => handleFatal('uncaughtException', error));
+process.on('unhandledRejection', reason => handleFatal('unhandledRejection', reason));
 
 // ── 4.5. 风暴状态导出 ──
 export function getStormStatus() {
@@ -153,18 +169,16 @@ export function getStormStatus() {
 
 // ── 5. 日志函数（带风暴保护）──
 export function log(...args) {
+  if (!_checkLogStorm()) return;
   const line = '[' + new Date().toISOString().slice(11, 19) + '] ' + args.join(' ');
   writeConsole(process.stdout, line);
-  _checkLogStorm();
-  if (_logStormUntilMono && monotonicNow() < _logStormUntilMono) return;
   try { logFile('I', line); } catch(e) { writeConsole(process.stderr, '[log-file-err] ' + e.message); }
 }
 
 export function logE(...args) {
+  if (!_checkLogStorm()) return;
   const line = '[' + new Date().toISOString().slice(11, 19) + '] [E] ' + args.join(' ');
   writeConsole(process.stderr, line);
-  _checkLogStorm();
-  if (_logStormUntilMono && monotonicNow() < _logStormUntilMono) return;
   try { logFile('E', line); } catch(e) { writeConsole(process.stderr, '[log-file-err] ' + e.message); }
 }
 

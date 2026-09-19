@@ -4,6 +4,7 @@ import { clearUserMemoryProfile, getActiveMemoryContext } from "./memory-profile
 import { clearUserCacheUsage } from "./api-providers/usage-metrics.mjs";
 import { clearMessageFeatureCache } from "./context/relevance.mjs";
 import { forgetSummaryUser } from "./group-summary/journal.mjs";
+import { containsSensitiveText, redactSensitiveText } from "./privacy.mjs";
 
 const DEFAULT_STYLE = Object.freeze({
   length: "normal",
@@ -62,7 +63,7 @@ export function getUserPreferences(uid, store = users) {
 
 export function getPreferredDisplayName(uid, fallbackName = "", options = {}) {
   const pref = getUserPreferences(uid, options.users || users);
-  return pref.displayName || fallbackName || "unknown";
+  return redactSensitiveText(pref.displayName || fallbackName || "unknown");
 }
 
 export function setUserStylePreference(uid, rawText, options = {}) {
@@ -165,12 +166,13 @@ export function buildSelfProfileText(uid, groupId, options = {}) {
 export function buildPrivacyText() {
   return [
     "夜星隐私说明",
-    "1. 只保存摘要、偏好和互动统计，不展示聊天原文。",
+    "1. 保存有限的脱敏群聊片段、摘要、偏好和互动统计；关系卡不展示聊天原文。",
     "2. 群内关系只在当前群展示，私聊内容不拿到群里说。",
-    "3. API key、手机号、身份证、密码等敏感内容会被过滤。",
+    "3. 会按规则脱敏 API key、手机号、身份证和密码；未知格式可能漏检，请勿发送凭据。",
     "4. 回复风格和称呼只影响夜星怎么回复你，不改变安全规则。",
     "5. API 缓存统计只保存加盐匿名键和 token 数，最多保留 30 天，不保存提示词或回复正文。",
     "6. 发送 @夜星 忘记我 可以清理你的画像、偏好、关系缓存、缓存统计和个人聊天记忆。",
+    "7. 日报和聊天总结会将所选脱敏群记录交给配置的模型，管理员工作台可查看相关证据；既有备份需管理员另行处理。",
   ].join("\n");
 }
 
@@ -183,6 +185,9 @@ export function forgetUserData(uid, options = {}) {
   if (userStore[id]) {
     userStore[id].chats = [];
     userStore[id].description = "";
+    userStore[id].profile = "";
+    userStore[id].alias = "";
+    userStore[id].nicknames = [];
     userStore[id].preferences = {};
     userStore[id].relationshipComments = {};
     userStore[id].profileGeneratedAt = 0;
@@ -193,6 +198,7 @@ export function forgetUserData(uid, options = {}) {
     for (const entry of entries) {
       if (String(entry.uid) === id) {
         entry.text = "[已按用户请求清除]";
+        entry.nickname = "unknown";
         delete entry.imageUrls;
       }
     }
@@ -241,7 +247,7 @@ export function buildMinimalPreferenceContextBlock(uid, options = {}) {
 export function parseStylePreference(rawText) {
   const value = String(rawText || "").trim();
   if (!value) return { ok: false, reason: "empty", text: "请在“回复风格”后面写偏好，比如：简短 技术 少吐槽。" };
-  if (UNSAFE_STYLE_RE.test(value) || SENSITIVE_RE.test(value)) {
+  if (UNSAFE_STYLE_RE.test(value) || SENSITIVE_RE.test(value) || containsSensitiveText(value)) {
     return { ok: false, reason: "unsafe", text: "这个回复风格不适合保存。可以设置简短、技术、温柔、少吐槽这类表达偏好。" };
   }
   const tokens = tokenizeStyle(value);
@@ -309,7 +315,7 @@ function profileConfidence(ctx = {}) {
 
 function normalizePreferences(preferences = {}) {
   return {
-    displayName: String(preferences.displayName || "").trim(),
+    displayName: redactSensitiveText(preferences.displayName).trim(),
     style: normalizeStyle(preferences.style),
   };
 }
@@ -325,7 +331,7 @@ function sanitizeDisplayName(name) {
   const value = String(name || "").trim().replace(/\s+/g, "");
   if (!value) return { ok: false, text: "称呼不能为空。" };
   if (value.length > 16) return { ok: false, text: "称呼太长了，控制在 16 个字符以内吧。" };
-  if (SENSITIVE_RE.test(value) || /[@\r\n]/.test(value)) return { ok: false, text: "这个称呼不适合保存。" };
+  if (SENSITIVE_RE.test(value) || containsSensitiveText(value) || /[@\r\n]/.test(value)) return { ok: false, text: "这个称呼不适合保存。" };
   return { ok: true, value };
 }
 
@@ -344,6 +350,9 @@ function compactStyle(style = {}) {
     styleValue("tone", normalized.tone),
     styleValue("humor", normalized.humor),
     styleValue("examples", normalized.examples),
+    styleValue("directness", normalized.directness),
+    styleValue("emoji", normalized.emoji),
+    styleValue("formality", normalized.formality),
   ].join(" / ");
 }
 

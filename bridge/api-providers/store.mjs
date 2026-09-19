@@ -70,8 +70,10 @@ export function loadApiConfig(options = {}) {
   try {
     const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
     config = normalizeStoredConfig(parsed, defaults);
-  } catch {
-    // Invalid or missing runtime config falls back to the built-in routes.
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw new Error("API 配置无效或无法读取，请修复配置或回滚；已停止模型调用");
+    }
   }
   CONFIG_CACHE.set(file, { stamp, value: config });
   return cloneApiConfig(config);
@@ -112,15 +114,24 @@ export function readProviderSecret(provider, options = {}) {
 
 export function buildApiConfigSnapshot(options = {}) {
   const root = options.root || ROOT;
-  const config = loadApiConfig({ root });
+  let config;
+  let configurationError = null;
+  try {
+    config = loadApiConfig({ root });
+  } catch (error) {
+    // A recovery view must never present default routes as the active saved config.
+    configurationError = error.message;
+    config = { schemaVersion: 2, revision: 0, updatedAt: null, providers: {}, routes: {} };
+  }
   return {
     schemaVersion: config.schemaVersion,
     revision: config.revision,
     updatedAt: config.updatedAt,
     providers: Object.values(config.providers).map(provider => publicProvider(provider, { root })),
-    routes: cloneRoutes(config.routes),
+    configurationError,
+    routes: configurationError ? {} : cloneRoutes(config.routes),
     reasoningModes: listReasoningModes(),
-    tasks: TASK_IDS.map(id => ({
+    tasks: configurationError ? [] : TASK_IDS.map(id => ({
       id,
       name: taskName(id),
       defaultReasoning: defaultReasoningMode(id),
@@ -148,6 +159,11 @@ export function saveApiProvider(payload, options = {}) {
     throw new Error("要修改的 API 实例不存在，请刷新后重试");
   }
   const provider = normalizeProviderPayload({ ...payload, id }, existing);
+  if (provider.enabled === false && Object.values(config.routes).some(item =>
+    item.primary === provider.id || item.fallback === provider.id
+  )) {
+    throw new Error("这个 API 仍在任务插槽中，先切换插槽再停用");
+  }
   writeProviderSecret(provider, payload?.key, { root });
   config.providers[provider.id] = provider;
   persistConfig(config, { root, backup: true });
@@ -240,14 +256,14 @@ function route(primary, fallback, task) {
 }
 
 function normalizeStoredConfig(value, defaults) {
-  const source = value && typeof value === "object" ? value : {};
+  if (!isConfigObject(value) || !isConfigObject(value.providers) || !isConfigObject(value.routes)) {
+    throw new Error("API 配置结构无效");
+  }
+  const source = value;
   const providers = { ...defaults.providers };
   for (const [id, item] of Object.entries(source.providers || {})) {
-    try {
-      providers[id] = normalizeProviderPayload({ ...item, id }, providers[id]);
-    } catch {
-      // Keep the last valid/default provider instead of breaking startup.
-    }
+    if (!isConfigObject(item)) throw new Error("API 实例配置无效");
+    providers[id] = normalizeProviderPayload({ ...item, id }, providers[id]);
   }
   const base = {
     schemaVersion: 2,
@@ -256,9 +272,13 @@ function normalizeStoredConfig(value, defaults) {
     routes: defaults.routes,
     updatedAt: typeof source.updatedAt === "string" ? source.updatedAt : null,
   };
-  base.routes = normalizeRoutes(source.routes || {}, base, { partial: true });
+  base.routes = normalizeRoutes(source.routes, base);
   if (!Object.prototype.hasOwnProperty.call(source.routes || {}, "conversation_summary")) base.routes.conversation_summary = { ...base.routes.group_summary };
   return base;
+}
+
+function isConfigObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function normalizeProviderPayload(payload, existing = null) {
@@ -291,7 +311,7 @@ function normalizeProviderPayload(payload, existing = null) {
   return provider;
 }
 
-function normalizeRoutes(payload, config, options = {}) {
+function normalizeRoutes(payload, config) {
   const source = payload && typeof payload === "object" ? payload : {};
   const result = cloneRoutes(config.routes);
   for (const task of TASK_IDS) {
@@ -299,13 +319,13 @@ function normalizeRoutes(payload, config, options = {}) {
     const candidate = source[task] || {};
     const primary = normalizeProviderReference(candidate.primary, config.providers, false);
     const fallback = normalizeProviderReference(candidate.fallback, config.providers, true);
-    if (!options.partial && candidate.reasoning !== undefined && !isReasoningMode(candidate.reasoning)) {
+    if (candidate.reasoning !== undefined && !isReasoningMode(candidate.reasoning)) {
       throw new Error("不支持的思考档位：" + String(candidate.reasoning));
     }
     const reasoning = normalizeReasoningMode(candidate.reasoning ?? result[task]?.reasoning, task);
     result[task] = { primary, fallback, reasoning };
   }
-  if (!options.partial && result.group_chat.fallback !== "deepseek") {
+  if (result.group_chat.fallback !== "deepseek") {
     throw new Error("群聊 DeepSeek 兜底为受保护插槽，不能清空或替换");
   }
   return result;

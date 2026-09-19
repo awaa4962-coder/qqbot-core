@@ -138,6 +138,18 @@ const TECH_KEYWORDS = ['代码','npm','node','error','bug','报错','修复','�
 
 const JOKE_KEYWORDS = ['哈哈','哈哈哈','草','笑死','乐','绷','6','太草了','笑不活了','笑死我了','抽象','乐死','草生','搞笑','整活','烂活','好活','顶级理解'];
 
+export function scopeRelationshipUser(user, groupId) {
+  if (!user) return null;
+  const chats = (Array.isArray(user.chats) ? user.chats : []).filter(chat => String(chat.group) === String(groupId));
+  if (!chats.length) return null;
+  const timestamps = chats.map(chat => Number(chat.ts)).filter(time => Number.isFinite(time) && time > 0);
+  return {
+    chats,
+    nicknames: [...new Set(chats.map(chat => chat.nickname).filter(Boolean))],
+    firstSeen: timestamps.length ? Math.min(...timestamps) : null,
+  };
+}
+
 /**
  * 从用户数据计算关系画像
  * @param {Object} user - users[uid]

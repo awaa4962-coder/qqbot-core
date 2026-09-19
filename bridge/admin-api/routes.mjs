@@ -3,7 +3,6 @@
 import {
   isAuthorizedAdminRequest,
   adminForbiddenPayload,
-  isTrustedManagementAddress,
 } from "./auth.mjs";
 import { buildAuditStatus, recordAdminAudit } from "./audit-log.mjs";
 import { applyApiProviderAction, buildApiProviderManagerSnapshot } from "./api-provider-manager.mjs";
@@ -73,22 +72,15 @@ export async function handleAdminApiRequest(req, res, context = {}) {
   if (!sendJson) throw new Error("sendJson is required");
 
   if (!pathname.startsWith("/admin/")) return false;
-  if (pathname === STICKER_PREVIEW_PATH) {
-    // WebView image tags cannot attach the admin token. Keep this opaque-ID route loopback-only.
-    if (!isTrustedManagementAddress(req.socket?.remoteAddress, {
-      containerized: context.containerized,
-    })) {
-      sendJson(res, 403, adminForbiddenPayload());
-      return true;
-    }
-    await handleStickerPreviewRoute(req, res, { ...context, pathname, url, sendJson });
-    return true;
-  }
   if (!isAuthorizedAdminRequest(req, {
     containerized: context.containerized,
     requiredToken: context.requiredToken,
   })) {
     sendJson(res, 403, adminForbiddenPayload());
+    return true;
+  }
+  if (pathname === STICKER_PREVIEW_PATH) {
+    await handleStickerPreviewRoute(req, res, { ...context, pathname, url, sendJson });
     return true;
   }
 
@@ -111,7 +103,7 @@ async function handleStickerPreviewRoute(req, res, context) {
     "Cache-Control": "private, max-age=300",
     "Content-Length": String(preview.buffer.length),
     "Content-Type": preview.mimeType,
-    "Cross-Origin-Resource-Policy": "cross-origin",
+    "Cross-Origin-Resource-Policy": "same-origin",
     "X-Content-Type-Options": "nosniff",
   });
   res.end(preview.buffer);

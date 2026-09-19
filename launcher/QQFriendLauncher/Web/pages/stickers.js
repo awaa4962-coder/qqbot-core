@@ -1,5 +1,13 @@
 import { $, escapeHtml, fmt, splitList } from "../ui/dom.js";
-import { uiState } from "../ui/state.js";
+import { host, uiState } from "../ui/state.js";
+
+const previewSessions = new Map();
+window.addEventListener("pagehide", disposeStickerPreviews);
+
+export function disposeStickerPreviews() {
+  for (const session of previewSessions.values()) session.dispose();
+  previewSessions.clear();
+}
 
 export function renderStickers(snapshot, options = {}) {
   uiState.stickerSnapshot = snapshot || { entries: [], settings: {}, counts: {}, stats: {} };
@@ -158,7 +166,7 @@ export function filterStickerEntries(entries, filter) {
 export function stickerImageMarkup(entry, alt, lazy = true) {
   const lazyAttribute = lazy ? ' data-lazy="true"' : "";
   return [
-    `<img data-sticker-preview data-state="loading" data-src="${escapeHtml(stickerPreviewUrl(entry))}" alt="${escapeHtml(alt)}" decoding="async" referrerpolicy="no-referrer"${lazyAttribute}>`,
+    `<img data-sticker-preview data-state="loading" data-preview-id="${escapeHtml(entry?.id || "")}" data-preview-version="${Number(entry?.lastSeenAt || entry?.analyzedAt || 0)}" data-src="${escapeHtml(stickerPreviewUrl(entry))}" alt="${escapeHtml(alt)}" decoding="async" referrerpolicy="no-referrer"${lazyAttribute}>`,
     '<span class="sticker-image-fallback">加载中</span>',
   ].join("");
 }
@@ -169,15 +177,57 @@ export function stickerPreviewUrl(entry) {
     ? configuredPort
     : 16789;
   const version = Number(entry?.lastSeenAt || entry?.analyzedAt || 0);
-  return `http://127.0.0.1:${port}/admin/stickers/image?id=${encodeURIComponent(entry?.id || "")}&v=${version}`;
+  const origin = host.mode === "browser" ? "" : `http://127.0.0.1:${port}`;
+  return `${origin}/admin/stickers/image?id=${encodeURIComponent(entry?.id || "")}&v=${version}`;
 }
 
 export function bindStickerImageFallbacks(root) {
   if (!root) return;
   uiState.stickerImageObservers.get(root)?.disconnect();
+  previewSessions.get(root)?.dispose();
   const images = [...root.querySelectorAll("img[data-sticker-preview]")];
+  const urls = new Set();
+  const queue = [];
+  const controller = window.AbortController ? new window.AbortController() : null;
+  let disposed = false;
+  let active = 0;
+  const session = { dispose() {
+    disposed = true;
+    controller?.abort();
+    queue.length = 0;
+    uiState.stickerImageObservers.get(root)?.disconnect();
+    for (const url of urls) window.URL.revokeObjectURL(url);
+    urls.clear();
+  } };
+  previewSessions.set(root, session);
+  const showFallback = image => {
+    if (disposed) return;
+    image.dataset.state = "failed";
+    image.hidden = true;
+    const fallback = image.nextElementSibling;
+    if (fallback) { fallback.textContent = "预览暂不可用"; fallback.removeAttribute("hidden"); }
+  };
+  const pump = () => {
+    while (!disposed && active < 4 && queue.length) {
+      const image = queue.shift();
+      active++;
+      host.call("getStickerPreview", { id: image.dataset.previewId, version: image.dataset.previewVersion, signal: controller?.signal })
+        .then(blob => {
+          if (disposed) return;
+          const url = window.URL.createObjectURL(blob);
+          urls.add(url);
+          image.src = url;
+        })
+        .catch(() => showFallback(image))
+        .finally(() => { active--; pump(); });
+    }
+  };
   const loadImage = (image) => {
-    if (!image.src && image.dataset.src) image.src = image.dataset.src;
+    if (disposed || image.dataset.requested) return;
+    image.dataset.requested = "true";
+    if (host.mode !== "browser") { if (image.dataset.src) image.src = image.dataset.src; return; }
+    queue.push(image);
+    pump();
   };
   images.forEach((image) => {
     const fallback = image.nextElementSibling;
@@ -186,15 +236,7 @@ export function bindStickerImageFallbacks(root) {
       image.hidden = false;
       fallback?.setAttribute("hidden", "");
     }, { once: true });
-    const showFallback = () => {
-      image.dataset.state = "failed";
-      image.hidden = true;
-      if (fallback) {
-        fallback.textContent = "预览暂不可用";
-        fallback.removeAttribute("hidden");
-      }
-    };
-    image.addEventListener("error", showFallback, { once: true });
+    image.addEventListener("error", () => showFallback(image), { once: true });
     if (image.dataset.lazy !== "true") loadImage(image);
   });
   const lazyImages = images.filter((image) => image.dataset.lazy === "true");

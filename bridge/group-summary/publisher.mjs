@@ -4,7 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { CFG } from "../config.mjs";
 import { isSuccessfulOutbound } from "../cognition/outcome.mjs";
 import { normalizeOutboundText, sendTextToGroup, splitLongText } from "../outbound-message.mjs";
-import { createDailySummaryGuard } from "./guard.mjs";
+import { createDailySummaryGuard, summarySkipResult } from "./guard.mjs";
 import { assertSummaryEpoch, readSummaryJson, summaryKey, writeSummaryJson } from "./state.mjs";
 
 export function deliveryDirectory(options = {}) {
@@ -26,10 +26,10 @@ export async function publishSummary(result, options = {}) {
   if (!(options.groupWhitelist || CFG.summaryGroupWhitelist).map(String).includes(String(result.groupId))) throw new Error("该群未启用日报");
   const hash = createHash("sha256").update(normalizeOutboundText(result.summary)).digest("hex");
   const previous = readSummaryDelivery(result.dateText, result.groupId, options);
-  if (!options.resume && ["partial", "unconfirmed", "invalid_marker"].includes(previous.status)) return { ...result, ok: true, sent: false, skipped: true, reason: "previous_attempt_unconfirmed", publicationManaged: true };
+  if (!options.resume && ["partial", "unconfirmed", "invalid_marker"].includes(previous.status)) return summarySkipResult("previous_attempt_unconfirmed", { ...result, publicationManaged: true });
   validateResume(result, previous, hash, options);
   const guard = options.guard || createDailySummaryGuard({ dateText: result.dateText, groupId: result.groupId, rootDir: deliveryDirectory(options), recoverUnconfirmed: options.resume === true });
-  if (!guard.ok) return { ...result, ok: true, sent: false, skipped: true, reason: guard.reason, publicationManaged: true };
+  if (!guard.ok) return summarySkipResult(guard.reason, { ...result, publicationManaged: true });
   try {
     const latest = readSummaryDelivery(result.dateText, result.groupId, options);
     validateResume(result, latest, hash, options);
@@ -80,7 +80,7 @@ async function sendReportChunks(result, options) {
       record.status = rejectedStatus(receipt, record.completed);
       persist();
       if (record.status === "failed") options.guard.markFailed?.();
-      return { ...result, ok: false, sent: false, error: "send_failed", publicationManaged: true, delivery: record,
+      return { ...result, ok: false, sent: false, pending: record.status !== "failed", error: "send_failed", publicationManaged: true, delivery: record,
         message: record.status === "failed" ? "发送已确认失败，可以稍后重试。" : "发送未全部确认，请在日报工作台核实，系统不会整篇重发。" };
     }
     record.completed = index + 1;

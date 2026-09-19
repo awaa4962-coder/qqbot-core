@@ -47,11 +47,15 @@
     if (action === "refresh") return buildBrowserSnapshot();
     if (action === "refreshStatus") return apiRequest("/admin/status");
     if (action === "getCapabilities") return apiRequest("/admin/capabilities");
-    if (action === "getLogs") return apiRequest("/admin/logs?tail=120");
+    if (action === "getLogs" || action === "refreshLogs") return apiRequest("/admin/logs?tail=120");
     if (action === "getConfig" || action === "refreshConfig") return apiRequest("/admin/config");
     if (action === "getApiProviders") return apiRequest("/admin/api-providers");
     if (action === "getMemes") return apiRequest("/admin/memes");
     if (action === "getStickers") return apiRequest("/admin/stickers");
+    if (action === "getStickerPreview") {
+      const query = "?id=" + encodeURIComponent(payload.id || "") + "&v=" + encodeURIComponent(payload.version || 0);
+      return apiRequest("/admin/stickers/image" + query, { responseType: "blob", signal: payload.signal }, false);
+    }
     if (action === "getBackground") return getBrowserBackground();
     if (action === "setBackground") return setBrowserBackground(payload);
     if (action === "chooseBackgroundImage") return chooseBrowserBackground();
@@ -134,18 +138,38 @@
   }
 
   async function apiRequest(path, options = {}, allowPrompt = true) {
-    const headers = { Accept: "application/json" };
+    const headers = { Accept: options.responseType === "blob" ? "image/*" : "application/json" };
     const token = readAdminToken();
     if (token) headers["X-QQFriend-Admin-Token"] = token;
     if (options.body !== undefined) headers["Content-Type"] = "application/json; charset=utf-8";
 
-    const response = await global.fetch(path, {
-      method: options.method || "GET",
-      headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      cache: "no-store",
-      credentials: "same-origin",
-    });
+    let response;
+    let payload;
+    const controller = global.AbortController ? new global.AbortController() : null;
+    const abort = () => controller?.abort();
+    if (options.signal?.aborted) abort();
+    else options.signal?.addEventListener("abort", abort, { once: true });
+    const timer = controller && (!options.method || options.method === "GET")
+      ? global.setTimeout(() => controller.abort(), 30_000) : null;
+    try {
+      response = await global.fetch(path, {
+        method: options.method || "GET",
+        headers,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        cache: "no-store",
+        credentials: "same-origin",
+        redirect: "error",
+        signal: controller?.signal || options.signal,
+      });
+      payload = options.responseType === "blob" && response.ok
+        ? await response.blob() : await readResponsePayload(response);
+    } catch (error) {
+      error.transportFailure = true;
+      throw error;
+    } finally {
+      if (timer !== null) global.clearTimeout(timer);
+      options.signal?.removeEventListener("abort", abort);
+    }
     if (response.status === 403 && allowPrompt) {
       const entered = global.prompt("请输入 Linux 控制台管理令牌。令牌只保存在当前标签页。", "");
       if (entered && entered.trim()) {
@@ -153,10 +177,11 @@
         return apiRequest(path, options, false);
       }
     }
-    const payload = await readResponsePayload(response);
     if (!response.ok) {
-      if (response.status === 403) global.sessionStorage.removeItem(TOKEN_KEY);
-      throw new Error(payload.error || `管理接口返回 ${response.status}`);
+      if (response.status === 403 && readAdminToken() === token) global.sessionStorage.removeItem(TOKEN_KEY);
+      const error = new Error(payload.error || `管理接口返回 ${response.status}`);
+      error.status = response.status;
+      throw error;
     }
     return payload;
   }

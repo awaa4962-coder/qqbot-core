@@ -59,8 +59,9 @@ function _readOptionalListState(filename, envName, parser = parseList) {
       configured: true,
       values: parser(fs.readFileSync(path.join(CONFIG_ROOT, filename), 'utf-8')),
     };
-  } catch {
-    return { configured: false, values: [] };
+  } catch (error) {
+    if (error.code === 'ENOENT') return { configured: false, values: [] };
+    throw new Error('cannot read config list ' + filename + ' (' + (error.code || 'read_error') + ')');
   }
 }
 

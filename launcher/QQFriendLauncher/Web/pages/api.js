@@ -41,6 +41,12 @@ export function renderApiProviders(snapshot, options = {}) {
 
   renderApiRouteList(snapshot);
   fillApiProviderForm(providers.find(item => item.id === uiState.selectedApiProviderId));
+  $("apiSaveButton").disabled = Boolean(snapshot.configurationError);
+  if (snapshot.configurationError) {
+    $("apiProviderList").innerHTML = `<div class="empty-state"><b>API 配置不可用</b><span>${escapeHtml(snapshot.configurationError)}</span></div>`;
+    $("apiEditorHint").textContent = "先恢复或修复已有配置，再编辑 API 实例";
+    $("apiGroupRoute").textContent = "配置不可用";
+  }
 }
 
 export function renderApiRouteList(snapshot) {
@@ -75,7 +81,9 @@ export function renderApiRouteList(snapshot) {
     updateApiRouteReasoningAvailability(row);
   });
   syncGlobalReasoningState();
-  $("apiRouteOutput").textContent = `配置版本 ${snapshot.revision || 1} · API 与思考设置只影响后续请求`;
+  $("apiRouteOutput").textContent = snapshot.configurationError
+    ? snapshot.configurationError + (snapshot.rollbackAvailable ? "。可点击“回滚”恢复上一版配置。" : "。没有可回滚的配置，请在服务器修复配置后刷新。")
+    : `配置版本 ${snapshot.revision || 1} · API 与思考设置只影响后续请求`;
 }
 
 export function updateApiRouteReasoningAvailability(row) {

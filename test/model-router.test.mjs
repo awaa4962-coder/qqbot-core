@@ -9,6 +9,7 @@ import {
   MODEL_TASKS,
   callRawModelProvider,
   executeChatTask,
+  executePrivateChatTask,
 } from "../bridge/model-router.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -81,6 +82,44 @@ describe("model router boundaries", () => {
       () => callRawModelProvider("unknown", {}),
       /unknown model provider/
     );
+  });
+
+  it("shares one private vision result across the configured primary and fallback", async () => {
+    const calls = [];
+    let visionCalls = 0;
+    const result = await executePrivateChatTask({
+      userMsg: "describe image", imageUrls: ["https://example.com/synthetic.png"],
+      history: [{ role: "user", content: "earlier" }], options: { currentUserId: "42" },
+    }, {
+      resolveVision: async () => { visionCalls++; return "synthetic image description"; },
+      callSlot: async request => { calls.push(request); return request.position === "fallback" ? "answer" : null; },
+    });
+    assert.equal(visionCalls, 1);
+    assert.deepEqual(calls.map(item => [item.task, item.position]), [["private_chat", "primary"], ["private_chat", "fallback"]]);
+    assert.match(calls[0].history.at(-1).content, /synthetic image description/);
+    assert.deepEqual(calls[0].history, calls[1].history);
+    assert.deepEqual(result, { text: "answer", position: "fallback" });
+  });
+
+  it("keeps file_chat distinct and stops after a successful private primary", async () => {
+    const calls = [];
+    const result = await executePrivateChatTask({ task: MODEL_TASKS.FILE_CHAT }, {
+      callSlot: async request => { calls.push(request); return "file answer"; },
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].task, "file_chat");
+    assert.deepEqual(result, { text: "file answer", position: "primary" });
+  });
+
+  it("keeps private replies absent when both slots fail and preserves failed vision", async () => {
+    const result = await executePrivateChatTask({ imageUrls: ["synthetic"], options: { visionContext: null } }, {
+      resolveVision: async () => assert.fail("must reuse explicit failed vision"),
+      callSlot: async request => {
+        assert.match(request.history.at(-1).content, /视觉识别失败/);
+        return null;
+      },
+    });
+    assert.deepEqual(result, { text: null, position: "unavailable" });
   });
 
   it("keeps reply modules behind model-router", () => {

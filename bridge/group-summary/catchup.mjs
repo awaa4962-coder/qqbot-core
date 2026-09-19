@@ -18,16 +18,17 @@ export function createDailySummaryCatchUp(options = {}) {
   let timer = null;
   let stopped = false;
   let completed = false;
+  let exhausted = false;
   let runAttempts = 0;
 
   function start() {
-    if (stopped || completed || timer) return;
+    if (stopped || completed || exhausted || timer) return;
     schedule(initialDelayMs);
   }
 
   async function runNow() {
     timer = null;
-    if (stopped || completed) return null;
+    if (stopped || completed || exhausted) return null;
     if (!isReady()) {
       log("deferred", { reason: "onebot_not_ready" });
       schedule(retryDelayMs);
@@ -36,9 +37,9 @@ export function createDailySummaryCatchUp(options = {}) {
     runAttempts++;
     const dateText = resolvePreviousSummaryDate(now());
     const result = await run({ dateText, log: (event, detail) => log(event, detail) });
-    log("complete", { dateText, ok: result.ok, sent: result.sent, groups: result.groups });
-    if (result.ok || runAttempts >= maxRunAttempts) completed = true;
-    else schedule(retryDelayMs);
+    completed = result.ok === true && !result.pending;
+    log(completed ? "complete" : result.pending ? "pending" : "failed", { dateText, ok: result.ok, sent: result.sent, groups: result.groups });
+    if (!completed) retryOrExhaust();
     return result;
   }
 
@@ -49,15 +50,19 @@ export function createDailySummaryCatchUp(options = {}) {
   }
 
   function status() {
-    return { scheduled: Boolean(timer), stopped, completed, runAttempts };
+    return { scheduled: Boolean(timer), stopped, completed, exhausted, runAttempts };
+  }
+
+  function retryOrExhaust() {
+    if (runAttempts >= maxRunAttempts) exhausted = true;
+    else schedule(retryDelayMs);
   }
 
   function schedule(delayMs) {
-    if (stopped || completed || timer) return;
+    if (stopped || completed || exhausted || timer) return;
     timer = setTimeoutFn(() => { runNow().catch(error => {
       log("error", { error: error.message });
-      if (runAttempts >= maxRunAttempts) completed = true;
-      else schedule(retryDelayMs);
+      retryOrExhaust();
     }); }, delayMs);
     timer?.unref?.();
   }

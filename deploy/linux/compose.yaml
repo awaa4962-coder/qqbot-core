@@ -5,6 +5,11 @@ services:
     image: ${NAPCAT_IMAGE:-mlikiowa/napcat-docker:v4.18.13}
     container_name: qqfriend-napcat
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       ACCOUNT: ${NAPCAT_ACCOUNT:-}
       NAPCAT_QUICK_ACCOUNT: ${NAPCAT_ACCOUNT:-}
@@ -31,6 +36,11 @@ services:
     image: qqfriend-bridge:${QQFRIEND_IMAGE_TAG:-linux-preview}
     container_name: qqfriend-bridge
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       - napcat
     env_file:

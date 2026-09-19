@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { CFG } from "../config.mjs";
+import { redactSensitiveText } from "../privacy.mjs";
 
 const MAX_TAIL_LINES = 1000;
 const MAX_READ_BYTES = 512 * 1024;
@@ -75,11 +76,12 @@ export function resolveLogFile(logDir, requestedFile) {
 }
 
 export function redactLogLine(line) {
-  return String(line || "")
+  const legacyRedacted = String(line || "")
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, "Bearer ***")
     .replace(/(api[_-]?key|token|authorization|secret)(\s*[:=]\s*)[^\s,;]+/gi, "$1$2***")
     .replace(/sk-[A-Za-z0-9._-]{8,}/g, "sk-***")
     .replace(/[A-Za-z0-9_-]{24,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, "***");
+  return redactSensitiveText(legacyRedacted).replaceAll("[REDACTED]", "***");
 }
 
 function clampTail(value) {

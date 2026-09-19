@@ -244,6 +244,7 @@ export function setMemeEnabled(value, enabled, options = {}) {
   }
   entry.enabled = Boolean(enabled);
   entry.status = enabled ? "active" : "disabled";
+  entry.manualFields = [...new Set([...(entry.manualFields || []), "enabled", "status"])];
   entry.updatedAt = new Date().toISOString();
   saveMemeStore();
   return entry;
@@ -256,6 +257,7 @@ export function setMemeStatus(value, status, options = {}) {
   if (options.recordHistory) appendMemeHistory(entry.name, status, entry, options.now);
   entry.status = status;
   entry.enabled = status === "active";
+  entry.manualFields = [...new Set([...(entry.manualFields || []), "enabled", "status"])];
   entry.updatedAt = new Date().toISOString();
   if (status === "active") removeCandidate(entry.name);
   saveMemeStore();

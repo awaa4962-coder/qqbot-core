@@ -4,7 +4,7 @@ import { commitListEditor, removeListEditorValue, renderConfigEditor, renderList
 import { applyLogFilter } from "./pages/logs.js";
 import { confirmDiscardMemeChanges, fillMemeForm, updateMemeDirty, updateMemeScopeInput } from "./pages/memes.js";
 import { markStatusStale, renderSnapshot, renderStatus } from "./pages/overview.js";
-import { renderStickers } from "./pages/stickers.js";
+import { disposeStickerPreviews, renderStickers } from "./pages/stickers.js";
 import { configureRuntimeUi, runAction, showActionError } from "./ui/actions.js";
 import { beginAction, endAction, groupIsBusy, toast } from "./ui/activity.js";
 import { applyBackground, applyUiPreferences, saveUiPreferences } from "./ui/appearance.js";
@@ -37,6 +37,10 @@ export function canLeaveCurrentView(nextView) {
 export function showView(view) {
   if (!PAGE_META[view]) return;
   if (!canLeaveCurrentView(view)) return;
+  if (uiState.currentView === "stickers" && view !== "stickers") {
+    disposeStickerPreviews();
+    uiState.stickersLoaded = false;
+  }
   uiState.currentView = view;
   document.querySelectorAll("[data-view-panel]").forEach((panel) => {
     const active = panel.dataset.viewPanel === view;

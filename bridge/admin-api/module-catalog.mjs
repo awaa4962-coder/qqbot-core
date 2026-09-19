@@ -46,6 +46,7 @@ function runtimeHealthReasons(runtime) {
 function runtimeModuleFor(id, modules) {
   const key = ({
     "group-summary": "groupSummary",
+    "conversation-summary": "conversationSummary",
     "meme-knowledge": "memeKnowledge",
     "resource-transfer": "resourceTransfer",
     "link-preview": "linkPreview",
@@ -78,6 +79,7 @@ const LIST_CONFIG_FIELDS = new Set([
   "adminUins",
   "resourceGroupWhitelist",
   "featureGroupWhitelist",
+  "conversationSummaryGroupWhitelist",
   "jmUserWhitelist",
   "summaryGroupWhitelist",
 ]);

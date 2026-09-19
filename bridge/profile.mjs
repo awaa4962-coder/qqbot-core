@@ -2,6 +2,8 @@
 import { users, saveUsers } from "./storage.mjs";
 import { callTaskApi } from "./api-providers/gateway.mjs";
 import { buildOutputPacket } from "./output-pipeline.mjs";
+import { redactSensitiveText } from "./privacy.mjs";
+import { getUserMemoryGeneration } from "./memory-profile/generation.mjs";
 
 async function generateProfileVia(prompt, position) {
   const result = await callTaskApi("profile", position, {
@@ -18,21 +20,25 @@ async function generateProfileVia(prompt, position) {
   return packet.ok ? packet.text : "";
 }
 
-export async function generateProfile(uid) {
+export async function generateProfile(uid, options = {}) {
   const u = users[uid];
   if (!u) return '';
+  const generation = getUserMemoryGeneration(uid);
+  const isCurrent = () => users[uid] === u && generation === getUserMemoryGeneration(uid);
   const recent = u.chats.slice(-20);
   if (!recent.length) return '';
 
   const chatLog = recent.map(function(c) {
-    return '[' + new Date(c.ts).toLocaleString('zh-CN') + '] 在' + c.group + '群说: ' + c.text;
+    return '[' + new Date(c.ts).toLocaleString('zh-CN') + '] 在' + c.group + '群说: ' + redactSensitiveText(c.text);
   }).join('\n');
 
   const prompt = '根据以下聊天记录，用一句话概括这个人的性格、兴趣和说话特点（20-50字）：\n\n' + chatLog;
 
   for (const position of ["primary", "fallback"]) {
+    if (!isCurrent()) return '';
     try {
-      const desc = await generateProfileVia(prompt, position);
+      const desc = redactSensitiveText(await (options.generate || generateProfileVia)(prompt, position));
+      if (!isCurrent()) return '';
       if (desc) {
         u.profile = desc.trim();
         saveUsers();

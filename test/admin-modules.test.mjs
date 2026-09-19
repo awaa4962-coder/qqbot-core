@@ -68,3 +68,17 @@ test("admin modules route returns module catalog", async () => {
   assert.equal(writes[0].statusCode, 200);
   assert.ok(writes[0].payload.modules.some(module => module.id === "memory"));
 });
+
+test("conversation summary module preserves runtime disabled status and allowlist metadata", () => {
+  for (const enabled of [false, true]) {
+    const groups = enabled ? [123456] : [];
+    const catalog = buildModuleCatalog({
+      cfg: { jmDomains: [], conversationSummaryGroupWhitelist: groups }, longGroups: [],
+      runtimeModules: { conversationSummary: { enabled, health: enabled ? "ready" : "disabled" } },
+    });
+    const summary = catalog.modules.find(module => module.id === "conversation-summary");
+    assert.equal(summary.enabled, enabled);
+    assert.equal(summary.health, enabled ? "ready" : "disabled");
+    assert.deepEqual(summary.config.conversationSummaryGroupWhitelist, { count: groups.length, values: groups });
+  }
+});

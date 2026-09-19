@@ -111,7 +111,8 @@ describe("mentions", () => {
 
     assert.match(merged, /\[Mention context\]/);
     assert.match(merged, /uid=1000000002/);
-    assert.match(merged, /TargetName/);
+    assert.match(merged, /QQ:1000000002/);
+    assert.doesNotMatch(merged, /TargetName|old-name|commonTopics=ops/);
     assert.doesNotMatch(merged, /private raw detail should not leak/);
     assert.deepEqual(packet.metadata.mentionedUsers, ["1000000002"]);
   });

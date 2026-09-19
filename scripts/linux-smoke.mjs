@@ -7,11 +7,14 @@ import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
+import { WebSocket } from "ws";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-linux-smoke-"));
 const port = await findFreePort();
 const output = [];
+const ADMIN_TOKEN = "smoke-admin-token";
+const ONEBOT_TOKEN = "smoke-onebot-token";
 let child = null;
 
 try {
@@ -28,9 +31,10 @@ try {
       QQBOT_LISTEN_PORT: String(port),
       QQBOT_NAPCAT_API: "http://127.0.0.1:1",
       QQBOT_NAPCAT_WS_API: "",
+      QQBOT_NAPCAT_TOKEN: ONEBOT_TOKEN,
       QQBOT_MEME_AUTO_UPDATE: "0",
       QQBOT_STICKERS_ENABLED: "0",
-      QQFRIEND_ADMIN_TOKEN: "",
+      QQFRIEND_ADMIN_TOKEN: ADMIN_TOKEN,
       QQFRIEND_WEB_CONSOLE: "1",
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -53,6 +57,7 @@ try {
   assert(health.status === "ok", "health status is not ok");
   assert(status.status === "ok", "admin status is not ok");
   assert(readiness.status === 503 && readiness.payload.status === "not_ready", "readiness must fail closed without OneBot");
+  await verifyIngress(port);
   assert(savedConfig.ok === true, "admin config write failed");
   assert(
     fs.existsSync(path.join(sandbox, "config", ".env_bot_names")),
@@ -78,6 +83,7 @@ try {
     console: "ok",
     configWrite: "ok",
     auditWrite: "ok",
+    ingressAuth: "ok",
   }, null, 2) + "\n");
 } catch (error) {
   process.stderr.write("Linux smoke test failed: " + error.message + "\n");
@@ -102,7 +108,7 @@ async function waitForJson(url, timeoutMs) {
   let lastError = null;
   while (performance.now() < deadline) {
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(1500) });
+      const response = await fetch(url, { headers: { "X-QQFriend-Admin-Token": ADMIN_TOKEN }, signal: AbortSignal.timeout(1500) });
       if (response.ok) return await response.json();
       lastError = new Error("HTTP " + response.status);
     } catch (error) {
@@ -116,13 +122,49 @@ async function waitForJson(url, timeoutMs) {
 async function postJson(url, body) {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json; charset=utf-8" },
+    headers: { "Content-Type": "application/json; charset=utf-8", "X-QQFriend-Admin-Token": ADMIN_TOKEN },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(5000),
   });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "HTTP " + response.status);
   return payload;
+}
+
+async function verifyIngress(listenPort) {
+  const base = `http://127.0.0.1:${listenPort}`;
+  for (const pathname of ["/", "/reply", "/inspect_msg"]) {
+    const response = await fetch(base + pathname, { method: "POST", body: "{}", signal: AbortSignal.timeout(3000) });
+    assert([401, 403].includes(response.status), "unauthorized route accepted: " + pathname);
+    await response.body?.cancel();
+  }
+  const event = await fetch(base + "/", {
+    method: "POST", body: JSON.stringify({ post_type: "meta_event", meta_event_type: "heartbeat" }),
+    headers: { Authorization: "Bearer " + ONEBOT_TOKEN }, signal: AbortSignal.timeout(3000),
+  });
+  assert(event.status === 200, "authorized OneBot HTTP event rejected");
+  await event.body?.cancel();
+  const empty = await fetch(base + "/inspect_msg", { method: "POST", body: "", headers: { "X-QQFriend-Admin-Token": ADMIN_TOKEN }, signal: AbortSignal.timeout(3000) });
+  assert(empty.status === 400, "empty body must return 400");
+  await empty.body?.cancel();
+  const spoofed = await fetch(base + "/health", { headers: { Origin: "http://localhost.evil.example" }, signal: AbortSignal.timeout(3000) });
+  assert(spoofed.status === 403, "lookalike origin accepted");
+  await spoofed.body?.cancel();
+  await verifyWebSocket(listenPort, "", false);
+  await verifyWebSocket(listenPort, ONEBOT_TOKEN, true);
+}
+
+async function verifyWebSocket(listenPort, token, expectedOpen) {
+  await new Promise((resolve, reject) => {
+    const ws = new WebSocket(`ws://127.0.0.1:${listenPort}/`, { headers: token ? { Authorization: "Bearer " + token } : {}, handshakeTimeout: 3000 });
+    ws.once("open", () => {
+      ws.close();
+      if (expectedOpen) resolve(); else reject(new Error("unauthorized WebSocket accepted"));
+    });
+    ws.once("error", error => {
+      if (!expectedOpen && /401/.test(error.message)) resolve(); else reject(error);
+    });
+  });
 }
 
 async function getJsonResponse(url) {

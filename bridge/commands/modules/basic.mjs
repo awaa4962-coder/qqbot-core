@@ -49,7 +49,10 @@ function buildMemeCommandReply(cmd, options) {
   if (cmd === "梗库" || cmd === "梗库 状态" || cmd === "meme status") return buildMemeStatusReply();
   const match = cmd.match(/^(梗库|meme)\s+(搜|搜索|search)\s+(.+)$/);
   if (!match) return null;
-  return buildMemeSearchReply(extractRawCommandArg(options.rawCommandText, options, match[1] + " " + match[2]));
+  return buildMemeSearchReply(
+    extractRawCommandArg(options.rawCommandText, options, match[1] + " " + match[2]),
+    { groupId: options.groupId },
+  );
 }
 
 function buildPreferenceCommandReply(cmd, options) {

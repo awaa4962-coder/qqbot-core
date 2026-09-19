@@ -3,6 +3,9 @@ import path from "node:path";
 import { CFG } from "../config.mjs";
 import { getSevenZipCommands } from "../seven-zip.mjs";
 import { spawn } from "node:child_process";
+import { monotonicNow } from "../runtime-clock.mjs";
+
+const DEFAULT_ZIP_TIMEOUT_MS = 120000;
 
 export function getJmZipPassword(options) {
   if (Object.prototype.hasOwnProperty.call(options, "zipPassword")) {
@@ -22,17 +25,23 @@ export function buildSevenZipArgs(zipPath, password) {
 }
 
 export async function zipDirectory(sourceDir, zipPath, options = {}) {
+  const deadline = monotonicNow() + zipTimeout(options.timeoutMs);
+  const run = (command, args) => {
+    const remaining = deadline - monotonicNow();
+    if (remaining <= 0) throw new Error("zip_timeout");
+    return runZipCommand(sourceDir, zipPath, command, args, { ...options, timeoutMs: remaining });
+  };
   const password = String(options.password || "").trim();
   if (password) {
     const commands = getSevenZipCommands({ configured: options.sevenZipPath });
     for (const command of commands) {
-      const ok = await runZipCommand(sourceDir, zipPath, command, buildSevenZipArgs(zipPath, password));
+      const ok = await run(command, buildSevenZipArgs(zipPath, password));
       if (ok) return;
     }
     throw new Error("zip_tool_missing");
   }
 
-  const ok = await runZipCommand(sourceDir, zipPath, "tar", ["-a", "-cf", zipPath, "."]);
+  const ok = await run("tar", ["-a", "-cf", zipPath, "."]);
   if (ok) return;
   const ps = [
     "Compress-Archive",
@@ -42,25 +51,47 @@ export async function zipDirectory(sourceDir, zipPath, options = {}) {
     "'" + zipPath.replace(/'/g, "''") + "'",
     "-Force",
   ].join(" ");
-  const psOk = await runZipCommand(sourceDir, zipPath, "powershell", ["-NoProfile", "-Command", ps]);
+  const psOk = await run("powershell", ["-NoProfile", "-Command", ps]);
   if (!psOk) throw new Error("zip_failed");
 }
 
-export function runZipCommand(cwd, zipPath, command, args) {
-  return new Promise(resolve => {
-    const child = spawn(command, args, { cwd, windowsHide: true });
-    child.on("error", () => resolve(false));
+export function runZipCommand(cwd, zipPath, command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = (options.spawnImpl || spawn)(command, args, { cwd, windowsHide: true });
+    let settled = false;
+    const finish = (value, error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(error);
+      else resolve(value);
+    };
+    const timer = setTimeout(() => {
+      finish(false, new Error("zip_timeout"));
+      try { child.kill("SIGKILL"); } catch {}
+    }, zipTimeout(options.timeoutMs));
+    child.stdout?.resume();
+    child.stderr?.resume();
+    child.on("error", () => finish(false));
     child.on("close", async code => {
-      if (code !== 0) return resolve(false);
+      if (settled) return;
+      if (code !== 0) {
+        finish(false);
+        return;
+      }
       try {
         const stat = await fs.stat(zipPath);
-        resolve(stat.size > 0);
+        finish(stat.size > 0);
       } catch {
-        resolve(false);
+        finish(false);
       }
-      return true;
     });
   });
+}
+
+function zipTimeout(value) {
+  const timeout = Number(value);
+  return Number.isFinite(timeout) && timeout > 0 ? Math.max(1, timeout) : DEFAULT_ZIP_TIMEOUT_MS;
 }
 
 export async function summarizeDirectory(dir) {

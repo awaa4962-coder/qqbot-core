@@ -1,6 +1,6 @@
 import { CFG } from "../config.mjs";
 import { resolveSummaryDate } from "./date.mjs";
-import { createDailySummaryGuard } from "./guard.mjs";
+import { createDailySummaryGuard, summarySkipResult } from "./guard.mjs";
 import { loadSummaryCapture } from "./journal.mjs";
 import { sendGroupSummaryForDate } from "./service.mjs";
 
@@ -25,7 +25,8 @@ export async function runDailySummaries(options = {}) {
   }
 
   return {
-    ok: results.every(result => result.ok !== false),
+    ok: results.every(result => result.ok !== false && !result.pending),
+    pending: results.some(result => result.pending),
     dateText,
     groups: groupIds.length,
     sent: results.filter(result => result.sent).length,
@@ -65,7 +66,7 @@ async function runDailySummaryForGroup(options) {
 
 function skippedResult(reason, options) {
   options.log("skip", { dateText: options.dateText, groupId: options.groupId, reason });
-  return { groupId: options.groupId, ok: true, sent: false, skipped: true, reason };
+  return summarySkipResult(reason, { groupId: options.groupId });
 }
 
 function markSentWhenSuccessful(guard, result) {

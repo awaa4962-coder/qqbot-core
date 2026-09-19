@@ -34,11 +34,11 @@ export async function callApiProvider(providerId, request = {}, options = {}) {
 }
 
 async function invokeApiProvider(providerId, request = {}, options = {}) {
-  const provider = options.provider || getProvider(providerId, options);
-  if (!provider || provider.enabled === false) return failed(providerId, "API 实例不存在或已停用");
-  const adapter = ADAPTERS[provider.protocol];
-  if (!adapter) return failed(provider.id, "没有可用的协议适配器");
   try {
+    const provider = options.provider || getProvider(providerId, options);
+    if (!provider || provider.enabled === false) return failed(providerId, "API 实例不存在或已停用");
+    const adapter = ADAPTERS[provider.protocol];
+    if (!adapter) return failed(provider.id, "没有可用的协议适配器");
     validateProviderEndpoint(provider);
     const key = options.key !== undefined ? String(options.key || "").trim() : readProviderSecret(provider, options);
     const result = await adapter(provider, key, request);
@@ -50,13 +50,19 @@ async function invokeApiProvider(providerId, request = {}, options = {}) {
     log("api-provider", provider.id, "ok", result.durationMs + "ms");
     return { ...result, provider: provider.id };
   } catch (error) {
-    logE("api-provider", provider.id, "error:", error.message);
-    return failed(provider.id, error.message);
+    logE("api-provider", providerId, "error:", error.message);
+    return failed(providerId, error.message);
   }
 }
 
 export async function callTaskApi(task, position, request = {}, options = {}) {
-  const config = options.config || loadApiConfig(options);
+  let config;
+  try {
+    config = options.config || loadApiConfig(options);
+  } catch (error) {
+    traceStage("model", { task, position, status: "failed", reason: "invalid_api_config" });
+    return failed("", error.message);
+  }
   const sharedOptions = { ...options, config };
   const route = getTaskRoute(task, sharedOptions);
   const slot = position === "fallback" ? "fallback" : "primary";

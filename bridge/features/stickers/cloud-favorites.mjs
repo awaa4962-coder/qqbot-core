@@ -14,6 +14,7 @@ const TEMP_MAX_AGE_MS = 15 * 60 * 1000;
 const activeStickerFiles = new Set();
 
 export async function addBufferToCloudFavorites(image = {}, options = {}) {
+  options.ensureAllowed?.();
   const buffer = Buffer.isBuffer(image.buffer) ? image.buffer : null;
   if (!buffer?.length) return { ok: false, error: "表情图片为空" };
   const md5 = crypto.createHash("md5").update(buffer).digest("hex");
@@ -22,6 +23,7 @@ export async function addBufferToCloudFavorites(image = {}, options = {}) {
     details: fetchFavoriteStickerDetails,
   };
   const preflight = await lookupCloudItem(md5, adapter.details, options);
+  options.ensureAllowed?.();
   if (preflight.item) {
     return {
       ok: true,
@@ -38,6 +40,7 @@ export async function addBufferToCloudFavorites(image = {}, options = {}) {
     mimeType: image.mimeType,
     md5,
   }, async file => {
+    options.ensureAllowed?.();
     const added = await adapter.add(file.path, {
       md5,
       fileName: file.name,
@@ -112,6 +115,8 @@ export function cleanupTemporaryStickerFiles(options = {}) {
 async function findCloudItem(md5, fetchDetails, options, attempts) {
   for (let attempt = 0; attempt < attempts; attempt++) {
     if (attempt) await new Promise(resolve => setTimeout(resolve, 750));
+    // The add already succeeded; retain ownership even when capture is stopped.
+    try { options.ensureAllowed?.(); } catch { return null; }
     const details = await fetchDetails({
       count: options.detailCount || CFG.stickerFetchCount,
       timeoutMs: options.timeoutMs,
@@ -124,6 +129,7 @@ async function findCloudItem(md5, fetchDetails, options, attempts) {
 }
 
 async function lookupCloudItem(md5, fetchDetails, options) {
+  options.ensureAllowed?.();
   const details = await fetchDetails({
     count: options.detailCount || CFG.stickerFetchCount,
     timeoutMs: options.timeoutMs,

@@ -66,6 +66,19 @@ test("filters yesterday messages by local day", () => {
   assert.deepEqual(result.map(item => item.text), ["yesterday"]);
 });
 
+test("today starts at Shanghai midnight while explicit one day stays rolling", () => {
+  const chats = [
+    { text: "previous-day", ts: new Date("2026-07-04T23:59:59+08:00").getTime() },
+    { text: "midnight", ts: new Date("2026-07-05T00:00:00+08:00").getTime() },
+    { text: "current", ts: now.getTime() },
+    { text: "future", ts: now.getTime() + 1 },
+  ];
+  assert.deepEqual(filterMessagesByRange(chats, { range: "today", days: 1 }, now)
+    .map(item => item.text), ["midnight", "current"]);
+  assert.deepEqual(filterMessagesByRange(chats, { range: "days", days: 1 }, now)
+    .map(item => item.text), ["previous-day", "midnight", "current"]);
+});
+
 test("wordcloud command sends fallback text when renderer is unavailable", async () => {
   const sent = [];
   const handled = await handleWordcloudCommand({

@@ -3,7 +3,7 @@ import { renderCapabilities } from "../pages/capabilities.js";
 import { configPayload, renderConfig, renderConfigEditor } from "../pages/configuration.js";
 import { diagnosePayload, formatDiagnoseResult, renderDiagnoseSummary } from "../pages/diagnose-message.js";
 import { renderLogs } from "../pages/logs.js";
-import { addMemeSourceRow, applyMemeResearch, clearMemeForm, confirmDiscardMemeChanges, formatMemeOperationResult, memeFormPayload, renderMemes, selectedMemeName, selectedMemeQuery } from "../pages/memes.js";
+import { addMemeSourceRow, applyMemeResearch, clearMemeForm, confirmDiscardMemeChanges, formatMemeOperationResult, memeFormFingerprint, memeFormPayload, renderMemes, selectedMemeName, selectedMemeQuery } from "../pages/memes.js";
 import { markStatusStale, renderSnapshot, renderStoppedStatus } from "../pages/overview.js";
 import { renderStickerSimulation, renderStickers, stickerEntryPayload, stickerSettingsPayload, stickerSimulationPayload } from "../pages/stickers.js";
 import { actionGroup, beginAction, endAction, finishActivity, showActivity, toast } from "./activity.js";
@@ -11,14 +11,14 @@ import { applyBackground } from "./appearance.js";
 import { $, setOutput, splitList } from "./dom.js";
 import { ACTION_DONE, ACTION_LABELS, STICKER_ACTIONS } from "./metadata.js";
 import { host, uiState } from "./state.js";
-import { callManagedAction, taskPhaseLabel } from "./tasks.js";
+import { callManagedAction, retainTaskResult, taskPhaseLabel } from "./tasks.js";
 
 export function validateAction(action) {
   if (action === "refreshConfig" && uiState.configDirty) {
     return window.confirm("当前配置有未保存修改。确定重新读取并放弃这些修改吗？");
   }
   if (action === "saveConfig") {
-    if (!splitList($("cfgBotNames").value).length) {
+    if (uiState.lastConfigSnapshot.files?.botNames?.writable !== false && !splitList($("cfgBotNames").value).length) {
       toast("机器人名不能为空。", "error");
       document.querySelector('[data-list-editor-for="cfgBotNames"] input')?.focus();
       return false;
@@ -160,6 +160,7 @@ export async function runAction(action, button = null, options = {}) {
   }
   if (!validateAction(action) || !beginAction(action, button, silent)) return;
   let failure = null;
+  let completionDetail;
 
   if (action === "diagnose") {
     setOutput("diagnoseOutput", "正在检查消息格式、白名单、@目标和命令路由...", true);
@@ -274,8 +275,11 @@ export async function runAction(action, button = null, options = {}) {
             : ["enableMeme", "disableMeme", "activateMeme", "quarantineMeme", "setMemeMode"].includes(action)
               ? "toggleMeme"
               : action
-        : action;
+        : action === "refreshLogs" ? "getLogs" : action;
+    const researchEditor = action === "researchMemeWeb" ? memeFormFingerprint() : null;
+    let managedJobId;
     const result = await callManagedAction(hostAction, payload, {
+      onStarted: id => { managedJobId = id; },
       onProgress: task => showActivity(ACTION_LABELS[action] || "后台任务", "working", taskPhaseLabel(task.phase)),
     });
 
@@ -347,6 +351,12 @@ export async function runAction(action, button = null, options = {}) {
       renderDiagnoseSummary(formatted.summary);
       setOutput("diagnoseRaw", formatted.raw, true);
     } else if (action === "researchMemeWeb") {
+      if (researchEditor !== memeFormFingerprint()) {
+        if (managedJobId) retainTaskResult(managedJobId);
+        completionDetail = "当前编辑已变化，未覆盖正文。" + (managedJobId ? "查证结果仍在任务缓存中。" : "");
+        $("memeStatus").textContent = "查证已完成；" + completionDetail;
+        return;
+      }
       const applied = applyMemeResearch(result);
       if (!applied) {
         $("memeStatus").textContent = `联网证据不足：${result.reason || payload.query || "-"}`;
@@ -380,12 +390,20 @@ export async function runAction(action, button = null, options = {}) {
     if (!silent) toast(error.message || "操作失败", "error");
   } finally {
     endAction(action);
-    if (!silent) finishActivity(failure ? `${ACTION_LABELS[action] || "操作"}失败` : ACTION_DONE[action] || "操作完成", failure ? "error" : "success");
+    if (!silent) finishActivity(
+      failure?.taskStateUnknown ? "任务结果尚未确认" : failure ? `${ACTION_LABELS[action] || "操作"}失败` : ACTION_DONE[action] || "操作完成",
+      failure ? "error" : "success", failure?.taskStateUnknown ? failure.message : completionDetail,
+    );
   }
 }
 
 export function showActionError(action, error) {
   const message = error.message || String(error);
+  if (error.taskStateUnknown) {
+    const group = actionGroup(action);
+    setOutput(group === "memes" ? "memeStatus" : group === "stickers" ? "stickerStatus" : operationOutputId(action), message, true);
+    return;
+  }
   if (action === "diagnose") {
     setOutput("diagnoseOutput", `诊断失败：${message}`, true);
     $("diagnoseDetails").open = false;

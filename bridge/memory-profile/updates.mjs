@@ -1,11 +1,12 @@
-import { DEFAULT_TTL_MS, INTERJECTION_PREFERENCE_TTL_MS, SENSITIVE_PATTERNS, userGroupKey } from "./constants.mjs";
+import { DEFAULT_TTL_MS, INTERJECTION_PREFERENCE_TTL_MS, userGroupKey } from "./constants.mjs";
 import { MEMORY_TOPIC_RULES } from "../knowledge/topic-rules.mjs";
 import { getMemoryStatus } from "./query.mjs";
 import { memoryProfiles, saveMemoryProfiles } from "./store.mjs";
+import { containsSensitiveText, redactSensitiveText } from "../privacy.mjs";
+import { invalidateUserMemoryGeneration } from "./generation.mjs";
 
 export function isSensitiveMemoryText(text) {
-  const value = String(text || "");
-  return SENSITIVE_PATTERNS.some(pattern => pattern.test(value));
+  return containsSensitiveText(text);
 }
 
 export function observeMemoryEvent(event, options = {}) {
@@ -27,7 +28,7 @@ export function normalizeMemoryEvent(event) {
     uid,
     groupId: String(event?.groupId || event?.group_id || ""),
     text: String(event?.text || "").trim(),
-    nickname: String(event?.nickname || "").trim(),
+    nickname: redactSensitiveText(event?.nickname).trim(),
   };
 }
 
@@ -57,7 +58,7 @@ export function updateRelatedProfiles(event, now) {
 }
 
 export function ensureUserProfile(uid, now = Date.now()) {
-  if (!memoryProfiles.userProfiles[uid]) {
+  if (!isUnexpired(memoryProfiles.userProfiles[uid], now)) {
     memoryProfiles.userProfiles[uid] = {
       uid,
       nicknames: [],
@@ -76,7 +77,7 @@ export function ensureUserProfile(uid, now = Date.now()) {
 }
 
 export function ensureGroupProfile(groupId, now = Date.now()) {
-  if (!memoryProfiles.groupProfiles[groupId]) {
+  if (!isUnexpired(memoryProfiles.groupProfiles[groupId], now)) {
     memoryProfiles.groupProfiles[groupId] = {
       groupId,
       tone: "normal",
@@ -96,7 +97,7 @@ export function ensureGroupProfile(groupId, now = Date.now()) {
 
 export function ensureUserGroupProfile(groupId, uid, now = Date.now()) {
   const key = userGroupKey(groupId, uid);
-  if (!memoryProfiles.userGroupProfiles[key]) {
+  if (!isUnexpired(memoryProfiles.userGroupProfiles[key], now)) {
     memoryProfiles.userGroupProfiles[key] = {
       groupId: String(groupId),
       uid: String(uid),
@@ -116,6 +117,10 @@ export function ensureUserGroupProfile(groupId, uid, now = Date.now()) {
 export function refresh(profile, now) {
   profile.updatedAt = now;
   profile.expiresAt = now + DEFAULT_TTL_MS;
+}
+
+function isUnexpired(profile, now) {
+  return profile && Number(profile.expiresAt || 0) > now;
 }
 
 export function detectTopics(text) {
@@ -217,6 +222,7 @@ export function addUnique(target, item, limit) {
 export function clearUserMemoryProfile(uid) {
   const id = String(uid || "");
   if (!id) return false;
+  invalidateUserMemoryGeneration(id);
   delete memoryProfiles.userProfiles[id];
   for (const key of Object.keys(memoryProfiles.userGroupProfiles)) {
     if (key.endsWith(":" + id)) delete memoryProfiles.userGroupProfiles[key];

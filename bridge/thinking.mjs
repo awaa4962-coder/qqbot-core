@@ -110,10 +110,8 @@ export function sanitizeAssistantReply(text) {
 
 export function cleanThinking(text) {
   if (!text) return text;
-  let t = text;
-  t = t.replace(/<\s*(?:think|thinking|reasoning|thought)\s*>[\s\S]*?<\/\s*(?:think|thinking|reasoning|thought)\s*>/gi, '');
-  t = t.replace(/<\s*(?:think|thinking|reasoning|thought)\s*>[\s\S]*?(?=\n\n|$)/gi, '');
-  t = t.replace(/<\/?\s*(?:think|thinking|reasoning|thought)\s*>/gi, '');
+  let t = stripReasoningBlocks(text);
+  if (t === null) return null;
   if (/<\s*tool_call\s*>/i.test(t) || /<\s*function\s*=\s*web_search/i.test(t)) {
     log('cleanThinking: stripping leaked tool_call XML');
     t = t.replace(/<\s*tool_call\s*>[\s\S]*?<\s*\/\s*tool_call\s*>/gi, '');
@@ -139,4 +137,24 @@ export function cleanThinking(text) {
   t = t.trim();
   if (!t) { log('cleanThinking: stripped to empty, returning null for fallback'); return null; }
   return t;
+}
+
+function stripReasoningBlocks(text) {
+  if (/<\s*\/?\s*(?:think|thinking|reasoning|thought)\b[^>]*$/i.test(text)) return null;
+  const tags = /<\s*(\/?)\s*(think|thinking|reasoning|thought)\b[^>]*>/gi;
+  const stack = [];
+  let result = '';
+  let start = 0;
+  for (const match of text.matchAll(tags)) {
+    if (!stack.length) result += text.slice(start, match.index);
+    const tag = match[2].toLowerCase();
+    if (match[1]) {
+      if (stack.pop() !== tag) return null;
+    } else {
+      stack.push(tag);
+    }
+    start = match.index + match[0].length;
+  }
+  if (stack.length) return null;
+  return result + text.slice(start);
 }

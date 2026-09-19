@@ -81,7 +81,7 @@ describe("收藏表情模块", () => {
     assert.deepEqual(result, { added: 0, refreshed: 1, total: 1 });
   });
 
-  it("相同图片指纹会合并成一个目录项", () => {
+  it("相同内容 MD5 的图片会合并成一个目录项", () => {
     useTempCatalog();
     upsertFavoriteStickers([
       "https://example.com/a.gif",
@@ -90,11 +90,13 @@ describe("收藏表情模块", () => {
     const [first, second] = buildStickerCatalogSnapshot().entries;
     applyStickerAnalysis(first.id, {
       fingerprint: "same-phash",
+      md5: "0123456789abcdef0123456789abcdef",
       description: "无语地看着对方",
       tags: ["无语"],
     }, { now: 2000 });
     applyStickerAnalysis(second.id, {
       fingerprint: "same-phash",
+      md5: "0123456789abcdef0123456789abcdef",
       description: "重复图片",
       tags: ["其他"],
     }, { now: 3000 });
@@ -221,12 +223,14 @@ describe("收藏表情模块", () => {
     useTempCatalog();
     upsertCapturedSticker({
       url: "https://example.com/capture-a.gif",
+      md5: "0123456789abcdef0123456789abcdef",
       fingerprint: "0123456789abcdef",
       classification: "sticker",
       confidence: 0.9,
     }, { groupId: 123, senderId: 456, now: 1000 });
     upsertCapturedSticker({
       url: "https://example.com/capture-b.gif",
+      md5: "0123456789abcdef0123456789abcdef",
       fingerprint: "0123456789abcdef",
       classification: "sticker",
       confidence: 0.9,

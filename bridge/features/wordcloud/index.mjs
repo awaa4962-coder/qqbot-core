@@ -102,7 +102,7 @@ export async function buildWordcloudReply(groupId, parsed, options = {}) {
 
 export function filterMessagesByRange(chats, parsed, now = new Date()) {
   const end = now.getTime();
-  let start = end - DAY_MS;
+  let start = startOfShanghaiDay(now);
   if (parsed.range === "yesterday") {
     const shanghaiStart = startOfShanghaiDay(now);
     return chats.filter(item => item.ts >= shanghaiStart - DAY_MS && item.ts < shanghaiStart);

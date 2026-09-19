@@ -54,7 +54,7 @@ export function buildLayeredReplyContext(options = {}) {
     history: layers,
     currentInput,
     mood: isPassiveInterjection ? "正常" : deriveMood(groupId),
-    memory: getActiveMemoryContext(uid, groupId),
+    memory: getActiveMemoryContext(uid, groupId, { groupOnly: groupId !== "private" }),
     thread,
   };
 }
@@ -152,8 +152,12 @@ function isOtherPersonQuote(options) {
 function appendGroupBackgroundLayer(layers, groupId, options) {
   if (groupId === "private") return;
   const selected = selectGroupConversation(groupChats[groupId] || [], { ...options, selfUin: CFG.selfUin });
-  const groupCtx = buildGroupBackgroundBlock(selected.items.map(item => formatSpeakerLine(item.message)));
-  if (groupCtx) pushLayer(layers, groupCtx, 40, "user", selected.items.map(item =>
+  // Deduplicate after selection so recalled anchors can still recover linked replies.
+  const recalledIds = new Set(layers.flatMap(layer => layer.contextSources || [])
+    .filter(source => source.kind === "memory" && source.messageId).map(source => String(source.messageId)));
+  const items = selected.items.filter(item => !recalledIds.has(String(item.message.messageId || "")));
+  const groupCtx = buildGroupBackgroundBlock(items.map(item => formatSpeakerLine(item.message)));
+  if (groupCtx) pushLayer(layers, groupCtx, 40, "user", items.map(item =>
     selectionSource(item.message, "group", item.reason, item.score)));
 }
 
@@ -226,7 +230,7 @@ function pushLayer(layers, content, contextPriority, role = "user", contextSourc
 }
 
 export function buildMemoryContextBlock(uid, groupId) {
-  const summary = buildMemorySummary(uid, groupId);
+  const summary = buildMemorySummary(uid, groupId, { groupOnly: String(groupId) !== "private" });
   if (!summary) return "";
   return "[个性化画像摘要]\n" +
     "仅作为语气和偏好参考；低置信度、过期或敏感内容不得强行影响回复。\n" +

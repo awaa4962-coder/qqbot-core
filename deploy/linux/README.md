@@ -59,6 +59,23 @@ Reverse WebSocket:     ws://bridge:16789
 Access token:          state/qqfriend/config/.env_napcat_token
 ```
 
+Since 1.4.11, both HTTP event posts and reverse WebSocket connections must send
+`Authorization: Bearer <token>`. Set the same existing token in all three NapCat
+connections above; query-string tokens are not accepted. `/reply` and
+`/inspect_msg` require the management token. Health/readiness remain available
+through the host loopback port. Do not expose these ports publicly.
+
+The console shows saved values separately from effective startup configuration.
+Restart Bridge to apply sidecar changes; environment-owned fields must instead
+be changed in the private deployment environment. Invalid API configuration is
+reported as degraded and stops model calls rather than selecting default routes.
+Restore a known-good private configuration before resuming model traffic.
+
+Compose bounds each container's stdout log to three 10 MB files. This takes
+effect when that container is recreated, not when its source files change.
+Recreate NapCat separately during a login-safe maintenance window if it still
+has the old logging configuration. Never delete login state to rotate logs.
+
 After the first QR-code login, set `NAPCAT_ACCOUNT` in `deploy/linux/.env` to
 the logged-in QQ number. Subsequent container restarts will then use NapCat's
 persisted quick-login state instead of requesting a new QR code.

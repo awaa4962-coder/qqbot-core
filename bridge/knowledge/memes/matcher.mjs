@@ -48,11 +48,13 @@ export function buildMemeContextBlock(options = {}) {
   ].join("\n").slice(0, 700);
 }
 
-export function buildMemeSearchReply(query) {
+export function buildMemeSearchReply(query, options = {}) {
   const key = String(query || "").trim();
   if (!key) return "梗库搜索：请在后面加关键词，例如“梗库 搜 哈基米”。";
   const entry = findMemeByNameOrAlias(key);
-  if (!entry) return "梗库里暂时没有找到“" + key + "”。可以在控制台人工添加，或等待联网更新查证。";
+  if (!entry || !scopeAllows(entry, String(options.groupId || options.group_id || ""))) {
+    return "梗库里暂时没有找到“" + key + "”。可以在控制台人工添加，或等待联网更新查证。";
+  }
   return [
     "梗库：" + entry.name,
     "状态：" + statusLabel(entry.status) + "，来源：" + sourceLabel(entry.source),

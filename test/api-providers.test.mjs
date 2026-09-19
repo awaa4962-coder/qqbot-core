@@ -8,6 +8,7 @@ import { callApiProvider, callTaskApi } from "../bridge/api-providers/gateway.mj
 import { listApiPresets } from "../bridge/api-providers/presets.mjs";
 import {
   applyApiProviderAction,
+  buildApiProviderManagerSnapshot,
   testApiProvider,
 } from "../bridge/admin-api/api-provider-manager.mjs";
 import {
@@ -179,6 +180,83 @@ describe("API provider presets and storage", () => {
     assert.throws(() => saveApiRoutes({
       group_chat: { primary: "mimo", fallback: null },
     }, { root }), /DeepSeek/);
+  });
+
+  it("rejects disabling an in-use provider before writing config or a replacement key", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-api-disable-"));
+    saveApiRoutes({ private_chat: { primary: "mimo", fallback: "deepseek" } }, { root });
+    const file = path.join(root, ".qqfriend", "api-providers.json");
+    const before = fs.readFileSync(file, "utf8");
+    for (const id of ["mimo", "deepseek"]) {
+      assert.throws(() => saveApiProvider({ id, enabled: false, key: "synthetic-replacement-key" }, { root }), /先切换插槽再停用/);
+    }
+    assert.equal(fs.readFileSync(file, "utf8"), before);
+    assert.equal(fs.existsSync(path.join(root, ".env_mimo")), false);
+    assert.equal(loadApiConfig({ root }).routes.private_chat.primary, "mimo");
+  });
+
+  it("fails closed on an invalid saved route instead of replacing all configured routes", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-api-corrupt-"));
+    const config = createDefaultApiConfig();
+    config.routes.private_chat.primary = "missing-provider";
+    fs.mkdirSync(path.join(root, ".qqfriend"), { recursive: true });
+    fs.writeFileSync(path.join(root, ".qqfriend", "api-providers.json"), JSON.stringify(config));
+    assert.throws(() => loadApiConfig({ root }), /已停止模型调用/);
+    globalThis.fetch = () => assert.fail("invalid saved config must never reach a provider");
+    const result = await callTaskApi("group_chat", "primary", basicRequest(), { root });
+    assert.equal(result.ok, false);
+    assert.equal(result.raw, null);
+    assert.equal((await callApiProvider("mimo", basicRequest(), { root })).ok, false);
+  });
+
+  it("defaults only for an absent config and rejects corrupt JSON or saved provider data", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-api-invalid-"));
+    assert.equal(loadApiConfig({ root }).routes.group_chat.primary, "mimo");
+    fs.mkdirSync(path.join(root, ".qqfriend"), { recursive: true });
+    const file = path.join(root, ".qqfriend", "api-providers.json");
+    for (const value of ["{", "null", "[]", "{}", '{"routes":[]}', '{"providers":{"mimo":{"endpoint":"invalid"}},"routes":{}}']) {
+      fs.writeFileSync(file, value);
+      assert.throws(() => loadApiConfig({ root }), /API 配置无效/);
+    }
+    for (const route of [
+      { primary: "mimo", fallback: "deepseek", reasoning: "invalid" },
+      { primary: "mimo", fallback: null, reasoning: "auto" },
+    ]) {
+      const config = createDefaultApiConfig();
+      config.routes.group_chat = route;
+      fs.writeFileSync(file, JSON.stringify(config));
+      assert.throws(() => loadApiConfig({ root }), /API 配置无效/);
+    }
+  });
+
+  it("still permits disabling an unused custom provider", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-api-idle-"));
+    saveApiProvider({ id: "idle-node", presetId: "ollama-local", model: "synthetic" }, { root });
+    saveApiProvider({ id: "idle-node", enabled: false }, { root });
+    assert.equal(loadApiConfig({ root }).providers["idle-node"].enabled, false);
+    assert.equal(loadApiConfig({ root }).routes.group_chat.fallback, "deepseek");
+  });
+
+  it("exposes a read-only invalid-config recovery view and can roll back without overwriting it", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-api-recovery-"));
+    saveApiRoutes({ private_chat: { primary: "mimo", fallback: null } }, { root });
+    saveApiRoutes({ private_chat: { primary: "deepseek", fallback: null } }, { root });
+    const file = path.join(root, ".qqfriend", "api-providers.json");
+    const corrupt = '{"synthetic-corrupt":';
+    fs.writeFileSync(file, corrupt);
+    const snapshot = buildApiProviderManagerSnapshot({ root });
+    assert.match(snapshot.configurationError, /已停止模型调用/);
+    assert.equal(snapshot.rollbackAvailable, true);
+    assert.deepEqual(snapshot.providers, []);
+    assert.deepEqual(snapshot.routes, {});
+    assert.deepEqual(snapshot.tasks, []);
+    assert.throws(() => saveApiRoutes({}, { root }), /API 配置无效/);
+    assert.throws(() => saveApiProvider({ id: "mimo", name: "accidental overwrite" }, { root }), /API 配置无效/);
+    assert.equal(fs.readFileSync(file, "utf8"), corrupt);
+    const result = await applyApiProviderAction({ action: "rollback" }, { root });
+    assert.equal(result.ok, true);
+    assert.equal(result.snapshot.configurationError, null);
+    assert.equal(loadApiConfig({ root }).routes.private_chat.primary, "mimo");
   });
 
   it("allows opted-in loopback models and blocks private network endpoints", () => {

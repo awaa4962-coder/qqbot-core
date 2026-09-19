@@ -29,6 +29,8 @@ import {
   stopMemeTrendUpdates,
 } from "./knowledge/memes/index.mjs";
 import { handleAdminApiRequest } from "./admin-api/index.mjs";
+import { isAuthorizedAdminRequest } from "./admin-api/auth.mjs";
+import { isAllowedBrowserOrigin, isAuthorizedOneBotRequest, readRequestJson } from "./http-ingress.mjs";
 import { handleWebConsoleRequest } from "./web-console.mjs";
 import {
   initializeStickerSystem,
@@ -37,29 +39,12 @@ import {
 
 const MAX_BODY_BYTES = 1024 * 1024; // 1MB 请求体上限
 
-function _readBody(req, res) {
-  return new Promise((resolve) => {
-    let body = '';
-    let size = 0;
-    req.on('data', function(chunk) {
-      size += Buffer.byteLength(chunk);
-      if (size > MAX_BODY_BYTES) {
-        res.writeHead(413, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'request body too large' }));
-        req.destroy();
-        return;
-      }
-      body += chunk;
-    });
-    req.on('end', function() { resolve(body); });
-  });
-}
-
 // ── HTTP Server ──
 function applyCors(req, res) {
   const origin = req.headers.origin || '';
-  if (origin && (origin.startsWith('http://127.0.0.1') || origin.startsWith('http://localhost'))) {
+  if (origin && isAllowedBrowserOrigin(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-QQFriend-Admin-Token');
@@ -73,11 +58,6 @@ function sendJson(res, statusCode, payload, spacing) {
 function sendMarkdown(res, content) {
   res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8' });
   res.end(content);
-}
-
-async function readJsonBody(req, res) {
-  const body = await _readBody(req, res);
-  return body ? JSON.parse(body) : null;
 }
 
 function handleOptions(req, res) {
@@ -125,8 +105,7 @@ async function handleReady(res) {
 
 async function handleReply(req, res) {
   try {
-    const data = await readJsonBody(req, res);
-    if (!data) return;
+    const data = await readRequestJson(req);
     const { group_id, message, reply_to } = data;
     if (!group_id || !message) {
       sendJson(res, 400, { error: 'group_id and message required' });
@@ -135,14 +114,13 @@ async function handleReply(req, res) {
     const result = await sendMsg(group_id, message, reply_to);
     sendJson(res, 200, { status: 'sent', result: result });
   } catch (e) {
-    sendJson(res, 400, { error: e.message });
+    sendRequestError(req, res, e);
   }
 }
 
 async function handleInspectMsg(req, res) {
   try {
-    const data = await readJsonBody(req, res);
-    if (!data) return;
+    const data = await readRequestJson(req);
     sendJson(res, 200, {
       text: cleanText(data.message),
       images: getImages(data.message),
@@ -151,19 +129,18 @@ async function handleInspectMsg(req, res) {
       raw: data.message,
     }, 2);
   } catch (e) {
-    sendJson(res, 400, { error: e.message });
+    sendRequestError(req, res, e);
   }
 }
 
 async function handleEventPost(req, res) {
   try {
-    const ev = await readJsonBody(req, res);
-    if (!ev) return;
+    const ev = await readRequestJson(req);
     const outcome = await processEvent(ev);
     sendJson(res, 200, { status: outcome.ok ? 'processed' : 'ignored', outcome });
   } catch (e) {
-    logE('processEvent error:', e.message);
-    sendJson(res, 500, { error: e.message });
+    logE('processEvent error:', e.statusCode || 'processing_failed');
+    sendRequestError(req, res, e);
   }
 }
 
@@ -171,18 +148,8 @@ async function routeHttpRequest(req, res, pathname) {
   const url = new URL(req.url, 'http://localhost');
   if (await handleWebConsoleRequest(req, res, { pathname })) return;
   if (await handleAdminApiRequest(req, res, { pathname, url, sendJson })) return;
-  if (req.method === 'GET' && pathname === '/changelog') {
-    handleChangelog(res);
-    return;
-  }
-  if (req.method === 'GET' && pathname === '/health') {
-    handleHealth(res);
-    return;
-  }
-  if (req.method === 'GET' && pathname === '/ready') {
-    await handleReady(res);
-    return;
-  }
+  if (!authorizeHttpAction(req, res, pathname)) return;
+  if (await handlePublicGet(req, res, pathname)) return;
   if (req.method === 'POST' && pathname === '/reply') {
     await handleReply(req, res);
     return;
@@ -198,13 +165,53 @@ async function routeHttpRequest(req, res, pathname) {
   sendJson(res, 404, { error: 'not found' });
 }
 
+async function handlePublicGet(req, res, pathname) {
+  if (req.method === 'GET' && pathname === '/changelog') {
+    handleChangelog(res);
+    return true;
+  }
+  if (req.method === 'GET' && pathname === '/health') {
+    handleHealth(res);
+    return true;
+  }
+  if (req.method === 'GET' && pathname === '/ready') {
+    await handleReady(res);
+    return true;
+  }
+  return false;
+}
+
+function authorizeHttpAction(req, res, pathname) {
+  if (req.method !== 'POST') return true;
+  if (['/reply', '/inspect_msg'].includes(pathname) && !isAuthorizedAdminRequest(req)) {
+    sendJson(res, 403, { error: 'forbidden' });
+    return false;
+  }
+  if (pathname === '/' && !isAuthorizedOneBotRequest(req, CFG.napcatAccessToken)) {
+    sendJson(res, 401, { error: 'unauthorized' });
+    return false;
+  }
+  return true;
+}
+
 const server = http.createServer(async function(req, res) {
+  if (!isAllowedBrowserOrigin(req.headers.origin)) { sendJson(res, 403, { error: 'origin forbidden' }); return; }
   applyCors(req, res);
   if (handleOptions(req, res)) return;
 
-  const url = new URL(req.url, 'http://localhost');
-  await routeHttpRequest(req, res, url.pathname);
+  try {
+    const url = new URL(req.url, 'http://localhost');
+    await routeHttpRequest(req, res, url.pathname);
+  } catch (error) { sendRequestError(req, res, error); }
 });
+
+function sendRequestError(req, res, error) {
+  if (res.headersSent || res.destroyed) return;
+  res.setHeader('Connection', 'close');
+  const code = error.statusCode || 500;
+  res.once('finish', () => req.destroy());
+  sendJson(res, code, { error: error.statusCode ? error.message : 'request failed' });
+}
 
 server.on('error', function(error) {
   logE('HTTP server error:', error.message);
@@ -215,7 +222,14 @@ server.on('error', function(error) {
 });
 
 // ── WebSocket Server ──
-const wss = new WebSocketServer({ server: server, maxPayload: MAX_BODY_BYTES });
+const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_BODY_BYTES });
+server.on('upgrade', (req, socket, head) => {
+  if (!isAuthorizedOneBotRequest(req, CFG.napcatAccessToken)) {
+    socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+    return;
+  }
+  wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req));
+});
 const oneBotLink = createOneBotLinkManager({ processor: processEvent, log, logError: logE });
 const dailySummaryCatchUp = createDailySummaryCatchUp({
   isReady: () => oneBotLink.status().ready && getCachedNapCatReadiness().ready,
@@ -256,6 +270,10 @@ async function shutdown(signal) {
 process.on('SIGINT', () => { shutdown('SIGINT').catch(() => process.exit(1)); });
 process.on('SIGTERM', () => { shutdown('SIGTERM').catch(() => process.exit(1)); });
 process.on('beforeExit', flushRuntimeState);
+process.once('qqfriend:fatal', () => {
+  // A corrupted process must not advertise healthy; persist only synchronous state before exit.
+  try { flushRuntimeState(); } finally { process.exit(1); }
+});
 
 server.listen(CFG.listenPort, CFG.listenHost, function() {
   log('NapCat Bridge v' + VERSION + ' listening on http://' + CFG.listenHost + ':' + CFG.listenPort);

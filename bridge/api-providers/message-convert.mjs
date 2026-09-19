@@ -27,6 +27,7 @@ export function parseDataImage(url) {
 }
 
 export function normalizeUsage(input = {}) {
+  input = input && typeof input === "object" ? input : {};
   const promptTokens = promptTokenCount(input);
   const completionTokens = completionTokenCount(input);
   const cachedTokens = cachedTokenCount(input);
@@ -34,7 +35,7 @@ export function normalizeUsage(input = {}) {
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
     total_tokens: Number(input.total_tokens ?? input.totalTokenCount ?? promptTokens + completionTokens),
-    cache_reported: hasCacheDetails(input),
+    cache_reported: input.cache_reported !== false && hasCacheDetails(input),
     prompt_cache_hit_tokens: cachedTokens,
     prompt_cache_miss_tokens: Number(input.prompt_cache_miss_tokens ?? Math.max(0, promptTokens - cachedTokens)),
     completion_tokens_details: { reasoning_tokens: reasoningTokenCount(input) },
@@ -46,15 +47,23 @@ function hasCacheDetails(input) {
     input.prompt_cache_miss_tokens !== undefined ||
     input.prompt_tokens_details?.cached_tokens !== undefined ||
     input.input_tokens_details?.cached_tokens !== undefined ||
-    input.cache_read_input_tokens !== undefined;
+    input.cache_read_input_tokens !== undefined ||
+    input.cache_creation_input_tokens !== undefined ||
+    input.cachedContentTokenCount !== undefined;
 }
 
 function promptTokenCount(input) {
-  return Number(input.prompt_tokens ?? input.input_tokens ?? input.promptTokenCount ?? 0);
+  if (input.prompt_tokens !== undefined) return Number(input.prompt_tokens);
+  if (input.input_tokens !== undefined) {
+    return Number(input.input_tokens) + Number(input.cache_read_input_tokens || 0) +
+      Number(input.cache_creation_input_tokens || 0);
+  }
+  return Number(input.promptTokenCount || 0);
 }
 
 function completionTokenCount(input) {
-  return Number(input.completion_tokens ?? input.output_tokens ?? input.candidatesTokenCount ?? 0);
+  return Number(input.completion_tokens ?? input.output_tokens ??
+    Number(input.candidatesTokenCount || 0) + Number(input.thoughtsTokenCount || 0));
 }
 
 function cachedTokenCount(input) {
@@ -63,6 +72,7 @@ function cachedTokenCount(input) {
     input.prompt_tokens_details?.cached_tokens ??
     input.input_tokens_details?.cached_tokens ??
     input.cache_read_input_tokens ??
+    input.cachedContentTokenCount ??
     0
   );
 }
@@ -72,6 +82,7 @@ function reasoningTokenCount(input) {
     input.completion_tokens_details?.reasoning_tokens ??
     input.output_tokens_details?.reasoning_tokens ??
     input.reasoning_tokens ??
+    input.thoughtsTokenCount ??
     0
   );
 }

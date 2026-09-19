@@ -4,33 +4,26 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.10-summary-evidence";
-export const VERSION_NAME = "summary-evidence";
+export const VERSION = "1.4.11-audit-fixes";
+export const VERSION_NAME = "audit-fixes";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "日报修复跨片段合并与证据校验冲突，预算内保留完整有效文字，减少漏掉当天主线。",
-  "正式日报生成失败时不再发送占位提要或登记已发送；保留主备模型与安全重试边界。",
-  "修复图片解码依赖 sharp/libheif 的已知安全漏洞，更新开发工具的 js-yaml 安全补丁。",
-  "Linux 镜像增加实际依赖检查，防止覆盖源码时继续使用旧图片库；图片、表情与词云功能保持不变。",
-  "新增成员聊天总结：@机器人 总结我，或 总结 @某人 @某人，普通群成员可用。",
-  "默认最近两小时，可选今天、昨天和最近若干分钟/小时/天，支持分别总结，最多五人。",
-  "聊天原话和必要引用背景交给 API，用自然的话讲清事情，不做人物画像或固定分析模板。",
-  "Linux 前端增加聊天总结群白名单、独立模型插槽和只读任务状态；不改变每日群报推送范围。",
-  "Windows 继续暂停更新；模型主备、白名单、关系评分和私有推理隔离保持不变。",
+  "修复入口鉴权、下载重定向与地址校验，发送结果未知时不再盲目重试。",
+  "修复遗忘后旧结果回填、跨群画像串用和敏感文本残留；保留完整个人风格设置。",
+  "私聊图片、文件与主备模型接线补齐；损坏的 API 配置明确报错，不静默改用其他接口。",
+  "日报保留状态反转后的确认，模型调用前重查清理状态，预览不会发送或登记成功。",
+  "控制台修复配置回退、查证覆盖错词条、日报编辑冲突与表情预览鉴权；后台查询失败显示待确认。",
+  "收紧发布包私有文件排除，修复表情采集总开关、JM 超时和日志风暴；Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Fixes merged-topic evidence validation and includes all effective daily text within a bounded input budget.",
-  "Failed structured generation no longer publishes a placeholder or marks the report as sent; fallback and delivery guards remain intact.",
-  "Updates sharp/libheif and the development-only js-yaml dependency to patched versions.",
-  "Verifies installed dependencies during Linux image builds; preserves image, sticker and wordcloud behavior.",
-  "Adds mention-gated member conversation summaries for ordinary group members, with up to five targets.",
-  "Supports recent time windows, calendar dates and combined or separate summaries of captured group text.",
-  "Sends selected messages and necessary context directly to the configured API with a natural-language prompt, without profile inference.",
-  "Adds an independent group allowlist, model route and read-only task status to the Linux console; daily report delivery remains separate.",
-  "Preserves model fallback, allowlists, relationship scoring and private reasoning isolation while Windows remains frozen.",
-  "Preserves the isolated Linux server deployment, upload_file_stream transfers, loopback-only browser and no automatic migration of model credentials.",
+  "Authenticates ingress and hardens bounded downloads; unknown delivery is never blindly replayed.",
+  "Prevents forgotten data writeback and cross-group inferred profiles; preserves all explicit style settings.",
+  "Connects private images, files and fallback routes; invalid API configuration fails visibly without switching providers.",
+  "Preserves summary state reversals, checks privacy before every call and makes dry runs non-publishing.",
+  "Fixes saved configuration, asynchronous editor conflicts, authenticated previews and uncertain task feedback.",
+  "Excludes private deployment state from releases; fixes capture switches, archive deadlines and log storms. Windows stays frozen.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([
@@ -158,7 +151,9 @@ function buildChangelogLatest(count, lang) {
 
 function buildChangelogVersion(version, lang) {
   const normalized = String(version || "").replace(/^v/i, "").toLowerCase();
-  const section = readChangelogSections().find(item => item.version.replace(/^v/i, "").toLowerCase().startsWith(normalized));
+  const sections = readChangelogSections();
+  const section = sections.find(item => item.version.replace(/^v/i, "").toLowerCase() === normalized) ||
+    sections.find(item => item.version.replace(/^v/i, "").toLowerCase().split("-", 1)[0] === normalized);
   if (!section) return lang === "en" ? "No matching version found." : "没有找到这个版本。";
   return formatChangelogSections([section], lang);
 }

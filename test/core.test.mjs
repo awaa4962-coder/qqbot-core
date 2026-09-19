@@ -114,9 +114,9 @@ describe("cleanThinking", () => {
     assert.strictEqual(cleanThinking(text), "喵～今天天气真好");
   });
 
-  it("移除 <think> 标签（无闭合情况）", () => {
+  it("拒绝 <think> 标签（无闭合情况）", () => {
     const text = "<think>分析中...\n\n喵～回复来了";
-    assert.ok(cleanThinking(text).includes("喵～回复来了"));
+    assert.strictEqual(cleanThinking(text), null);
   });
 
   it("移除 tool_call XML 片段", () => {
@@ -980,9 +980,8 @@ function bilibiliOkData(overrides = {}) {
 
 describe("fetchBilibiliInfo mock coverage", () => {
   it("fetches a normal BV link", async () => {
-    const result = await withMockFetch(async () => ({
-      json: async () => bilibiliOkData(),
-    }), async () => fetchBilibiliInfo("https://www.bilibili.com/video/BV1xx411c7mD"));
+    const result = await withMockFetch(async () => new globalThis.Response(JSON.stringify(bilibiliOkData())),
+      async () => fetchBilibiliInfo("https://www.bilibili.com/video/BV1xx411c7mD"));
     assert.strictEqual(result.bvid, "BV1xx411c7mD");
     assert.ok(result.text.includes("测试视频"));
   });
@@ -992,12 +991,14 @@ describe("fetchBilibiliInfo mock coverage", () => {
     const result = await withMockFetch(async (url) => {
       calls.push(url);
       if (url.startsWith("https://b23.tv/")) {
-        return { headers: { get: () => "https://www.bilibili.com/video/BVshort12345" } };
+        return new globalThis.Response(null, {
+          status: 302, headers: { location: "https://www.bilibili.com/video/BVshort12345" },
+        });
       }
-      return { json: async () => bilibiliOkData() };
+      return new globalThis.Response(JSON.stringify(bilibiliOkData()));
     }, async () => fetchBilibiliInfo("https://b23.tv/abcd1234"));
     assert.strictEqual(result.bvid, "BVshort12345");
-    assert.strictEqual(calls.length, 2);
+    assert.strictEqual(calls.length, 3);
   });
 
   it("returns null for invalid links", async () => {
@@ -1008,9 +1009,8 @@ describe("fetchBilibiliInfo mock coverage", () => {
   });
 
   it("keeps fallback behavior when API parsing fails", async () => {
-    const result = await withMockFetch(async () => ({
-      json: async () => ({ code: -1, data: null }),
-    }), async () => fetchBilibiliInfo("https://www.bilibili.com/video/BV1xx411c7mD"));
+    const result = await withMockFetch(async () => new globalThis.Response(JSON.stringify({ code: -1, data: null })),
+      async () => fetchBilibiliInfo("https://www.bilibili.com/video/BV1xx411c7mD"));
     assert.strictEqual(result, null);
   });
 });

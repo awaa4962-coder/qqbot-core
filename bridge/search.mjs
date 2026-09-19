@@ -3,6 +3,8 @@ import { CFG } from './config.mjs';
 import { log, logE } from './logger.mjs';
 import { callTaskApi } from './api-providers/gateway.mjs';
 import { buildOutputPacket } from './output-pipeline.mjs';
+import { CORE_IDENTITY, CONTEXT_SAFETY } from './system-prompts/identity.mjs';
+import { redactSensitiveText } from './privacy.mjs';
 
 // Tool definition
 export const MIMO_TOOLS = [
@@ -27,6 +29,7 @@ export function needsSearch(text) {
 }
 
 export async function webSearch(query) {
+  query = redactSensitiveText(query);
   if (!CFG.tavilyKey) return bingSearch(query);
   try {
     const r = await fetch('https://api.tavily.com/search', {
@@ -50,6 +53,7 @@ export async function webSearch(query) {
 }
 
 export async function bingSearch(query) {
+  query = redactSensitiveText(query);
   try {
     const r = await fetch('https://cn.bing.com/search?q=' + encodeURIComponent(query) + '&form=QBLH&mkt=zh-CN', {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
@@ -79,13 +83,13 @@ export async function bingSearch(query) {
 
 export async function buildSearchFallback(toolResults, toolResults2, userMsg, userName) {
   const allResults = (toolResults || []).concat(toolResults2 || []);
-  const rawText = allResults.map(t => typeof t.content === 'string' ? t.content : '').filter(c => c && c !== '未找到相关结果' && c !== '搜索功能未配置').join('\n\n');
+  const rawText = redactSensitiveText(allResults.map(t => typeof t.content === 'string' ? t.content : '').filter(c => c && c !== '未找到相关结果' && c !== '搜索功能未配置' && !c.startsWith('搜索暂时不可用')).join('\n\n'));
   if (!rawText.trim()) return '唔…好像没找到什么有用的结果呢，换个关键词试试叭～';
   try {
     const result = await callTaskApi("search_summary", "primary", {
       messages: [
-        { role: 'system', content: '你是夜星，一个可爱的AI猫娘助手。用户的问题是：' + userMsg + '。现在用2-3句话总结以下搜索结果回答用户，保持猫娘口吻，带喵和颜文字，不要长篇大论。' },
-        { role: 'user', content: '用户' + (userName||'') + '问了：' + userMsg + '\n\n搜索结果：\n' + rawText.slice(0, 3000) },
+        { role: 'system', content: [CORE_IDENTITY, CONTEXT_SAFETY, '用2-3句话基于搜索结果回答用户，结果不足或不相关时明确说明。自然表达，不强加口癖或颜文字。'].join('\n') },
+        { role: 'user', content: redactSensitiveText('用户' + (userName||'') + '问了：' + userMsg) + '\n\n搜索结果：\n' + rawText.slice(0, 3000) },
       ],
       maxTokens: 300,
       temperature: 0.7,

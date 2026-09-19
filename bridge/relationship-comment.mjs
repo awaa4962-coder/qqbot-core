@@ -5,6 +5,8 @@ import {
 } from "./model-router.mjs";
 import { saveUsers } from "./storage.mjs";
 import { wallAgeMs } from "./runtime-clock.mjs";
+import { redactSensitiveText } from "./privacy.mjs";
+import { getUserMemoryGeneration } from "./memory-profile/generation.mjs";
 
 const COMMENT_CACHE_MS = 6 * 60 * 60 * 1000;
 const COMMENT_CACHE_MESSAGES = 30;
@@ -13,15 +15,18 @@ const COMMENT_MAX_CHARS = 120;
 export async function getRelationshipShortComment(relation, options = {}) {
   if (!relation) return "";
   const user = options.user || null;
+  const uid = options.uid ?? user?.uid;
+  const generation = getUserMemoryGeneration(uid);
   const groupId = String(options.groupId || "0");
   const now = options.now || Date.now();
   const cache = getCommentCache(user, groupId);
   if (!options.forceRefresh && cache && !shouldRefreshComment(cache, relation, now)) {
-    return cache.text || "";
+    return normalizeRelationshipComment(cache.text);
   }
 
-  const prompt = buildRelationshipCommentPrompt(relation);
-  const text = await generateRelationshipComment(prompt, options) || buildLocalRelationshipComment(relation);
+  const prompt = redactSensitiveText(buildRelationshipCommentPrompt(relation));
+  const text = await generateRelationshipComment(prompt, options, () => generation === getUserMemoryGeneration(uid)) || buildLocalRelationshipComment(relation);
+  if (generation !== getUserMemoryGeneration(uid)) return "";
   const safeText = normalizeRelationshipComment(text) || buildLocalRelationshipComment(relation);
   writeCommentCache(user, groupId, safeText, relation, now, options.source || "auto");
   return safeText;
@@ -55,7 +60,7 @@ export function buildLocalRelationshipComment(relation) {
 }
 
 export function normalizeRelationshipComment(text) {
-  const value = String(text || "")
+  const value = redactSensitiveText(text)
     .replace(/\s+/g, " ")
     .trim();
   if (!value) return "";
@@ -72,8 +77,10 @@ export function shouldRefreshComment(cache, relation, now = Date.now()) {
   return false;
 }
 
-async function generateRelationshipComment(prompt, options) {
+async function generateRelationshipComment(prompt, options, isCurrent) {
+  if (!isCurrent()) return "";
   const mimo = await callMiMoRelationshipComment(prompt, options);
+  if (!isCurrent()) return "";
   if (mimo) return mimo;
   return await callDeepSeekRelationshipComment(prompt, options);
 }
@@ -107,13 +114,15 @@ async function defaultDeepSeekCall(prompt) {
 }
 
 function getCommentCache(user, groupId) {
-  return user?.relationshipComments?.[String(groupId)] || null;
+  const cache = user?.relationshipComments?.[String(groupId)];
+  return cache?.privacyScope === "group-v1" ? cache : null;
 }
 
 function writeCommentCache(user, groupId, text, relation, now, source) {
   if (!user || !text) return;
   if (!user.relationshipComments) user.relationshipComments = {};
   user.relationshipComments[String(groupId)] = {
+    privacyScope: "group-v1",
     text,
     generatedAt: now,
     messageCount: Number(relation.messageCount || 0),

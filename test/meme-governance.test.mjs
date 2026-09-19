@@ -13,6 +13,8 @@ import {
   resetMemeStoreForTest,
   rollbackLastMemeUpdate,
   setMemeStorePath,
+  setMemeEnabled,
+  setMemeStatus,
   upsertMeme,
 } from "../bridge/knowledge/memes/index.mjs";
 
@@ -61,6 +63,23 @@ test("manual fields survive later web verification updates", () => {
   assert.equal(entry.usage, "这是本地人工用法。");
   assert.deepEqual(entry.examples, ["人工例句"]);
   assert.ok(entry.manualFields.includes("meaning"));
+});
+
+test("manual disable and quarantine survive later verified batches and reload", () => {
+  for (const status of ["disabled", "quarantined"]) {
+    const name = "moderated-" + status;
+    applyMemeUpdateBatch([verifiedEntry(name)], { runId: "seed-" + status });
+    if (status === "disabled") setMemeEnabled(name, false);
+    else setMemeStatus(name, status);
+    applyMemeUpdateBatch([verifiedEntry(name)], { runId: "refresh-" + status });
+    flushMemeStoreSync();
+    setMemeStorePath(filePath);
+    const entry = getMemeStore().entries.find(item => item.name === name);
+    assert.equal(entry.enabled, false);
+    assert.equal(entry.status, status);
+    assert.ok(entry.manualFields.includes("enabled"));
+    assert.ok(entry.manualFields.includes("status"));
+  }
 });
 
 test("legacy auto entries migrate into quarantine without raw evidence", () => {

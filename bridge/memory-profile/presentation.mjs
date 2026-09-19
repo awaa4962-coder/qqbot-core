@@ -1,4 +1,5 @@
 import { getActiveMemoryContext } from "./query.mjs";
+import { redactSensitiveText } from "../privacy.mjs";
 
 export function buildMemorySummary(uid, groupId, options = {}) {
   const ctx = getActiveMemoryContext(uid, groupId, options);
@@ -12,7 +13,7 @@ export function buildMemorySummary(uid, groupId, options = {}) {
   if (ctx.userGroupProfile) {
     lines.push("群内互动画像: " + compactProfile(ctx.userGroupProfile, ["interactionStyle", "recentTopics", "confidence"]));
   }
-  return lines.join("\n");
+  return redactSensitiveText(lines.join("\n"));
 }
 
 export function buildHumanMemorySummary(uid, groupId, options = {}) {
@@ -21,7 +22,7 @@ export function buildHumanMemorySummary(uid, groupId, options = {}) {
   if (ctx.userProfile) lines.push("用户画像：" + describeUserProfile(ctx.userProfile));
   if (ctx.groupProfile) lines.push("群画像：" + describeGroupProfile(ctx.groupProfile));
   if (ctx.userGroupProfile) lines.push("群内互动画像：" + describeUserGroupProfile(ctx.userGroupProfile));
-  return lines.join("\n");
+  return redactSensitiveText(lines.join("\n"));
 }
 
 export function compactProfile(profile, keys) {

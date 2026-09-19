@@ -47,6 +47,16 @@ export function summaryPrivacy(options = {}) {
   return readSummaryJson(path.join(summaryRoot(options), "privacy.json"), { epoch: 0, users: {} });
 }
 
+export function isForgottenSummaryRecord(record, privacy) {
+  const uid = String(record.uid ?? record.user_id ?? "");
+  const cutoff = Number(privacy.users[uid] || 0);
+  // A new arrival time must not make an old, forgotten event new again.
+  return cutoff > 0 && [record.ts, record.receivedAt].some(value => {
+    const timestamp = Number(value);
+    return Number.isFinite(timestamp) && timestamp > 0 && timestamp <= cutoff;
+  });
+}
+
 export function assertSummaryEpoch(epoch, options = {}) {
   if (Number(epoch) !== summaryPrivacy(options).epoch) throw new Error("记录已被清理，请重新生成日报");
 }

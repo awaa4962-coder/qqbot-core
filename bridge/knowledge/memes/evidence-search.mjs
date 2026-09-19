@@ -1,7 +1,8 @@
 import { CFG } from "../../config.mjs";
-import { fetchSafeResponse, validateSafeUrl } from "../../safe-url.mjs";
+import { fetchSafeResponse, validateSafeUrl, readBoundedResponseBuffer } from "../../safe-url.mjs";
 
 const TAVILY_URL = "https://api.tavily.com/search";
+const MAX_EVIDENCE_BYTES = 2 * 1024 * 1024;
 
 export async function searchMemeEvidence(term, options = {}) {
   const query = buildEvidenceQuery(term);
@@ -78,7 +79,9 @@ async function searchTavily(query, options = {}) {
     signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) throw new Error(`Tavily HTTP ${response.status}`);
-  const payload = await response.json();
+  const buffer = await readBoundedResponseBuffer(response, MAX_EVIDENCE_BYTES);
+  if (buffer === null) throw new Error("Tavily response too large");
+  const payload = JSON.parse(buffer.toString("utf8"));
   return (payload?.results || []).map(item => ({
     platform: domainOf(item.url) || "web",
     url: item.url,
@@ -101,7 +104,9 @@ async function searchBing(query, _options = {}) {
   if (!result.ok || !result.response?.ok) {
     throw new Error(result.reason || `Bing HTTP ${result.response?.status || 0}`);
   }
-  return parseBingResults(await result.response.text());
+  const buffer = await readBoundedResponseBuffer(result.response, MAX_EVIDENCE_BYTES);
+  if (buffer === null) throw new Error("Bing response too large");
+  return parseBingResults(buffer.toString("utf8"));
 }
 
 function parseBingResults(html) {

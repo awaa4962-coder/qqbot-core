@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { perceptualImageHash } from "../../knowledge/memes/image-context.mjs";
 import { log, logE } from "../../logger.mjs";
 import { fetchSafeBuffer } from "../../safe-url.mjs";
@@ -29,10 +30,12 @@ export async function analyzeStickerEntry(entry, options = {}) {
   const describe = options.describe || describeStickerWithVision;
   const data = await download();
   const fingerprint = await perceptualImageHash(data.buffer);
-  const existing = findStickerByFingerprint(fingerprint, entry.id);
+  const md5 = crypto.createHash("md5").update(data.buffer).digest("hex");
+  const existing = findStickerByFingerprint(fingerprint, entry.id, { md5 });
   if (existing) {
     return {
       fingerprint,
+      md5,
       description: existing.description,
       tags: existing.tags,
       reused: true,
@@ -46,7 +49,7 @@ export async function analyzeStickerEntry(entry, options = {}) {
   });
   const normalized = normalizeAnalysis(modelResult);
   if (!normalized.description) throw new Error("视觉模型没有返回可用描述");
-  return { fingerprint, ...normalized, reused: false };
+  return { fingerprint, md5, ...normalized, reused: false };
 }
 
 export function normalizeAnalysis(value) {

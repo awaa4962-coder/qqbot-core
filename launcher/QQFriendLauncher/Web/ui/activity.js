@@ -73,8 +73,7 @@ export function showActivity(title, state = "working", detail = "完成后会自
   $("activityDetail").textContent = detail;
 }
 
-export function finishActivity(title, state = "success") {
-  const detail = state === "success" ? "当前页面已同步。" : "没有完成这次操作，请按页面提示检查。";
+export function finishActivity(title, state = "success", detail = state === "success" ? "当前页面已同步。" : "没有完成这次操作，请按页面提示检查。") {
   showActivity(title, state, detail);
   uiState.activityHideTimer = window.setTimeout(() => $("activityBar").classList.remove("visible"), 2800);
 }

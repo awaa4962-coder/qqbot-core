@@ -1,4 +1,4 @@
-import { fetchSafeResponse } from "../../safe-url.mjs";
+import { fetchSafeResponse, readBoundedResponseBuffer } from "../../safe-url.mjs";
 import { monotonicNow } from "../../runtime-clock.mjs";
 
 const API_VERSION = "2026-03-10";
@@ -151,10 +151,8 @@ async function loadGitHubRepository(repository, options = {}) {
 }
 
 async function readJsonBounded(response, maxBytes) {
-  const contentLength = Number(response.headers.get("content-length") || 0);
-  if (contentLength > maxBytes) return null;
-  const buffer = Buffer.from(await response.arrayBuffer());
-  if (buffer.length > maxBytes) return null;
+  const buffer = await readBoundedResponseBuffer(response, maxBytes);
+  if (buffer === null) return null;
   try {
     return JSON.parse(buffer.toString("utf8"));
   } catch {

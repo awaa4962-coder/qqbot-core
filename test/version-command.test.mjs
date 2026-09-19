@@ -33,4 +33,14 @@ describe("command normalization and version status", () => {
     assert.match(text, /v1\.2\.5-cognition-core/);
     assert.match(text, /v1\.2\.4-meme-knowledge/);
   });
+
+  it("matches a complete release number without matching later patch prefixes", () => {
+    const text = buildVersionQueryText("更新 v1.4.1", "zh");
+    assert.match(text, /^v1\.4\.1-runtime-resilience(?:\s|$)/);
+    assert.doesNotMatch(text, /^v1\.4\.10/);
+    assert.match(buildVersionQueryText("更新 v1.4.10", "zh"), /^v1\.4\.10-summary-evidence(?:\s|$)/);
+    assert.match(buildVersionQueryText("更新 v1.4.1-runtime-resilience", "zh"), /^v1\.4\.1-runtime-resilience(?:\s|$)/);
+    assert.match(buildVersionQueryText("更新 v1.4.1-runtime", "zh"), /没有找到这个版本/);
+    assert.match(buildVersionQueryText("更新 v1.4.100", "zh"), /没有找到这个版本/);
+  });
 });

@@ -25,7 +25,7 @@ function boundedMaxLen(maxLen) {
 }
 
 function findSplitIndex(text, maxLen) {
-  const sample = text.slice(0, maxLen + 1);
+  const sample = text.slice(0, maxLen);
   const delimiters = ["\n\n", "\n", "。", "？", "！", "?", "!", "；", ";", "，", ",", " "];
   for (const delimiter of delimiters) {
     const idx = sample.lastIndexOf(delimiter);
@@ -143,7 +143,9 @@ async function sendPayloadWithRetry({ url, payload, label, options }) {
   const retryDelayMs = Math.max(0, Number(options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS));
   let lastResult = null;
   let lastError = "";
+  let usedAttempts = 0;
   for (let attempt = 1; attempt <= attempts; attempt++) {
+    usedAttempts = attempt;
     markOutboundAttempt();
     traceStage("send", { status: "started", attempt });
     const outcome = await sendPayloadOnce(url, payload);
@@ -155,13 +157,15 @@ async function sendPayloadWithRetry({ url, payload, label, options }) {
       log(label + ":", lastResult?.status || lastResult?.retcode || "ok");
       return lastResult;
     }
+    // An HTTP timeout may happen after QQ accepted the message. Never replay an unknown delivery.
+    if (!outcome.retryable) break;
     if (attempt < attempts) {
       log(label + " retry:", attempt + 1, "of", attempts);
       await sleep(retryDelayMs);
     }
   }
   logE(label + " failed:", lastError || "unknown error");
-  traceStage("send", { status: "failed", reason: "send_failed", attempt: attempts });
+  traceStage("send", { status: "failed", reason: "send_failed", attempt: usedAttempts });
   return lastResult;
 }
 
@@ -174,12 +178,14 @@ async function sendPayloadOnce(url, payload) {
       signal: AbortSignal.timeout(15000),
     });
     const result = await response.json();
+    const httpOk = response.ok !== false;
     return {
-      ok: isOutboundPayloadSuccessful(result),
-      result,
+      ok: httpOk && isOutboundPayloadSuccessful(result),
+      retryable: httpOk && result?.status === "failed" && Number(result.retcode) > 0,
+      result: httpOk ? result : { status: "unknown", delivery: "unconfirmed" },
       error: String(result?.message || result?.wording || "NapCat 返回失败"),
     };
   } catch (error) {
-    return { ok: false, result: null, error: error.message };
+    return { ok: false, result: { status: "unknown", delivery: "unconfirmed" }, retryable: false, error: error.name || "transport_failed" };
   }
 }

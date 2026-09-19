@@ -61,6 +61,7 @@ export function renderMemes(snapshot, options = {}) {
 
 export function memeFormFingerprint() {
   return JSON.stringify({
+    originalName: uiState.memeEditingOriginalName,
     fields: Object.fromEntries(MEME_FIELD_IDS.map((id) => [id, $(id).value])),
     sources: readMemeSources(),
     locks: selectedMemeLocks(),

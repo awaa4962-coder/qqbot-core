@@ -9,6 +9,7 @@ import { waitForTask } from "./ui/tasks.js";
   let snapshot = null;
   let selectedId = "";
   let dirty = false;
+  let editingHeadId = "";
   let loading = false;
   let jobId = "";
   let pollingJobId = "";
@@ -32,8 +33,10 @@ import { waitForTask } from "./ui/tasks.js";
     if (!result.groups.length) { status("尚未配置日报群，请先在配置页添加。", true); controls(); return; }
     const coverage = result.coverage || {};
     $("summaryCoverage").textContent = `已采集 ${coverage.captured || 0} 条记录 · ${coverage.source === "retained-only" ? "仅有滚动保留记录，可能缺段" : "按日记录与滚动保留记录"}${coverage.capped ? " · 已达到采集上限" : ""}${coverage.truncated ? ` · ${coverage.truncated} 条长消息截短` : ""}`;
-    selectedId = preferId || selectedId;
-    if (!result.revisions.some(item => item.id === selectedId)) selectedId = result.revisions.at(-1)?.id || "";
+    if (!preserve || !dirty) {
+      selectedId = preferId || selectedId;
+      if (!result.revisions.some(item => item.id === selectedId)) selectedId = result.revisions.at(-1)?.id || "";
+    }
     fillSelect($("summaryRevision"), result.revisions.map(item => [item.id, versionLabel(item)]), selectedId);
     const compare = $("summaryCompare").value;
     fillSelect($("summaryCompare"), [["", "不对照"], ...result.revisions.map(item => [item.id, versionLabel(item)])], compare);
@@ -53,6 +56,7 @@ import { waitForTask } from "./ui/tasks.js";
     const revision = current();
     $("summaryBody").value = revision?.summary || "";
     dirty = false;
+    editingHeadId = snapshot?.revisions.at(-1)?.id || "";
     fillSelect($("summaryTopic"), (revision?.document?.topics || []).map(item => [item.id, item.title]), "");
     $("summaryEvidence").replaceChildren();
     for (const item of revision?.evidence || []) {
@@ -103,11 +107,12 @@ import { waitForTask } from "./ui/tasks.js";
     try {
       if (action === "refresh") {
         await refresh(null, true);
+        if (jobId && !pollingJobId) schedulePoll();
         const active = snapshot?.jobs?.find(job => job.id === jobId);
         status(active ? phaseNames[active.phase] || active.phase : "已刷新"); return;
       }
       const result = await host.call("summaryAction", {
-        action, ...target(), revisionId: selectedId, expectedRevisionId: snapshot?.revisions.at(-1)?.id,
+        action, ...target(), revisionId: selectedId, expectedRevisionId: editingHeadId,
         discussionId: $("summaryTopic").value, summary: action === "save" ? $("summaryBody").value : undefined,
       });
       if (result.jobId) { jobId = result.jobId; dirty = false; status("任务已提交"); schedulePoll(); }
@@ -128,13 +133,16 @@ import { waitForTask } from "./ui/tasks.js";
       const job = snapshot.jobs.find(item => item.id === expectedId);
       if (!job) throw new Error("任务状态已失效，请刷新确认。");
       return job;
-    }, { onProgress: job => status(job.error || phaseNames[job.phase] || job.phase, ["failed", "interrupted"].includes(job.phase)) })
+    }, {
+      onReadError: () => status("任务状态暂不可读，正在重试查询，请勿重复提交"),
+      onProgress: job => status(job.error || phaseNames[job.phase] || job.phase, ["failed", "interrupted"].includes(job.phase)),
+    })
       .then(job => {
         jobId = "";
-        if (job.revisionId) { selectedId = job.revisionId; $("summaryRevision").value = selectedId; renderRevision(); }
+        if (job.revisionId && !dirty) { selectedId = job.revisionId; $("summaryRevision").value = selectedId; renderRevision(); }
         if (job.reason) status("未重复发送，原任务状态：" + job.reason);
       })
-      .catch(error => { jobId = ""; status(error.message || "读取任务状态失败", true); })
+      .catch(error => { status(error.message || "任务结果尚未确认，请刷新继续查询", true); })
       .finally(() => { pollingJobId = ""; controls(); });
   }
 

@@ -90,7 +90,9 @@ export function upsertCapturedSticker(value = {}, options = {}) {
   }
 
   const senderHash = hashSender(store, options.senderId);
-  const existing = findNearestFingerprint(store.entries, fingerprint, 5);
+  // A perceptual match is not proof that two URLs contain the same image.
+  const md5 = normalizeStickerEntry(value).md5;
+  const existing = md5 ? store.entries.find(entry => entry.md5 === md5) : null;
   if (existing) {
     updateObservedEntry(existing, value, options, senderHash, now);
     store.stats.captureDuplicates++;
@@ -177,17 +179,26 @@ export function retireStaleCapturedStickers(options = {}) {
   const store = getStickerCatalog();
   const now = Number(options.now || Date.now());
   const maxAgeMs = Number(options.maxAgeMs || 90 * 24 * 60 * 60 * 1000);
+  const candidateMaxAgeMs = Number(options.candidateMaxAgeMs ?? 7 * 24 * 60 * 60 * 1000);
   let retired = 0;
   for (const entry of store.entries) {
-    if (entry.source !== "group-capture" || entry.captureState !== "active") continue;
-    if (now - Number(entry.lastSentAt || entry.lastObservedAt || entry.firstSeenAt) < maxAgeMs) continue;
-    if (entry.sendCount > 2) continue;
+    if (!isStaleCapturedSticker(entry, now, maxAgeMs, candidateMaxAgeMs)) continue;
     entry.enabled = false;
     entry.captureState = "retired";
     retired++;
   }
   if (retired) persistCatalog();
   return { retired };
+}
+
+function isStaleCapturedSticker(entry, now, maxAgeMs, candidateMaxAgeMs) {
+  if (entry.source !== "group-capture" || entry.manual || entry.captureState === "retired") return false;
+  if (entry.captureState === "active") {
+    const lastUse = entry.lastSentAt || entry.lastObservedAt || entry.firstSeenAt;
+    return entry.sendCount <= 2 && now - Number(lastUse) >= maxAgeMs;
+  }
+  if (!["candidate", "pending-cloud", "cloud-failed"].includes(entry.captureState)) return false;
+  return now - Number(entry.lastObservedAt || entry.firstSeenAt) >= candidateMaxAgeMs;
 }
 
 export function removeStickerEntry(id, options = {}) {
@@ -221,11 +232,12 @@ export function getStickerEntry(id) {
   return entry ? { ...entry, tags: [...entry.tags], allowedGroups: [...entry.allowedGroups] } : null;
 }
 
-export function findStickerByFingerprint(fingerprint, excludeId = "") {
+export function findStickerByFingerprint(fingerprint, excludeId = "", options = {}) {
   const value = String(fingerprint || "").trim();
   if (!value) return null;
   const entry = getStickerCatalog().entries.find(item =>
-    item.id !== excludeId && item.fingerprint === value && item.indexed
+    item.id !== excludeId && item.fingerprint === value && item.indexed &&
+    Boolean(options.md5) && item.md5 === options.md5
   );
   return entry ? { ...entry, tags: [...entry.tags], allowedGroups: [...entry.allowedGroups] } : null;
 }
@@ -237,8 +249,11 @@ export function applyStickerAnalysis(id, analysis = {}, options = {}) {
   const now = Number(options.now || Date.now());
   const target = store.entries[index];
   const fingerprint = String(analysis.fingerprint || "").trim();
-  const duplicateIndex = fingerprint
-    ? store.entries.findIndex(entry => entry.id !== target.id && entry.fingerprint === fingerprint)
+  const md5 = normalizeStickerEntry({ md5: analysis.md5 || target.md5 }).md5;
+  const duplicateIndex = md5 && !target.manual
+    ? store.entries.findIndex(entry => entry.id !== target.id && entry.md5 === md5 && entry.indexed &&
+      !entry.manual && entry.source === target.source && entry.enabled === target.enabled &&
+      JSON.stringify(entry.allowedGroups) === JSON.stringify(target.allowedGroups))
     : -1;
 
   if (duplicateIndex >= 0) {
@@ -250,6 +265,7 @@ export function applyStickerAnalysis(id, analysis = {}, options = {}) {
   }
 
   target.fingerprint = fingerprint;
+  target.md5 = md5;
   target.description = String(analysis.description || "").trim().slice(0, 240);
   target.tags = normalizeStickerTags(analysis.tags);
   target.indexed = Boolean(target.description);
@@ -428,7 +444,6 @@ function normalizeFavorite(value) {
 }
 
 function updateObservedEntry(existing, value, options, senderHash, now) {
-  existing.url = String(value.url);
   existing.lastSeenAt = now;
   existing.lastObservedAt = now;
   existing.seenCount = Number(existing.seenCount || 1) + 1;
@@ -453,6 +468,7 @@ function createCapturedEntry(value, options, senderHash, fingerprint, entries, n
     source: "group-capture",
     url: value.url,
     fingerprint,
+    md5: value.md5,
     description: value.description,
     tags: value.tags,
     indexed: Boolean(value.description),
@@ -509,10 +525,9 @@ function retireAnalysisCandidate(store, entry, now) {
 }
 
 function mergeAnalyzedDuplicate(duplicate, target, now) {
-  duplicate.url = target.url;
   duplicate.lastSeenAt = Math.max(duplicate.lastSeenAt, target.lastSeenAt, now);
   for (const key of ["emojiId", "packageId", "key", "summary", "resId", "md5"]) {
-    duplicate[key] = firstText(target[key], duplicate[key]);
+    duplicate[key] = firstText(duplicate[key], target[key]);
   }
   duplicate.seenCount = Number(duplicate.seenCount || 1) + Number(target.seenCount || 1);
   duplicate.sourceGroups = [...new Set(duplicate.sourceGroups.concat(target.sourceGroups))].slice(0, 20);
@@ -529,28 +544,6 @@ function findMatchingFavorite(entries, item) {
     (item.md5 && entry.md5 === item.md5) ||
     entry.url === item.url
   );
-}
-
-function findNearestFingerprint(entries, fingerprint, maxDistance) {
-  let nearest = null;
-  for (const entry of entries) {
-    if (!entry.fingerprint) continue;
-    const distance = hammingDistance(fingerprint, entry.fingerprint);
-    if (distance > maxDistance) continue;
-    if (!nearest || distance < nearest.distance) nearest = { entry, distance };
-  }
-  return nearest?.entry || null;
-}
-
-function hammingDistance(left, right) {
-  if (!/^[0-9a-f]{16}$/i.test(left) || !/^[0-9a-f]{16}$/i.test(right)) return 64;
-  let value = BigInt("0x" + left) ^ BigInt("0x" + right);
-  let count = 0;
-  while (value) {
-    value &= value - 1n;
-    count++;
-  }
-  return count;
 }
 
 function normalizeIdentitySalt(value) {

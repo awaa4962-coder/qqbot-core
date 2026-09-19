@@ -5,6 +5,14 @@ import { CFG } from "../config.mjs";
 
 const DEFAULT_STALE_LOCK_MS = 2 * 60 * 60 * 1000;
 
+export function summarySkipResult(reason, metadata = {}) {
+  const pending = !["already_sent", "no_messages"].includes(reason);
+  return {
+    ...metadata, ok: !pending, sent: false, skipped: true, pending, reason,
+    message: pending ? (reason === "already_running" ? "日报任务仍在运行，请稍后查看。" : "日报发送仍待核实，请在日报工作台确认；系统不会自动重发。") : "",
+  };
+}
+
 export function createDailySummaryGuard(options = {}) {
   const dateText = safePart(options.dateText);
   const groupId = safePart(options.groupId);

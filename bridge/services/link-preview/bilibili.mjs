@@ -1,3 +1,8 @@
+import { fetchSafeResponse, fetchSafeText } from "../../safe-url.mjs";
+
+const DEFAULT_TIMEOUT_MS = 8000;
+const MAX_API_BYTES = 512 * 1024;
+
 function formatNum(n) {
   if (!n) return n;
   if (n >= 100000000) return (n / 100000000).toFixed(1) + "亿";
@@ -16,29 +21,35 @@ export function extractBvid(url) {
   return m2 ? m2[1] : null;
 }
 
-async function resolveBilibiliUrl(url, bvid) {
+async function resolveBilibiliUrl(url, bvid, options) {
   if (!url.includes("b23.tv")) return bvid;
   try {
-    const redir = await fetch("https://b23.tv/" + bvid, {
+    const redir = await fetchSafeResponse("https://b23.tv/" + bvid, {
+      method: "HEAD",
       headers: { "User-Agent": "Mozilla/5.0" },
-      redirect: "manual",
+      timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS,
     });
-    const loc = redir.headers.get("location") || "";
-    const m = loc.match(/\/video\/(BV[a-zA-Z0-9]+)/);
-    return m ? m[1] : bvid;
+    try { await redir.response?.body?.cancel(); } catch {}
+    if (!redir.ok || !redir.response?.ok) return null;
+    const finalUrl = redir.url;
+    if (!finalUrl || !/(^|\.)bilibili\.com$/i.test(finalUrl.hostname)) return null;
+    return finalUrl.pathname.match(/^\/video\/(BV[a-zA-Z0-9]+)/)?.[1] || null;
   } catch {
     return null;
   }
 }
 
-async function fetchBilibiliPage(bvid) {
-  const r = await fetch("https://api.bilibili.com/x/web-interface/view?bvid=" + bvid, {
+async function fetchBilibiliPage(bvid, options) {
+  const text = await fetchSafeText("https://api.bilibili.com/x/web-interface/view?bvid=" + bvid, {
     headers: {
       "User-Agent": "Mozilla/5.0",
       "Referer": "https://www.bilibili.com",
     },
+    timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS,
+    maxBytes: MAX_API_BYTES,
   });
-  const data = await r.json();
+  if (!text) return null;
+  const data = JSON.parse(text);
   return data?.code === 0 ? data.data : null;
 }
 
@@ -87,15 +98,15 @@ function formatBilibiliPreview(data, bvid) {
   return { text: info.join("\n"), image: pic || "", bvid };
 }
 
-export async function fetchBilibiliInfo(url) {
+export async function fetchBilibiliInfo(url, options = {}) {
   let bvid = extractBvid(url);
   if (!bvid) return null;
 
-  bvid = await resolveBilibiliUrl(url, bvid);
+  bvid = await resolveBilibiliUrl(url, bvid, options);
   if (!bvid) return null;
 
   try {
-    const data = await fetchBilibiliPage(bvid);
+    const data = await fetchBilibiliPage(bvid, options);
     return data ? formatBilibiliPreview(data, bvid) : null;
   } catch {
     return null;

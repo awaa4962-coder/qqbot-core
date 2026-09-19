@@ -1,14 +1,19 @@
 import { groupChats, users } from "../storage.mjs";
 import { getPreferredDisplayName } from "../user-preferences.mjs";
+import { redactSensitiveText } from "../privacy.mjs";
 
 export function resolveMentionDisplayName(qq, options = {}) {
   const mentionName = resolveMentionName(options.mention);
   if (mentionName) return mentionName;
   const uid = String(qq || "");
-  if (!uid || uid === "all") return uid === "all" ? "@all" : "";
+  if (!uid) return "";
+  if (uid === "all") return "@all";
   const userStore = options.users || users;
   const chatStore = options.groupChats || groupChats;
   const groupId = String(options.groupId || options.group_id || "");
+  if (groupId && groupId !== "private") {
+    return findRecentNickname(uid, groupId, chatStore) || "QQ:" + uid;
+  }
   const user = userStore[uid];
   const localName = resolveLocalName(uid, user, userStore);
   if (localName) return localName;
@@ -33,7 +38,7 @@ function resolveLocalName(uid, user, userStore) {
 }
 
 function findRecentNickname(uid, groupId, chatStore) {
-  const groups = groupId && chatStore[groupId] ? [chatStore[groupId]] : Object.values(chatStore || {});
+  const groups = groupId ? [chatStore[groupId]] : Object.values(chatStore || {});
   for (const entries of groups) {
     if (!Array.isArray(entries)) continue;
     for (let i = entries.length - 1; i >= 0; i--) {
@@ -56,5 +61,5 @@ function lastSafe(values) {
 }
 
 function safeName(value) {
-  return String(value || "").replace(/\s+/g, " ").trim().slice(0, 40);
+  return redactSensitiveText(value).replace(/\s+/g, " ").trim().slice(0, 40);
 }

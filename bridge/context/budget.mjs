@@ -1,3 +1,5 @@
+import { redactSensitiveText } from "../privacy.mjs";
+
 export function estimateContextBudget(messages, currentInput = "") {
   const messageChars = (messages || []).reduce(function(total, item) {
     return total + String(item?.content || "").length;
@@ -24,7 +26,7 @@ export function enforceContextBudget(messages, currentInput = "", options = {}) 
     index,
     priority: Number(item?.contextPriority || 50),
     role: item?.role || "user",
-    content: String(item?.content || "").trim(),
+    content: redactSensitiveText(item?.content).trim(),
     sources: Array.isArray(item?.contextSources) ? item.contextSources.slice(0, 12) : [],
   })).filter(item => item.content);
   ranked.sort((a, b) => b.priority - a.priority || b.index - a.index);

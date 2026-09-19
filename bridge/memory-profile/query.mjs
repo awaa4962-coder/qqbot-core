@@ -3,8 +3,8 @@ import { userGroupKey } from "./constants.mjs";
 
 export function getActiveMemoryContext(uid, groupId, options = {}) {
   const now = options.now || Date.now();
-  const userProfile = activeProfile(memoryProfiles.userProfiles[String(uid)], now);
-  const rawGroupProfile = activeProfile(memoryProfiles.groupProfiles[String(groupId)], now);
+  const userProfile = options.groupOnly ? null : activeProfile(memoryProfiles.userProfiles[String(uid)], now);
+  const rawGroupProfile = activeProfile(memoryProfiles.groupProfiles[String(groupId)], now, { requireConfidence: false });
   const groupProfile = withEffectiveInterjectionTolerance(rawGroupProfile, now);
   const userGroupProfile = activeProfile(memoryProfiles.userGroupProfiles[userGroupKey(groupId, uid)], now);
   return { userProfile, groupProfile, userGroupProfile };
@@ -21,10 +21,11 @@ export function withEffectiveInterjectionTolerance(profile, now) {
   return { ...profile, interjectionTolerance: effective };
 }
 
-export function activeProfile(profile, now) {
+export function activeProfile(profile, now, options = {}) {
   if (!profile) return null;
   if (Number(profile.expiresAt || 0) <= now) return null;
-  if (Number(profile.confidence || 0) > 0 && Number(profile.confidence || 0) < 0.16) return null;
+  const confidence = Number(profile.confidence || 0);
+  if (options.requireConfidence !== false && (!Number.isFinite(confidence) || confidence < 0.16)) return null;
   return profile;
 }
 

@@ -11,6 +11,7 @@ import {
   stripBotMention,
 } from "../bridge/commands/index.mjs";
 import { buildAdminHelpText, buildHelpPage1, buildHelpPage2 } from "../bridge/help.mjs";
+import { getMemeStore } from "../bridge/knowledge/memes/index.mjs";
 
 describe("modular command entry", () => {
   it("exposes the same parsing and dispatch surface as the compatibility facade", () => {
@@ -50,5 +51,22 @@ describe("modular command entry", () => {
     const adminHelp = buildAdminHelpText();
     assert.match(adminHelp, /查看画像状态：memory status/);
     assert.doesNotMatch(adminHelp, /<qq>|csv\|json/i);
+  });
+
+  it("passes the current group to meme search without exposing group entries in private chat", () => {
+    const store = getMemeStore();
+    const previousEntries = store.entries;
+    store.entries = [...previousEntries, {
+      name: "scope-probe", aliases: [], meaning: "synthetic group-only meaning", usage: "synthetic usage",
+      scope: { type: "groups", groupIds: ["123456"] }, enabled: true, status: "active",
+      source: "manual", level: "B", confidence: 0.8,
+    }];
+    try {
+      assert.match(buildCommandReply("meme search scope-probe", { userId: 42, groupId: 123456 }), /synthetic group-only meaning/);
+      assert.doesNotMatch(buildCommandReply("meme search scope-probe", { userId: 42, groupId: 234567 }), /synthetic group-only meaning/);
+      assert.doesNotMatch(buildCommandReply("meme search scope-probe", { userId: 42 }), /synthetic group-only meaning/);
+    } finally {
+      store.entries = previousEntries;
+    }
   });
 });

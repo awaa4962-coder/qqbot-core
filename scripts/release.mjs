@@ -15,6 +15,15 @@ const PUBLIC_QQFRIEND_FILES = new Set([
   ".qqfriend/modules.json",
   ".qqfriend/workflows.json",
 ]);
+const PUBLIC_LINUX_FILES = new Set([
+  ".env.example", "qqfriend.env.example", "compose.yaml",
+  "Dockerfile", "Dockerfile.dependencies", "Dockerfile.overlay",
+  "check.sh", "prepare.sh", "install-docker-host.sh", "install-summary-schedule.sh", "install-time-order.sh",
+  "README.md", "ROADMAP.md", "MEMBER-SUMMARY.md", "MODULAR-RUNTIME.md", "SUMMARY-WORKBENCH.md",
+  "systemd/docker-chrony-wait.conf", "systemd/qqfriend-summary.service",
+  "systemd/qqfriend-summary.timer", "systemd/qqfriend.service",
+].map(file => "deploy/linux/" + file));
+const PUBLIC_ENV_EXAMPLES = new Set([".env.example", "deploy/linux/.env.example", "deploy/linux/qqfriend.env.example"]);
 const RELEASE_ROOTS = [
   "bridge",
   ...PUBLIC_QQFRIEND_FILES,
@@ -97,6 +106,13 @@ function pathParts(filePath) {
   return normalizeReleasePath(filePath).split("/").filter(Boolean);
 }
 
+function isPrivateConfigPath(normalized, parts, base) {
+  if (parts.includes(".qqfriend") && !PUBLIC_QQFRIEND_FILES.has(normalized)) return true;
+  if (normalized.startsWith("deploy/linux/") &&
+      ![...PUBLIC_LINUX_FILES].some(file => file === normalized || file.startsWith(normalized + "/"))) return true;
+  return /(?:^|\.)env(?:[._-]|$)/i.test(base) && !PUBLIC_ENV_EXAMPLES.has(normalized);
+}
+
 export function isForbiddenPath(filePath) {
   const normalized = normalizeReleasePath(filePath);
   const parts = pathParts(normalized);
@@ -105,7 +121,7 @@ export function isForbiddenPath(filePath) {
 
   if (!base) return true;
   if (normalized.includes("..")) return true;
-  if (parts[0] === ".qqfriend" && !PUBLIC_QQFRIEND_FILES.has(normalized)) return true;
+  if (isPrivateConfigPath(normalized, parts, base)) return true;
   if (/\.tmp(?:\.|$)/i.test(base)) return true;
   if (parts.some(part => /\.WebView2$/i.test(part) || /^publish(?:-|$)/i.test(part))) return true;
   if (FORBIDDEN_NAMES.has(base)) return true;
@@ -116,10 +132,17 @@ export function isForbiddenPath(filePath) {
 }
 
 function walkFiles(root, entry, out) {
+  if (isForbiddenPath(entry)) return;
   const absolute = path.join(root, entry);
-  if (!fs.existsSync(absolute)) return;
-
-  const stat = fs.statSync(absolute);
+  let stat;
+  // Never follow a file or directory link, including ancestors of explicit file roots.
+  let cursor = root;
+  for (const part of pathParts(entry)) {
+    cursor = path.join(cursor, part);
+    try { stat = fs.lstatSync(cursor); }
+    catch (error) { if (error.code === "ENOENT") return; throw error; }
+    if (stat.isSymbolicLink()) throw new Error("symbolic links are not allowed in releases: " + toPosix(entry));
+  }
   if (stat.isDirectory()) {
     const children = fs.readdirSync(absolute).sort();
     for (const child of children) walkFiles(root, path.join(entry, child), out);

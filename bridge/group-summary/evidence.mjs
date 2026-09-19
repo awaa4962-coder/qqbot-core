@@ -12,6 +12,7 @@ export function prepareSummaryEvidence(messages = [], options = {}) {
     .sort((left, right) => left.ts - right.ts || left.index - right.index);
   const evidenceMessages = [];
   const recentByKey = new Map();
+  const lastBySpeakerReply = new Map();
   const repeatEvents = [];
   const metrics = {
     botMessageCount: 0,
@@ -37,10 +38,13 @@ export function prepareSummaryEvidence(messages = [], options = {}) {
     }
 
     const key = buildRepeatKey(text);
+    const speakerReply = summaryUserKey(item) + ":" + String(item.replyToMessageId || "");
+    const intervened = followsDifferentMessage(lastBySpeakerReply, speakerReply, key);
     const repeatKey = /确认|完成|修好|解决|不行|没好|还是|恢复|通过|纠正|不对|其实|赞同|反对/.test(text)
-      ? summaryUserKey(item) + ":" + String(item.replyToMessageId || "") + ":" + key : key;
-    const previous = repeatKey ? recentByKey.get(repeatKey) : null;
-    if (previous && entry.ts - previous.lastTs <= repeatWindowMs) {
+      ? speakerReply + ":" + key : key;
+    const previous = recentByKey.get(repeatKey);
+    // A -> B -> A may be a new confirmation, not repetition of the first A.
+    if (previous && !intervened && entry.ts - previous.lastTs <= repeatWindowMs) {
       metrics.repeatMessageCount++;
       previous.lastTs = entry.ts;
       previous.count++;
@@ -76,6 +80,12 @@ export function prepareSummaryEvidence(messages = [], options = {}) {
         endTs: event.lastTs,
       })),
   };
+}
+
+function followsDifferentMessage(lastBySpeakerReply, speakerReply, key) {
+  const previous = lastBySpeakerReply.get(speakerReply);
+  lastBySpeakerReply.set(speakerReply, key);
+  return previous !== undefined && previous !== key;
 }
 
 export function isSummaryBotMessage(message, options = {}) {

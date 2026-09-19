@@ -16,6 +16,7 @@ import {
   buildGroupCommandReply,
   buildPrivateCommandReply,
 } from "../bridge/admin-commands.mjs";
+import { normalizeUsage } from "../bridge/api-providers/message-convert.mjs";
 
 const originalFetch = globalThis.fetch;
 const tempDirs = [];
@@ -27,6 +28,32 @@ afterEach(() => {
 });
 
 describe("API cache usage metrics", () => {
+  it("counts Anthropic cache reads and creation as input, including on the normalized path", () => {
+    const raw = { input_tokens: 10, cache_read_input_tokens: 90, cache_creation_input_tokens: 20, output_tokens: 5 };
+    for (const value of [raw, normalizeUsage(raw)]) {
+      const result = normalizeProviderUsage(value);
+      assert.equal(result.promptTokens, 120);
+      assert.equal(result.cachedTokens, 90);
+      assert.equal(result.missTokens, 30);
+      assert.equal(result.totalTokens, 125);
+      assert.equal(result.cacheReported, true);
+    }
+  });
+
+  it("preserves Gemini cache and reasoning counts without double-counting on a second pass", () => {
+    const raw = { promptTokenCount: 100, cachedContentTokenCount: 80, candidatesTokenCount: 5, thoughtsTokenCount: 20, totalTokenCount: 125 };
+    for (const value of [raw, normalizeUsage(raw)]) {
+      const result = normalizeProviderUsage(value);
+      assert.equal(result.promptTokens, 100);
+      assert.equal(result.cachedTokens, 80);
+      assert.equal(result.missTokens, 20);
+      assert.equal(result.completionTokens, 25);
+      assert.equal(result.reasoningTokens, 20);
+      assert.equal(result.totalTokens, 125);
+      assert.equal(result.cacheReported, true);
+    }
+  });
+
   it("normalizes DeepSeek, MiMo and Responses cache fields", () => {
     assert.deepEqual(normalizeProviderUsage({
       prompt_tokens: 100,

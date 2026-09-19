@@ -7,41 +7,48 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-tests-"));
-const configRoot = path.join(sandbox, "config");
-const dataRoot = path.join(sandbox, "data");
-const tempRoot = path.join(sandbox, "temp");
 
-for (const directory of [configRoot, dataRoot, tempRoot]) {
-  fs.mkdirSync(directory, { recursive: true });
+export function testExitCode(code, signal) {
+  return signal || !Number.isInteger(code) ? 1 : code;
 }
-fs.writeFileSync(path.join(configRoot, ".env_mimo"), "test-only-mimo-key\n", "utf8");
-fs.writeFileSync(path.join(configRoot, ".env_ds"), "test-only-deepseek-key\n", "utf8");
 
-const files = collectTests(path.join(ROOT, "test"));
-const child = spawn(process.execPath, ["--test", ...files], {
-  cwd: ROOT,
-  stdio: "inherit",
-  windowsHide: true,
-  env: {
-    ...process.env,
-    NODE_ENV: "test",
-    QQBOT_CONFIG_ROOT: configRoot,
-    QQBOT_DATA_DIR: dataRoot,
-    QQBOT_LOG_DIR: path.join(dataRoot, "logs"),
-    QQBOT_TEMP_DIR: tempRoot,
-    TEMP: tempRoot,
-    TMP: tempRoot,
-  },
-});
+async function main() {
+  const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-tests-"));
+  const configRoot = path.join(sandbox, "config");
+  const dataRoot = path.join(sandbox, "data");
+  const tempRoot = path.join(sandbox, "temp");
 
-const exitCode = await new Promise(resolve => {
-  child.once("error", () => resolve(1));
-  child.once("exit", code => resolve(Number(code || 0)));
-});
+  for (const directory of [configRoot, dataRoot, tempRoot]) {
+    fs.mkdirSync(directory, { recursive: true });
+  }
+  fs.writeFileSync(path.join(configRoot, ".env_mimo"), "test-only-mimo-key\n", "utf8");
+  fs.writeFileSync(path.join(configRoot, ".env_ds"), "test-only-deepseek-key\n", "utf8");
 
-fs.rmSync(sandbox, { recursive: true, force: true });
-process.exit(exitCode);
+  const files = collectTests(path.join(ROOT, "test"));
+  const child = spawn(process.execPath, ["--test", ...files], {
+    cwd: ROOT,
+    stdio: "inherit",
+    windowsHide: true,
+    env: {
+      ...process.env,
+      NODE_ENV: "test",
+      QQBOT_CONFIG_ROOT: configRoot,
+      QQBOT_DATA_DIR: dataRoot,
+      QQBOT_LOG_DIR: path.join(dataRoot, "logs"),
+      QQBOT_TEMP_DIR: tempRoot,
+      TEMP: tempRoot,
+      TMP: tempRoot,
+    },
+  });
+
+  const exitCode = await new Promise(resolve => {
+    child.once("error", () => resolve(1));
+    child.once("exit", (code, signal) => resolve(testExitCode(code, signal)));
+  });
+
+  fs.rmSync(sandbox, { recursive: true, force: true });
+  process.exit(exitCode);
+}
 
 function collectTests(directory) {
   return fs.readdirSync(directory, { withFileTypes: true })
@@ -51,4 +58,8 @@ function collectTests(directory) {
       return entry.isFile() && entry.name.endsWith(".mjs") ? [filename] : [];
     })
     .sort();
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main();
 }

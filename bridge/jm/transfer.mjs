@@ -59,6 +59,7 @@ async function transferJm(options, destination) {
     await zipper(downloadDir, zipPath, {
       password: zipPassword,
       sevenZipPath: options.sevenZipPath ?? CFG.jmSevenZipPath,
+      timeoutMs: options.zipTimeoutMs,
     });
     const uploadResult = await destination.upload(zipPath, "jm-" + options.jmId + ".zip");
     if (!uploadOk(uploadResult)) throw new Error("upload_failed");
@@ -93,6 +94,7 @@ export function jmErrorText(reason) {
   if (reason === "upload_failed") return "JM 已下载但转发失败，临时文件会在约 1 天后自动清理。";
   if (reason === "zip_tool_missing") return "JM 已下载但缺少 7-Zip，无法生成带密码压缩包。";
   if (reason === "zip_failed") return "JM 已下载但打包失败，临时文件会在约 1 天后自动清理。";
+  if (reason === "zip_timeout") return "JM 打包超时，已停止打包，临时文件会在约 1 天后自动清理。";
   return "JM 下载失败，临时文件会在约 1 天后自动清理。";
 }
 

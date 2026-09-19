@@ -1,12 +1,11 @@
 import { CFG } from "../config.mjs";
 import { DEFAULT_SUMMARY_GROUP_ID, DEFAULT_SUMMARY_GROUP_NAME } from "./constants.mjs";
 import { dateLabel, formatDate } from "./date.mjs";
-import { buildSummaryDigest } from "./digest.mjs";
 import { loadSummaryCapture } from "./journal.mjs";
 import { reportFile, saveReportRevision } from "./reports.mjs";
 import { deliveryDirectory, publishSummary } from "./publisher.mjs";
-import { summaryPrivacy } from "./state.mjs";
-import { createDailySummaryGuard } from "./guard.mjs";
+import { assertSummaryEpoch, summaryPrivacy } from "./state.mjs";
+import { createDailySummaryGuard, summarySkipResult } from "./guard.mjs";
 import { generateGroupSummaryResult } from "./providers.mjs";
 import { getSummaryStyle } from "./styles.mjs";
 
@@ -15,11 +14,17 @@ export async function previewGroupSummary(options = {}) {
 }
 
 export async function sendGroupSummaryForDate(options = {}) {
+  if (options.dryRun === true) {
+    if (!options.prepared) return await buildSummaryServiceResult(options, false);
+    if (!isAllowedSummaryGroup(options.prepared.groupId, options.groupWhitelist)) throw new Error("该群未启用日报");
+    assertSummaryEpoch(options.prepared.privacyEpoch, options);
+    return { ...options.prepared, ok: true, sent: false, dryRun: true, publicationManaged: false };
+  }
   if (options.prepared) return await publishSummary(options.prepared, options);
   const dateText = options.dateText || formatDate();
   const groupId = Number(options.groupId || DEFAULT_SUMMARY_GROUP_ID);
   const guard = options.guard || createDailySummaryGuard({ dateText, groupId, rootDir: deliveryDirectory(options) });
-  if (!guard.ok) return { ok: true, sent: false, skipped: true, reason: guard.reason, publicationManaged: true, dateText, groupId };
+  if (!guard.ok) return summarySkipResult(guard.reason, { publicationManaged: true, dateText, groupId });
   try {
     const result = await buildSummaryServiceResult(options);
     if (!result.ok) return result;
@@ -27,7 +32,7 @@ export async function sendGroupSummaryForDate(options = {}) {
   } finally { if (!options.guard) guard.release(); }
 }
 
-async function buildSummaryServiceResult(options) {
+async function buildSummaryServiceResult(options, persist = true) {
   const dateText = options.dateText || formatDate();
   const groupId = Number(options.groupId || DEFAULT_SUMMARY_GROUP_ID);
   const groupName = options.groupName || DEFAULT_SUMMARY_GROUP_NAME;
@@ -44,10 +49,7 @@ async function buildSummaryServiceResult(options) {
   }
 
   options.onProgress?.("collecting");
-  const capture = options.capture || (options.messages ? {
-    messages: options.messages, privacyEpoch: summaryPrivacy(options).epoch,
-    coverage: { source: "provided", captured: options.messages.length, complete: false },
-  } : loadSummaryCapture(dateText, groupId, options));
+  const capture = collectSummaryCapture(dateText, groupId, options);
   const messages = capture.messages;
   if (!messages.length) {
     return {
@@ -62,7 +64,6 @@ async function buildSummaryServiceResult(options) {
   }
 
   const analysisOptions = buildAnalysisOptions(options);
-  const digest = options.digest || buildSummaryDigest(messages, analysisOptions);
   const generated = await generateGroupSummaryResult(messages, {
     ...options,
     ...analysisOptions,
@@ -70,8 +71,9 @@ async function buildSummaryServiceResult(options) {
     groupName,
     label: dateLabel(dateText),
     style: style.id,
-    digest,
+    includeDigest: options.includeDigest ?? false,
     structured: options.structured !== false,
+    privacyEpoch: capture.privacyEpoch,
     coverage: capture.coverage,
   });
   const summary = generated.text;
@@ -86,7 +88,7 @@ async function buildSummaryServiceResult(options) {
       style: style.id,
       messages: messages.length,
       provider: generated.provider,
-      digest,
+      digest: generated.digest,
     };
   }
 
@@ -101,15 +103,28 @@ async function buildSummaryServiceResult(options) {
     provider: generated.provider,
     messages: messages.length,
     outputFile: reportFile(dateText, groupId, options),
-    digest,
+    digest: generated.digest,
     summary,
     document: generated.document || null, bundle: generated.bundle || null,
     privacyEpoch: capture.privacyEpoch, coverage: capture.coverage,
   };
+  if (!persist) {
+    assertSummaryEpoch(capture.privacyEpoch, options);
+    return { ...result, outputFile: undefined, dryRun: true };
+  }
   options.onProgress?.("saving");
   const revision = saveReportRevision(result, options);
   result.revisionId = revision.id;
   return result;
+}
+
+function collectSummaryCapture(dateText, groupId, options) {
+  if (options.capture) return options.capture;
+  if (!options.messages) return loadSummaryCapture(dateText, groupId, options);
+  return {
+    messages: options.messages, privacyEpoch: summaryPrivacy(options).epoch,
+    coverage: { source: "provided", captured: options.messages.length, complete: false },
+  };
 }
 
 function isAllowedSummaryGroup(groupId, whitelist = CFG.summaryGroupWhitelist) {

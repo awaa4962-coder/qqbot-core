@@ -8,6 +8,7 @@ import {
   markCapturedStickerCloudResult,
   markStickerCaptureRejected,
   removeStickerEntry,
+  retireStaleCapturedStickers,
   upsertCapturedSticker,
 } from "./catalog-store.mjs";
 import { addBufferToCloudFavorites } from "./cloud-favorites.mjs";
@@ -20,6 +21,7 @@ const SAME_SENDER_WINDOW_MS = 10 * 60 * 1000;
 
 let queue = createQueue();
 let initialized = false;
+let captureGeneration = 0;
 const recentSenderImages = new Map();
 const status = {
   observed: 0,
@@ -37,18 +39,19 @@ export function initializeStickerCapture() {
 }
 
 export function stopStickerCapture() {
+  captureGeneration++;
   queue.stop();
   recentSenderImages.clear();
   initialized = false;
 }
 
 export function observeGroupStickerCandidates(ctx = {}, options = {}) {
-  if (!initialized) initializeStickerCapture();
   const settings = options.settings || getStickerSettings();
   const groupId = Number(ctx.group_id || ctx.groupId || 0);
   const userId = Number(ctx.user_id || ctx.userId || 0);
   const gate = captureGate(settings, groupId, userId);
   if (gate) return { accepted: 0, reason: gate };
+  if (!initialized) initializeStickerCapture();
 
   const images = normalizeIncomingImages(ctx);
   const accepted = images.reduce((total, image) =>
@@ -58,11 +61,24 @@ export function observeGroupStickerCandidates(ctx = {}, options = {}) {
 }
 
 export async function processCandidate(candidate, options = {}) {
-  const settings = options.settings || getStickerSettings();
+  const generation = captureGeneration;
+  const ensureAllowed = () => {
+    const reason = generation !== captureGeneration ? "capture_stopped"
+      : captureGate(options.settings || getStickerSettings(), candidate.groupId, candidate.userId);
+    if (reason) throw new Error(reason);
+  };
   try {
-    const prepared = await prepareCandidate(candidate, options);
+    ensureAllowed();
+    retireStaleCapturedStickers({ now: options.now });
+    const quota = getStickerCaptureQuota({ now: options.now });
+    if (quota.capturedTotal >= quota.catalogLimit) {
+      return { ok: false, rejected: true, reason: "catalog_limit" };
+    }
+    const prepared = await prepareCandidate(candidate, options, ensureAllowed);
     if (prepared.rejected) return prepared.result;
-    return await promotePreparedCandidate(prepared, candidate, settings, options);
+    ensureAllowed();
+    const settings = options.settings || getStickerSettings();
+    return await promotePreparedCandidate(prepared, candidate, settings, options, ensureAllowed);
   } catch (error) {
     status.lastError = error.message;
     logE("group sticker capture failed:", error.message);
@@ -70,11 +86,17 @@ export async function processCandidate(candidate, options = {}) {
   }
 }
 
-async function prepareCandidate(candidate, options) {
+async function prepareCandidate(candidate, options, ensureAllowed) {
   const download = options.download || fetchCandidateImage;
   const image = await download(candidate.image.url);
+  ensureAllowed();
+  const quota = getStickerCaptureQuota({ now: options.now });
+  if (quota.capturedTotal >= quota.catalogLimit) {
+    return { rejected: true, result: { ok: false, rejected: true, reason: "catalog_limit" } };
+  }
   const classify = options.classify || classifyStickerCandidate;
-  const analysis = await classify(image, options.classifierOptions || {});
+  const analysis = await classify(image, { ...options.classifierOptions, ensureAllowed });
+  ensureAllowed();
   if (!["sticker", "unknown"].includes(analysis.classification)) {
     reject("not_sticker");
     return {
@@ -93,7 +115,7 @@ async function prepareCandidate(candidate, options) {
   return { rejected: false, image, analysis, observed };
 }
 
-async function promotePreparedCandidate(prepared, candidate, settings, options) {
+async function promotePreparedCandidate(prepared, candidate, settings, options, ensureAllowed) {
   const { image, observed } = prepared;
   const quota = getStickerCaptureQuota({ now: options.now });
   const quotaResult = enforceCaptureQuota(observed, quota);
@@ -102,11 +124,12 @@ async function promotePreparedCandidate(prepared, candidate, settings, options) 
   if (skipReason) return { ok: true, promoted: false, reason: skipReason, entry: observed.entry };
 
   const addCloud = options.addCloud || addBufferToCloudFavorites;
+  ensureAllowed();
   const cloud = await addCloud({
     buffer: image.buffer,
     mimeType: image.mimeType,
     url: candidate.image.url,
-  }, options.cloudOptions || {});
+  }, { ...options.cloudOptions, ensureAllowed });
   return finalizePromotion(observed.entry, cloud, candidate, options);
 }
 
@@ -118,6 +141,8 @@ function enforceCaptureQuota(observed, quota) {
 }
 
 function promotionSkipReason(entry, settings, quota) {
+  if (!entry.enabled || entry.captureState === "retired") return "entry_disabled";
+  if (entry.source !== "group-capture") return "existing_favorite";
   if (!shouldPromote(entry, settings)) return "promotion_threshold";
   if (quota.dailyLimit <= 0 || quota.todayAdded >= quota.dailyLimit) return "daily_limit";
   if (entry.captureState === "active") return "already_active";
@@ -169,6 +194,7 @@ function normalizeIncomingImages(ctx) {
 }
 
 function captureGate(settings, groupId, userId) {
+  if (!CFG.stickerEnabled || settings.mode === "off") return "sticker_off";
   if (settings.captureMode === "off") return "capture_off";
   if (!resolveStickerAllowedGroups(settings).includes(groupId)) return "group_not_allowed";
   if (!userId || userId === CFG.selfUin) return "self_or_unknown";

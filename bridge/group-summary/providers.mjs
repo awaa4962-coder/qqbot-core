@@ -4,6 +4,7 @@ import { buildOutputPacket } from "../output-pipeline.mjs";
 import { buildSummaryDigest } from "./digest.mjs";
 import { formatDate } from "./date.mjs";
 import { createSummaryPlan } from "./generation-plans.mjs";
+import { assertSummaryEpoch } from "./state.mjs";
 
 const SLOT_SETTINGS = Object.freeze({
   primary: { maxTokens: 8192, hint: "deepseek" },
@@ -22,7 +23,7 @@ async function callSummarySlot(position, prompt, plan) {
 export async function generateGroupSummaryResult(messages, options = {}) {
   if (!messages.length) return { text: null, provider: "none", digest: null };
   const normalized = { ...options, dateText: options.dateText || formatDate() };
-  const digest = options.digest || buildSummaryDigest(messages, normalized);
+  const digest = options.digest || (options.structured && options.includeDigest === false ? null : buildSummaryDigest(messages, normalized));
   const plan = createSummaryPlan(messages, normalized, digest);
   let failureReason = "model_unavailable";
   options.onProgress?.("analyzing");
@@ -42,6 +43,8 @@ async function generateFromSlots(plan, options) {
     options.onProgress?.(position === "primary" ? "analyzing" : "fallback");
     const injected = position === "primary" ? options.callPrimarySummary : options.callFallbackSummary;
     const call = injected || (value => callSummarySlot(position, value, plan));
+    options.beforeCall?.();
+    if (options.privacyEpoch !== undefined) assertSummaryEpoch(options.privacyEpoch, options);
     const result = await trySummarySlot(call, prompt, position, SLOT_SETTINGS[position].hint);
     if (!result) continue;
     const rendered = plan.parse(result.text);

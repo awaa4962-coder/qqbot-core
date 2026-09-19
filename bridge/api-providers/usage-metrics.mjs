@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { CFG } from "../config.mjs";
+import { normalizeUsage } from "./message-convert.mjs";
 
 const DEFAULT_WINDOW_DAYS = 7;
 const RETENTION_DAYS = 30;
@@ -11,7 +12,8 @@ const USAGE_FILE_RE = /^usage-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 const cleanupDays = new Map();
 
 export function normalizeProviderUsage(input = {}) {
-  const usage = input && typeof input === "object" ? input : {};
+  const raw = input && typeof input === "object" ? input : {};
+  const usage = normalizeUsage(raw);
   const promptTokens = firstTokenNumber(
     usage.prompt_tokens,
     usage.input_tokens,
@@ -44,7 +46,7 @@ export function normalizeProviderUsage(input = {}) {
     reasoningTokens,
     totalTokens,
     cacheReported,
-    usageReported: hasUsageNumbers(usage),
+    usageReported: hasUsageNumbers(raw),
   };
 }
 

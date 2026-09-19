@@ -132,6 +132,22 @@ test("redactLogLine masks common secret shapes", () => {
   assert.equal(redactLogLine("sk-abcdefghijklmnop"), "sk-***");
 });
 
+test("log redaction removes quoted JSON credentials without hiding attribution IDs", () => {
+  const line = JSON.stringify({
+    uid: "12345678901", token: "synthetic-token", api_key: "synthetic-api-key",
+    authorization: "Bearer synthetic-auth-value", password: "synthetic-password",
+    nested: { client_secret: "synthetic-client-secret" },
+  });
+  const redacted = redactLogLine(line);
+  const parsed = JSON.parse(redacted);
+  assert.equal(parsed.uid, "12345678901");
+  for (const field of ["token", "api_key", "authorization", "password"]) {
+    assert.equal(parsed[field], "***");
+  }
+  assert.equal(parsed.nested.client_secret, "***");
+  assert.equal(redacted.includes("synthetic-"), false);
+});
+
 test("admin route returns 403 for non-local requests", async () => {
   const writes = [];
   const req = {
@@ -179,7 +195,7 @@ test("local sticker preview route streams an image by opaque catalog id", async 
     method: "GET",
     url: "/admin/stickers/image?id=sticker-a",
     socket: { remoteAddress: "127.0.0.1" },
-    headers: {},
+    headers: { "x-qqfriend-admin-token": "preview-test-token" },
   };
   const res = {
     writeHead(statusCode, headers) {
@@ -192,6 +208,7 @@ test("local sticker preview route streams an image by opaque catalog id", async 
   };
   const handled = await handleAdminApiRequest(req, res, {
     pathname: "/admin/stickers/image",
+    requiredToken: "preview-test-token",
     url: new URL("http://localhost/admin/stickers/image?id=sticker-a"),
     sendJson() {
       assert.fail("image response should not use JSON");
@@ -206,6 +223,7 @@ test("local sticker preview route streams an image by opaque catalog id", async 
   assert.equal(response.statusCode, 200);
   assert.equal(response.headers["Content-Type"], "image/png");
   assert.equal(response.headers["X-Content-Type-Options"], "nosniff");
+  assert.equal(response.headers["Cross-Origin-Resource-Policy"], "same-origin");
   assert.equal(response.body.toString(), "image");
 });
 
@@ -232,4 +250,40 @@ test("sticker preview route rejects non-local requests before loading the catalo
   assert.equal(handled, true);
   assert.equal(writes[0].statusCode, 403);
   assert.equal(loads, 0);
+});
+
+test("sticker previews require header authentication on loopback and container gateways", async () => {
+  for (const remoteAddress of ["127.0.0.1", "::1", "172.18.0.1"]) {
+    for (const headers of [{}, { "x-qqfriend-admin-token": "wrong-token" }]) {
+      let statusCode = 0;
+      let loads = 0;
+      await handleAdminApiRequest({
+        method: "GET", url: "/admin/stickers/image?id=sticker-a&token=preview-test-token",
+        socket: { remoteAddress }, headers,
+      }, {}, {
+        pathname: "/admin/stickers/image", containerized: true, requiredToken: "preview-test-token",
+        sendJson(_res, code) { statusCode = code; },
+        loadStickerPreview: async () => { loads++; return { ok: false }; },
+      });
+      assert.equal(statusCode, 403, remoteAddress);
+      assert.equal(loads, 0, remoteAddress);
+    }
+  }
+});
+
+test("authenticated container sticker preview preserves binary delivery", async () => {
+  let statusCode = 0;
+  let body;
+  await handleAdminApiRequest({
+    method: "GET", url: "/admin/stickers/image?id=sticker-a&v=1",
+    socket: { remoteAddress: "172.18.0.1" }, headers: { authorization: "Bearer preview-test-token" },
+  }, {
+    writeHead(code) { statusCode = code; }, end(value) { body = value; },
+  }, {
+    pathname: "/admin/stickers/image", containerized: true, requiredToken: "preview-test-token",
+    sendJson() { assert.fail("expected binary response"); },
+    loadStickerPreview: async () => ({ ok: true, buffer: Buffer.from("synthetic image"), mimeType: "image/png" }),
+  });
+  assert.equal(statusCode, 200);
+  assert.equal(body.toString(), "synthetic image");
 });

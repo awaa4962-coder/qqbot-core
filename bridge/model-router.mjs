@@ -51,9 +51,33 @@ export async function callFallbackChat(request = {}) {
     {
       ...(request.options || {}),
       task,
-      position: task === MODEL_TASKS.GROUP_CHAT ? "fallback" : "primary",
+      position: request.position || (task === MODEL_TASKS.GROUP_CHAT ? "fallback" : "primary"),
     }
   );
+}
+
+export async function executePrivateChatTask(request = {}, runtime = {}) {
+  const task = request.task === MODEL_TASKS.FILE_CHAT ? MODEL_TASKS.FILE_CHAT : MODEL_TASKS.PRIVATE_CHAT;
+  const imageUrls = request.imageUrls || [];
+  let visionContext = request.options?.visionContext;
+  if (imageUrls.length && !Object.hasOwn(request.options || {}, "visionContext")) {
+    const resolveVision = runtime.resolveVision || resolveVisionContext;
+    visionContext = await resolveVision(imageUrls, {
+      usageContext: { userId: request.options?.currentUserId, task, position: "primary" },
+    });
+  }
+  const prepared = {
+    ...request,
+    task,
+    groupId: null,
+    history: buildModelFallbackHistory(request.history, imageUrls, visionContext),
+  };
+  const callSlot = runtime.callSlot || callFallbackChat;
+  for (const position of ["primary", "fallback"]) {
+    const text = await callSlot({ ...prepared, position });
+    if (text) return { text, position };
+  }
+  return { text: null, position: "unavailable" };
 }
 
 export async function callInterjectionFallback(request = {}) {

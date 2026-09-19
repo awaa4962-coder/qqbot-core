@@ -150,7 +150,7 @@ describe("admin command parsing", () => {
         firstSeen: new Date(now - 30 * day).toISOString(),
         chats: (() => {
           const a = [];
-          for (let i = 0; i < 86; i++) a.push({ group: "1", text: "msg" + i, ts: now - i * day });
+          for (let i = 0; i < 86; i++) a.push({ group: "1", nickname: "测试君", text: "msg" + i, ts: now - i * day });
           return a;
         })(),
       },
@@ -172,10 +172,12 @@ describe("admin command parsing", () => {
         chats: [{ group: "1", text: "sender", ts: now }],
       },
       "1000000002": {
-        nicknames: ["目标用户"],
+        nicknames: ["跨群旧名"],
+        preferences: { displayName: "私有称呼" },
         firstSeen: new Date(now - 30 * 86400000).toISOString(),
         chats: Array.from({ length: 40 }, (_, i) => ({
           group: "1",
+          nickname: "目标用户",
           text: "target msg " + i,
           ts: now - i * 3600000,
         })),
@@ -199,6 +201,7 @@ describe("admin command parsing", () => {
     assert.match(reply, /我和 群名片目标 的互动状态/);
     assert.match(reply, /目标用户/);
     assert.doesNotMatch(reply, /发令者/);
+    assert.doesNotMatch(reply, /跨群旧名|私有称呼/);
   });
 
   it("private command returns real relationship summary", () => {
@@ -276,10 +279,10 @@ describe("admin command parsing", () => {
     assert.match(reply, new RegExp("Current version: v" + VERSION));
     assert.match(reply, /Still reserved:/);
     assert.match(reply, /export-relationships/);
-    assert.match(reply, /isolated Linux server deployment/);
-    assert.match(reply, /upload_file_stream/);
-    assert.match(reply, /loopback-only browser/);
-    assert.match(reply, /model credentials/);
+    assert.match(reply, /Authenticates ingress/);
+    assert.match(reply, /unknown delivery is never blindly replayed/);
+    assert.match(reply, /authenticated previews/);
+    assert.match(reply, /Windows stays frozen/);
     assert.doesNotMatch(reply, /key|token|secret/i);
   });
 

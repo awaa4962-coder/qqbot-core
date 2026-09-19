@@ -88,6 +88,27 @@ test("reply diagnosis allows admin private commands without friend whitelist", (
   assert.equal(diagnosis.replyPlan.action, "command_reply");
 });
 
+test("private admin exemption does not allow ordinary chat or files outside friend whitelist", () => {
+  const cfg = {
+    selfUin: 1000000001, botNames: ["SyntheticBot"], groupWhitelist: [],
+    friendWhitelist: [], botBlacklist: [], adminUins: ["1000000002"],
+  };
+  for (const input of [
+    { text: "今天心情还不错" },
+    { message: [{ type: "file", data: { file: "synthetic.txt", name: "synthetic.txt" } }] },
+  ]) {
+    const diagnosis = buildReplyDiagnosis({ message_type: "private", user_id: 1000000002, ...input }, { cfg });
+    assert.equal(diagnosis.gates.admin, true);
+    assert.equal(diagnosis.gates.privateAdminCommandAllowed, false);
+    assert.equal(diagnosis.gates.allowed, false);
+    assert.deepEqual(diagnosis.replyPlan, { action: "ignore", reason: "private_not_whitelisted" });
+  }
+  const allowed = buildReplyDiagnosis({ message_type: "private", user_id: 1000000002, text: "今天心情还不错" }, {
+    cfg: { ...cfg, friendWhitelist: [1000000002] },
+  });
+  assert.equal(allowed.replyPlan.action, "private_ai_reply");
+});
+
 test("normalizeDiagnosticEvent accepts simplified messages", () => {
   const event = normalizeDiagnosticEvent({
     groupId: 2000000001,

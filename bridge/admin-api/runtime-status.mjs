@@ -72,7 +72,7 @@ function buildRuntimeModules(now, memeStore) {
     wordcloud: buildWordcloudModule(),
     memeKnowledge: buildMemeKnowledgeModule(memeStore),
     resourceTransfer: buildWhitelistModule(CFG.resourceGroupWhitelist),
-    apiProviders: buildApiProviderHealth(loadApiConfig()),
+    apiProviders: readApiProviderHealth(),
     stickers: getStickerRuntimeStatus(),
     outputSafety: { enabled: true, health: "ready" },
   };
@@ -170,6 +170,15 @@ function buildApiProviderHealth(config) {
     issues,
     routes: buildRouteSummary(config.routes),
   };
+}
+
+function readApiProviderHealth() {
+  try {
+    return buildApiProviderHealth(loadApiConfig());
+  } catch (error) {
+    return { enabled: true, health: "degraded", issues: ["configuration_invalid"],
+      routes: {}, configurationError: error.message };
+  }
 }
 
 function collectRouteIssues(config) {

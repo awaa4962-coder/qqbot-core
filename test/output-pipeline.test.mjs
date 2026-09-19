@@ -66,6 +66,26 @@ describe("output pipeline", () => {
     assert.equal(sanitizeAssistantReply("<think>分析</think>这是回复"), "这是回复");
   });
 
+  it("rejects every unclosed or mismatched reasoning block without rescuing a paragraph", () => {
+    const samples = [
+      "<think>private first paragraph\n\nCandidate B is preferable.",
+      "visible prefix<thinking>private tail",
+      "<reasoning mode='deep'>private\n\ncontinued private text",
+      "<thought>private</think>not a confirmed final answer",
+      "<think>outer<thought>inner</thought>still private",
+      "<think>private</think>visible<thinking",
+    ];
+    for (const content of samples) {
+      assert.equal(sanitizeAssistantReply(content), null, content);
+      assert.equal(buildOutputPacket({ choices: [{ message: { content } }] }).ok, false, content);
+    }
+  });
+
+  it("removes nested balanced reasoning blocks and preserves only outside text", () => {
+    assert.equal(sanitizeAssistantReply("<think>outer<thought>inner</thought></think>final"), "final");
+    assert.equal(sanitizeAssistantReply("<reasoning mode='deep'>private</reasoning>final"), "final");
+  });
+
   it("keeps normal technical steps", () => {
     const text = "步骤一：检查 npm run lint\n步骤二：运行 npm test\n步骤三：查看日志";
     assert.equal(sanitizeAssistantReply(text), text);

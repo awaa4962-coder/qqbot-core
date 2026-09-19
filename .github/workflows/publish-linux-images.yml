@@ -11,7 +11,6 @@ permissions:
 
 env:
   BUNDLE_NAME: qqfriend-linux-images-amd64
-  RELEASE_TAG: linux-images-v1.4.0
   NAPCAT_SOURCE: mlikiowa/napcat-docker@sha256:11d72e50b6edc01b20f1a7611a250720e61412fe96184e3c70c3b8cf976744e1
   NAPCAT_TAG: mlikiowa/napcat-docker:v4.18.13
   BRIDGE_TAG: qqfriend-bridge:linux-preview
@@ -30,6 +29,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      - name: Identify versioned release
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          [[ "$version" =~ ^[0-9A-Za-z.+-]+$ ]]
+          printf 'QQFRIEND_VERSION=%s\n' "$version" >> "$GITHUB_ENV"
+          printf 'RELEASE_TAG=linux-images-v%s-%s\n' "$version" "${GITHUB_SHA:0:12}" >> "$GITHUB_ENV"
 
       - name: Verify source
         run: |
@@ -78,10 +84,8 @@ jobs:
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" \
               --target "$GITHUB_SHA" \
-              --title "QQFriend Linux image bundle v1.4.0" \
+              --title "QQFriend Linux image bundle v$QQFRIEND_VERSION" \
               --notes "Pinned amd64 images for the isolated QQFriend Linux deployment."
-          else
-            gh release edit "$RELEASE_TAG" --target "$GITHUB_SHA"
           fi
           gh release upload "$RELEASE_TAG" --clobber \
             "$BUNDLE_NAME.tar.zst" \

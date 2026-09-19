@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import { CFG } from './config.mjs';
 import { logE } from './logger.mjs';
 import { createJsonSaver } from './persistence/json-file.mjs';
+import { redactSensitiveText } from './privacy.mjs';
+import { redactMemoryTextFields } from './memory-profile/privacy.mjs';
 
 // ── 全局状态 ──
 export let users = {};
@@ -13,15 +15,17 @@ let _groupChatsNeedTimestampRepair = false;
 try {
   const raw = fs.readFileSync(CFG.memoryFile, 'utf-8');
   users = JSON.parse(raw);
-  if (typeof users !== 'object' || Array.isArray(users)) users = {};
+  if (!users || typeof users !== 'object' || Array.isArray(users)) users = {};
   _usersNeedTimestampRepair = repairUserTimestamps(users);
+  _usersNeedTimestampRepair = redactMemoryTextFields(users) || _usersNeedTimestampRepair;
 } catch { users = {}; }
 
 try {
   const raw = fs.readFileSync(CFG.chatLogFile, 'utf-8');
   groupChats = JSON.parse(raw);
-  if (typeof groupChats !== 'object' || Array.isArray(groupChats)) groupChats = {};
+  if (!groupChats || typeof groupChats !== 'object' || Array.isArray(groupChats)) groupChats = {};
   _groupChatsNeedTimestampRepair = repairGroupChatTimestamps(groupChats);
+  _groupChatsNeedTimestampRepair = redactMemoryTextFields(groupChats) || _groupChatsNeedTimestampRepair;
 } catch { groupChats = {}; }
 
 // ── 防抖存档（v17: 异步批量，避免每条消息都同步写盘）──
@@ -53,6 +57,7 @@ if (_usersNeedTimestampRepair) saveUsers();
 if (_groupChatsNeedTimestampRepair) saveGroupChats();
 
 export function getUser(uid, nickname) {
+  nickname = redactSensitiveText(nickname);
   if (!users[uid]) {
     users[uid] = { uid, nicknames: [], firstSeen: new Date().toISOString(), chats: [], description: '' };
   }
@@ -70,11 +75,13 @@ export function getUser(uid, nickname) {
 
 export function logGroupMsg(group_id, nickname, text, uid, role, imageUrls, meta = {}) {
   const gid = String(group_id);
+  const cleanText = redactSensitiveText(typeof text === 'string' ? text : JSON.stringify(text));
+  nickname = redactSensitiveText(nickname);
   if (!groupChats[gid]) groupChats[gid] = [];
   const entry = {
     uid: String(uid),
     nickname: nickname || 'unknown',
-    text: typeof text === 'string' ? text.slice(0, 500) : JSON.stringify(text).slice(0, 500),
+    text: cleanText.slice(0, 500),
     role: role || 'member',
     ts: Date.now(),
   };
@@ -90,7 +97,7 @@ export function logGroupMsg(group_id, nickname, text, uid, role, imageUrls, meta
   const userChat = {
     group: gid,
     nickname: nickname || 'unknown',
-    text: typeof text === 'string' ? text.slice(0, 300) : JSON.stringify(text).slice(0, 300),
+    text: cleanText.slice(0, 300),
     ts: Date.now(),
   };
   if (mentions.length) userChat.mentions = mentions;

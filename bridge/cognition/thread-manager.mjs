@@ -1,6 +1,7 @@
 import { saveUsers, users } from "../storage.mjs";
 import { wallAgeMs } from "../runtime-clock.mjs";
 import { currentTopicText } from "../context/relevance.mjs";
+import { redactSensitiveText } from "../privacy.mjs";
 
 const GROUP_THREAD_TTL_MS = 90 * 60 * 1000;
 const PRIVATE_THREAD_TTL_MS = 6 * 60 * 60 * 1000;
@@ -213,7 +214,7 @@ function snapshotThread(thread, scope) {
   return {
     schemaVersion: 1,
     scope,
-    topic: thread.topic || "",
+    topic: redactSensitiveText(thread.topic),
     turnCount: turns.length,
     turns,
     updatedAt: Number(thread.updatedAt || 0),
@@ -249,7 +250,7 @@ function privateKey(uid) {
 }
 
 function compactText(value, maxLength) {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
+  const text = redactSensitiveText(value).replace(/\s+/g, " ").trim();
   if (text.length <= maxLength) return text;
   return text.slice(0, maxLength - 1).trimEnd() + "…";
 }

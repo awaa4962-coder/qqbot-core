@@ -51,8 +51,29 @@ test("present but empty feature lists stay disabled", async () => {
   }
 });
 
-async function readConfig(configRoot) {
+test("unreadable allowlist files fail closed instead of inheriting broader defaults", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-config-denied-"));
+  fs.writeFileSync(path.join(root, ".env_groups"), "123456\n234567\n", "utf8");
+  try {
+    for (const file of [".env_groups", ".env_resource_groups", ".env_feature_groups", ".env_conversation_summary_groups", ".env_sticker_groups", ".env_bot_blacklist", ".env_admins"]) {
+      await assert.rejects(() => readConfig(root, { file, code: "EACCES" }), /cannot read config list.*EACCES/);
+    }
+    await assert.rejects(() => readConfig(root, { file: ".env_summary_groups", code: "EIO" }), /cannot read config list.*EIO/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+async function readConfig(configRoot, failure = null) {
   const source = [
+    "import fs from 'node:fs';",
+    "import path from 'node:path';",
+    `const failure = ${JSON.stringify(failure)};`,
+    "const read = fs.readFileSync;",
+    "fs.readFileSync = (file, ...args) => {",
+    "  if (failure && path.basename(String(file)) === failure.file) throw Object.assign(new Error('synthetic failure'), { code: failure.code });",
+    "  return read(file, ...args);",
+    "};",
     `const { CFG } = await import(${JSON.stringify(CONFIG_URL)});`,
     "process.stdout.write(JSON.stringify({",
     "summary: CFG.summaryGroupWhitelist,",
@@ -70,6 +91,8 @@ async function readConfig(configRoot) {
     "QQBOT_FEATURE_GROUPS",
     "QQBOT_CONVERSATION_SUMMARY_GROUPS",
     "QQBOT_STICKER_GROUPS",
+    "QQBOT_BLACKLIST",
+    "QQBOT_ADMINS",
   ]) delete env[name];
   const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", source], {
     cwd: ROOT,

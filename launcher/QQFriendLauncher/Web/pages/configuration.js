@@ -63,6 +63,7 @@ export function renderConfig(status, configSnapshot) {
 export function renderConfigEditor(snapshot, options = {}) {
   if (!snapshot || typeof snapshot !== "object") return;
   if (uiState.configDirty && !options.force) return;
+  uiState.lastConfigSnapshot = snapshot;
   const editable = snapshot.editable || {};
   for (const [id, field] of Object.entries(CONFIG_FIELDS)) {
     const values = Array.isArray(editable[field]) ? editable[field] : [];
@@ -71,7 +72,9 @@ export function renderConfigEditor(snapshot, options = {}) {
   renderListEditors();
   uiState.configBaseline = configFingerprint();
   setConfigDirty(false);
-  $("configStatus").textContent = snapshot.restartRequiredAfterSave
+  $("configStatus").textContent = snapshot.pendingRestart
+    ? "配置已保存，但与当前运行配置不同；重启 Bridge 后生效"
+    : snapshot.restartRequiredAfterSave
     ? "当前配置已载入，修改后保存并重启 Bridge 生效"
     : "当前配置已载入";
 }
@@ -83,9 +86,9 @@ export function configFingerprint() {
 export function setConfigDirty(value) {
   uiState.configDirty = Boolean(value);
   const state = $("configDirtyState");
-  state.textContent = uiState.configDirty ? "未保存" : "已保存";
+  state.textContent = uiState.configDirty ? "未保存" : uiState.lastConfigSnapshot.pendingRestart ? "已保存 · 待重启" : "已保存";
   state.classList.toggle("dirty", uiState.configDirty);
-  if ($("configSaveHint")) $("configSaveHint").textContent = uiState.configDirty ? "配置有未保存修改" : "没有未保存修改";
+  if ($("configSaveHint")) $("configSaveHint").textContent = uiState.configDirty ? "配置有未保存修改" : uiState.lastConfigSnapshot.pendingRestart ? "配置已保存，等待重启生效" : "没有未保存修改";
   if ($("configSaveBar")) $("configSaveBar").classList.toggle("dirty", uiState.configDirty);
 }
 
@@ -95,7 +98,9 @@ export function updateConfigDirty() {
 
 export function configPayload() {
   return {
-    editable: Object.fromEntries(Object.entries(CONFIG_FIELDS).map(([id, field]) => [field, splitList($(id).value)])),
+    editable: Object.fromEntries(Object.entries(CONFIG_FIELDS)
+      .filter(([, field]) => uiState.lastConfigSnapshot.files?.[field]?.writable !== false)
+      .map(([id, field]) => [field, splitList($(id).value)])),
   };
 }
 
@@ -106,11 +111,17 @@ export function renderListEditors() {
     const values = splitList(source.value);
     const chips = editor.querySelector(".list-editor-chips");
     chips.innerHTML = values.map((value) => `<span class="list-chip">${escapeHtml(value)}<button type="button" data-list-remove="${escapeHtml(value)}" title="移除 ${escapeHtml(value)}" aria-label="移除 ${escapeHtml(value)}">×</button></span>`).join("");
+    const metadata = uiState.lastConfigSnapshot.files?.[CONFIG_FIELDS[source.id]];
+    const locked = metadata?.writable === false;
+    source.disabled = locked;
+    editor.title = locked ? `由环境变量 ${metadata.envName || ""} 控制，请修改部署配置` : "";
+    editor.querySelectorAll("input,button").forEach(control => { control.disabled = locked; });
   });
 }
 
 export function commitListEditor(editor) {
   const source = $(editor.dataset.listEditorFor);
+  if (source.disabled) return;
   const input = editor.querySelector("input:not([type=hidden])");
   const additions = splitList(input.value);
   if (!additions.length) return;
@@ -127,6 +138,7 @@ export function commitListEditor(editor) {
 
 export function removeListEditorValue(editor, value) {
   const source = $(editor.dataset.listEditorFor);
+  if (source.disabled) return;
   source.value = splitList(source.value).filter((item) => item !== value).join("\n");
   renderListEditors();
   updateConfigDirty();

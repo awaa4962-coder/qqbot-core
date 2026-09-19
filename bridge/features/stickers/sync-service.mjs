@@ -115,6 +115,8 @@ async function runSync(options) {
   status.syncing = true;
   const fetchFavorites = options.fetchFavorites || fetchBestFavoriteSource;
   try {
+    retireStaleCapturedStickers({ now: options.now });
+    pruneRetiredCapturedStickers({ now: options.now });
     const remote = await fetchFavorites({ count: options.count || CFG.stickerFetchCount });
     if (!remote.ok) {
       status.supported = false;

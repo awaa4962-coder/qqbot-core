@@ -19,6 +19,7 @@ export function buildReplyDiagnosis(input = {}, options = {}) {
   const ctx = parseIncomingEvent(event);
   const cfg = options.cfg || CFG;
   const state = buildStaticInterjectionState();
+  const command = buildCommandDiagnosis(ctx, cfg);
   const result = {
     ok: true,
     dryRun: true,
@@ -35,13 +36,13 @@ export function buildReplyDiagnosis(input = {}, options = {}) {
       imageCount: ctx.images.length,
       fileCount: ctx.files.length,
     },
-    gates: buildGateDiagnosis(ctx, cfg),
+    gates: buildGateDiagnosis(ctx, cfg, command),
     mentions: {
       isAtMe: ctx.isAtMe,
       count: ctx.mentions.length,
       mentionedUsers: ctx.mentionedUsers,
     },
-    command: buildCommandDiagnosis(ctx, cfg),
+    command,
     interjection: buildInterjectionDiagnosis(ctx, state),
     runtimePressure: {
       admission: getAdmissionStatus(),
@@ -90,23 +91,26 @@ function normalizeDiagnosticSender(input) {
   };
 }
 
-function buildGateDiagnosis(ctx, cfg) {
+function buildGateDiagnosis(ctx, cfg, command) {
   const isMessageEvent = ctx.message_type === "private" || ctx.message_type === "group";
   const blacklisted = cfg.botBlacklist.includes(ctx.user_id);
   const groupWhitelisted = ctx.message_type === "group" ? cfg.groupWhitelist.includes(ctx.group_id) : null;
   const privateFriendWhitelisted = ctx.message_type === "private" ? cfg.friendWhitelist.includes(ctx.user_id) : null;
   const admin = isAdminUser(ctx.user_id, cfg.adminUins);
+  const privateAdminCommandAllowed = ctx.message_type === "private" && admin &&
+    command.wouldHandle && command.route === "command_registry";
   const allowed = isMessageEvent &&
     !blacklisted &&
-    (ctx.message_type === "group" ? groupWhitelisted : (privateFriendWhitelisted || admin));
+    (ctx.message_type === "group" ? groupWhitelisted : (privateFriendWhitelisted || privateAdminCommandAllowed));
   return {
     isMessageEvent,
     blacklisted,
     groupWhitelisted,
     privateFriendWhitelisted,
     admin,
+    privateAdminCommandAllowed,
     allowed,
-    blockedReasons: blockedReasons({ isMessageEvent, blacklisted, groupWhitelisted, privateFriendWhitelisted, admin }, ctx),
+    blockedReasons: blockedReasons({ isMessageEvent, blacklisted, groupWhitelisted, privateFriendWhitelisted, privateAdminCommandAllowed }, ctx),
   };
 }
 
@@ -115,7 +119,7 @@ function blockedReasons(gates, ctx) {
   if (!gates.isMessageEvent) reasons.push("not_message_event");
   if (gates.blacklisted) reasons.push("bot_blacklist");
   if (ctx.message_type === "group" && gates.groupWhitelisted === false) reasons.push("group_not_whitelisted");
-  if (ctx.message_type === "private" && !gates.privateFriendWhitelisted && !gates.admin) reasons.push("private_not_whitelisted");
+  if (ctx.message_type === "private" && !gates.privateFriendWhitelisted && !gates.privateAdminCommandAllowed) reasons.push("private_not_whitelisted");
   return reasons;
 }
 

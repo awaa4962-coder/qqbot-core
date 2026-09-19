@@ -147,13 +147,14 @@ export function getReplyData(msg) {
   return found ? found.data : null;
 }
 
-export async function fetchReplyData(replyData) {
+export async function fetchReplyData(replyData, { timeoutMs = 8000 } = {}) {
   if (!replyData) return { text: '', images: [] };
   const msgId = replyData.id;
   if (!msgId) return { text: '', images: [] };
   try {
     const r = await fetch(CFG.napcatApi + '/get_msg?message_id=' + encodeURIComponent(msgId), {
       headers: buildNapCatHeaders(),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const d = await r.json();
     if (d?.status === 'ok' || d?.retcode === 0) {

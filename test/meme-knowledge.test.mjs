@@ -99,7 +99,9 @@ describe("meme knowledge", () => {
 
     assert.ok(matchMemes("猫雷是什么", { groupId: 1 }).some(item => item.name === "猫雷"));
     assert.equal(matchMemes("猫雷是什么", { groupId: 2 }).some(item => item.name === "猫雷"), false);
-    assert.match(buildMemeSearchReply("猫雷"), /联网查证/);
+    assert.match(buildMemeSearchReply("猫雷", { groupId: 1 }), /联网查证/);
+    assert.match(buildMemeSearchReply("猫雷", { groupId: 2 }), /没有找到/);
+    assert.match(buildMemeSearchReply("猫雷"), /没有找到/);
   });
 
   it("supports status, search, and admin toggle commands", () => {

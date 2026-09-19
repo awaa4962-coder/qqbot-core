@@ -1,5 +1,6 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { fetchPinnedResponse } from "./pinned-http.mjs";
 
 const DEFAULT_MAX_REDIRECTS = 5;
 const IPV4_BLOCK_RULES = [
@@ -34,17 +35,15 @@ function isPrivateIpv4(hostname) {
 }
 
 function isPrivateIpv6(hostname) {
-  const host = normalizeHostname(hostname);
+  let host = normalizeHostname(hostname);
   if (!host.includes(":")) return false;
-  if (host === "::" || host === "::1") return true;
-  if (host.startsWith("fc") || host.startsWith("fd")) return true;
-  if (/^fe[89ab]/.test(host)) return true;
-  if (host.startsWith("fec") || host.startsWith("fed") || host.startsWith("fee") || host.startsWith("fef")) return true;
-  if (host.startsWith("ff")) return true;
+  try { host = normalizeHostname(new URL(`http://[${host}]/`).hostname); } catch { return true; }
   const mapped = host.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/);
   if (mapped) return isPrivateIpv4(mapped[1]);
   const mappedHex = parseIpv4MappedHex(host);
-  return mappedHex ? isPrivateIpv4(mappedHex) : false;
+  if (mappedHex) return isPrivateIpv4(mappedHex);
+  // Only global unicast is usable here; block transition/documentation ranges too.
+  return !/^[23][0-9a-f]{3}:/.test(host) || /^(?:2001:(?:db8|0):|2001::|2002:)/.test(host);
 }
 
 function parseIpv4MappedHex(hostname) {
@@ -110,15 +109,15 @@ export async function fetchSafeResponse(url, options = {}) {
   let current = validateSafeUrl(url);
   if (!current.ok) return { ok: false, reason: current.reason, response: null, url: null };
 
-  let currentMethod = method;
+  let currentMethod = String(method).toUpperCase();
+  if (!["GET", "HEAD"].includes(currentMethod)) return { ok: false, reason: "unsupported_method", response: null, url: null };
+  let currentHeaders = new globalThis.Headers(headers);
+  const signal = downloadSignal(timeoutMs, options.signal);
   for (let redirects = 0; redirects <= maxRedirects; redirects++) {
-    const resolved = await validateResolvedHost(current.url, options);
+    const resolved = await validateResolvedHost(current.url, { ...options, signal });
     if (!resolved.ok) return { ok: false, reason: resolved.reason, response: null, url: null };
-    const response = await fetch(current.url.href, {
-      method: currentMethod,
-      headers,
-      redirect: "manual",
-      signal: AbortSignal.timeout(timeoutMs),
+    const response = await fetchValidated(current.url, {
+      ...options, addresses: resolved.addresses, method: currentMethod, headers: currentHeaders, signal,
     });
 
     if (!isRedirectStatus(response.status)) {
@@ -126,15 +125,28 @@ export async function fetchSafeResponse(url, options = {}) {
     }
 
     const location = response.headers.get("location");
+    await cancelResponse(response);
     if (!location) return { ok: false, reason: "redirect_without_location", response: null, url: current.url };
     if (redirects >= maxRedirects) return { ok: false, reason: "too_many_redirects", response: null, url: current.url };
 
-    current = validateSafeUrl(new URL(location, current.url));
-    if (!current.ok) return { ok: false, reason: current.reason, response: null, url: null };
+    const next = validateRedirect(location, current.url);
+    if (!next.ok) return { ok: false, reason: next.reason, response: null, url: null };
+    if (next.url.origin !== current.url.origin) currentHeaders = withoutCredentials(currentHeaders);
+    current = next;
     currentMethod = redirectMethod(currentMethod, response.status);
   }
 
   return { ok: false, reason: "too_many_redirects", response: null, url: current.url };
+}
+
+function downloadSignal(timeoutMs, callerSignal) {
+  const timeout = AbortSignal.timeout(Math.max(1, timeoutMs));
+  return callerSignal ? AbortSignal.any([callerSignal, timeout]) : timeout;
+}
+
+function validateRedirect(location, base) {
+  try { return validateSafeUrl(new URL(location, base)); }
+  catch { return { ok: false, reason: "invalid_url", url: null }; }
 }
 
 async function validateResolvedHost(url, options) {
@@ -142,43 +154,89 @@ async function validateResolvedHost(url, options) {
   if (isIP(hostname)) {
     return isPrivateHostname(hostname)
       ? { ok: false, reason: "private_address" }
-      : { ok: true, reason: "" };
+      : { ok: true, reason: "", addresses: [{ address: hostname, family: isIP(hostname) }] };
   }
-  if (!options.lookup && process.env.NODE_ENV === "test") return { ok: true, reason: "" };
+  if (!options.lookup && !options.requestImpl && process.env.NODE_ENV === "test") return { ok: true, reason: "" };
   const lookup = options.lookup || dnsLookup;
   try {
-    const result = await lookup(hostname, { all: true, verbatim: true });
-    const addresses = Array.isArray(result) ? result : [result];
+    const result = await abortableLookup(lookup(hostname, { all: true, verbatim: true }), options.signal);
+    const addresses = (Array.isArray(result) ? result : [result]).map(item => {
+      const address = typeof item === "string" ? item : item?.address;
+      return { address, family: isIP(String(address || "")) };
+    });
     if (!addresses.length) return { ok: false, reason: "dns_lookup_failed" };
-    const privateAddress = addresses.some(item => isPrivateHostname(item?.address || item));
+    const privateAddress = addresses.some(item => !item.family || isPrivateHostname(item.address));
     return privateAddress
       ? { ok: false, reason: "private_address" }
-      : { ok: true, reason: "" };
+      : { ok: true, reason: "", addresses };
   } catch {
     return { ok: false, reason: "dns_lookup_failed" };
   }
 }
 
+function abortableLookup(promise, signal) {
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    if (signal.aborted) { abort(); return; }
+    signal.addEventListener("abort", abort, { once: true });
+    Promise.resolve(promise).then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
+}
+
+function fetchValidated(url, options) {
+  // Existing isolated tests supply fetch fixtures; production always pins the validated addresses.
+  if (process.env.NODE_ENV === "test" && !options.requestImpl) {
+    return fetch(url.href, { method: options.method, headers: Object.fromEntries(options.headers), redirect: "manual", signal: options.signal });
+  }
+  return fetchPinnedResponse(url, options);
+}
+
+function withoutCredentials(headers) {
+  const copy = new globalThis.Headers(headers);
+  for (const key of ["authorization", "cookie", "proxy-authorization", "host"]) copy.delete(key);
+  return copy;
+}
+
+async function cancelResponse(response) {
+  try { await response.body?.cancel(); } catch {}
+}
+
+export async function readBoundedResponseBuffer(response, maxBytes) {
+  const declaredSize = Number(response.headers.get("content-length") || 0);
+  if (declaredSize > maxBytes) { await cancelResponse(response); return null; }
+  if (!response.body?.getReader) {
+    // Minimal response doubles used by callers' tests do not expose a Web stream.
+    const buffer = Buffer.from(response.arrayBuffer ? await response.arrayBuffer() : await response.text());
+    return buffer.length <= maxBytes ? buffer : null;
+  }
+  const reader = response.body.getReader();
+  let total = 0;
+  const chunks = [];
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return Buffer.concat(chunks, total);
+      total += value.byteLength;
+      if (total > maxBytes) { await reader.cancel(); return null; }
+      chunks.push(Buffer.from(value));
+    }
+  } finally { reader.releaseLock(); }
+}
+
 export async function fetchSafeText(url, options = {}) {
   const maxBytes = options.maxBytes || 2 * 1024 * 1024;
   const result = await fetchSafeResponse(url, options);
-  if (!result.ok || !result.response?.ok) return null;
-
-  const contentLength = parseInt(result.response.headers.get("content-length") || "0");
-  if (contentLength > maxBytes) return null;
-  const text = await result.response.text();
-  return Buffer.byteLength(text, "utf8") > maxBytes ? null : text;
+  if (!result.ok || !result.response?.ok) { await cancelResponse(result.response || {}); return null; }
+  const buffer = await readBoundedResponseBuffer(result.response, maxBytes);
+  return buffer === null ? null : buffer.toString("utf8");
 }
 
 export async function fetchSafeBuffer(url, options = {}) {
   const maxBytes = options.maxBytes || 10 * 1024 * 1024;
   const result = await fetchSafeResponse(url, options);
-  if (!result.ok || !result.response?.ok) return null;
-
-  const contentLength = parseInt(result.response.headers.get("content-length") || "0");
-  if (contentLength > maxBytes) return null;
-  const buffer = Buffer.from(await result.response.arrayBuffer());
-  if (buffer.length > maxBytes) return null;
+  if (!result.ok || !result.response?.ok) { await cancelResponse(result.response || {}); return null; }
+  const buffer = await readBoundedResponseBuffer(result.response, maxBytes);
+  if (buffer === null) return null;
   return {
     buffer,
     mimeType: result.response.headers.get("content-type") || "application/octet-stream",

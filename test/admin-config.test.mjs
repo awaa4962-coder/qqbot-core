@@ -103,3 +103,79 @@ test("admin config route validates POST body", async () => {
   assert.equal(writes[0].statusCode, 400);
   assert.match(writes[0].payload.error, /unsupported config field/);
 });
+
+test("saved config survives refresh and a second full-form save before restart", t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-config-pending-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const cfg = editableConfigFixture();
+  const options = { root, cfg, longGroups: [], env: {} };
+
+  saveEditableConfig({ groupWhitelist: [], adminUins: [] }, options);
+  const snapshot = buildEditableConfigSnapshot(options);
+  assert.deepEqual(snapshot.editable.groupWhitelist, []);
+  assert.deepEqual(snapshot.editable.adminUins, []);
+  assert.deepEqual(snapshot.effective.groupWhitelist, [123456]);
+  assert.deepEqual(snapshot.effective.adminUins, ["345678"]);
+  assert.equal(snapshot.pendingRestart, true);
+  assert.equal(snapshot.files.groupWhitelist.pendingRestart, true);
+
+  saveEditableConfig({ editable: { ...snapshot.editable, friendWhitelist: [456789] } }, options);
+  const refreshed = buildEditableConfigSnapshot(options);
+  assert.deepEqual(refreshed.editable.groupWhitelist, []);
+  assert.deepEqual(refreshed.editable.adminUins, []);
+  assert.deepEqual(refreshed.editable.friendWhitelist, [456789]);
+  assert.equal(fs.readFileSync(path.join(root, ".env_groups"), "utf8"), "");
+  assert.deepEqual(cfg.groupWhitelist, [123456]);
+
+  const restarted = buildEditableConfigSnapshot({ ...options, cfg: refreshed.editable });
+  assert.equal(restarted.pendingRestart, false);
+});
+
+test("environment-controlled lists are readonly and reject changes before any write", t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-config-environment-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, ".env_groups"), "234567\n");
+  const options = { root, cfg: editableConfigFixture(), longGroups: [], env: { QQBOT_GROUPS: "123456" } };
+  const snapshot = buildEditableConfigSnapshot(options);
+  assert.deepEqual(snapshot.editable.groupWhitelist, [123456]);
+  assert.equal(snapshot.files.groupWhitelist.source, "environment");
+  assert.equal(snapshot.files.groupWhitelist.status, "environment-override");
+  assert.equal(snapshot.files.groupWhitelist.writable, false);
+  assert.equal(snapshot.pendingRestart, false);
+  assert.throws(() => saveEditableConfig({ botNames: ["Changed"], groupWhitelist: [] }, options), /controlled by.*QQBOT_GROUPS/);
+  assert.equal(fs.existsSync(path.join(root, ".env_bot_names")), false);
+  assert.equal(fs.readFileSync(path.join(root, ".env_groups"), "utf8"), "234567\n");
+
+  const result = saveEditableConfig({ groupWhitelist: [123456], friendWhitelist: [456789] }, options);
+  assert.deepEqual(result.saved.map(item => item.field), ["friendWhitelist"]);
+  assert.equal(fs.readFileSync(path.join(root, ".env_groups"), "utf8"), "234567\n");
+  const emptyEnv = { ...options, env: { QQBOT_GROUPS: "" } };
+  assert.deepEqual(buildEditableConfigSnapshot(emptyEnv).editable.groupWhitelist, []);
+  assert.throws(() => saveEditableConfig({ groupWhitelist: [123456] }, emptyEnv), /controlled by/);
+  const defaultNames = { ...options, env: { QQBOT_NAMES: "", QQBOT_GROUPS: "123456 123456" } };
+  const defaults = buildEditableConfigSnapshot(defaultNames);
+  assert.deepEqual(defaults.editable.botNames, options.cfg.botNames);
+  assert.equal(defaults.files.botNames.writable, false);
+  assert.doesNotThrow(() => saveEditableConfig({ editable: defaults.editable }, defaultNames));
+  assert.equal(fs.existsSync(path.join(root, ".env_bot_names")), false);
+});
+
+test("config snapshot does not replace an unreadable saved allowlist with active values", t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-config-denied-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const read = fs.readFileSync;
+  t.mock.method(fs, "readFileSync", (file, ...args) => {
+    if (file === path.join(root, ".env_groups")) throw Object.assign(new Error("denied"), { code: "EACCES" });
+    return read(file, ...args);
+  });
+  assert.throws(() => buildEditableConfigSnapshot({ root, cfg: editableConfigFixture(), env: {} }), /cannot read config list.*EACCES/);
+});
+
+function editableConfigFixture() {
+  return {
+    botNames: ["SyntheticBot"], groupWhitelist: [123456], adminUins: ["345678"],
+    summaryGroupWhitelist: [], resourceGroupWhitelist: [], featureGroupWhitelist: [],
+    conversationSummaryGroupWhitelist: [], stickerGroupWhitelist: [], friendWhitelist: [],
+    jmUserWhitelist: [], botBlacklist: [],
+  };
+}

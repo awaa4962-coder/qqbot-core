@@ -3,7 +3,7 @@ import { CFG } from "./config.mjs";
 import { log } from "./logger.mjs";
 import { getUser, users, groupChats } from "./storage.mjs";
 import { describeFiles, fetchFileContent, sendPrivateMsg } from "./napcat.mjs";
-import { callFallbackChat } from "./model-router.mjs";
+import { executePrivateChatTask, MODEL_TASKS } from "./model-router.mjs";
 import { buildPrivateCommandReplyAsync, isAdminUser } from "./admin-commands.mjs";
 import { buildReplyContextPacket } from "./context/index.mjs";
 import { handlePrivateJmTransferCommand } from "./jm-provider.mjs";
@@ -41,7 +41,7 @@ export async function privateReply(userId, text) {
     return;
   }
   const context = buildPrivateReplyContext({ user_id: uid, nickname: "朋友" }, text);
-  const reply = await callFallbackChat({
+  const { text: reply } = await executePrivateChatTask({
     userMsg: text,
     userName: context.userName,
     history: context.history,
@@ -63,7 +63,7 @@ export async function privateReply(userId, text) {
 export async function tryDeepSeekFriend(userId, userMsg) {
   const uid = Number(userId);
   const context = buildPrivateReplyContext({ user_id: uid, nickname: "朋友" }, userMsg);
-  const reply = await callFallbackChat({
+  const { text: reply } = await executePrivateChatTask({
     userMsg,
     userName: context.userName,
     history: context.history,
@@ -85,7 +85,9 @@ async function handlePrivateFileMessage(ctx) {
   }
   const fullMsg = ctx.text + " " + fileDesc + (fileContent ? "\n[文件内容]:\n" + fileContent : "");
   const { history, userName } = buildPrivateReplyContext(ctx, fullMsg);
-  const reply = await callFallbackChat({
+  const { text: reply } = await executePrivateChatTask({
+    task: MODEL_TASKS.FILE_CHAT,
+    imageUrls: ctx.images,
     userMsg: fullMsg,
     userName,
     history,
@@ -107,7 +109,8 @@ async function handlePrivateChatMessage(ctx) {
   traceStage("route", { status: "ok", route: "private_chat" });
   const fullMsg = ctx.text + (ctx.images.length ? " [图片" + ctx.images.length + "张]" : "");
   const { history, userName } = buildPrivateReplyContext(ctx, fullMsg);
-  const reply = await callFallbackChat({
+  const { text: reply } = await executePrivateChatTask({
+    imageUrls: ctx.images,
     userMsg: fullMsg,
     userName,
     history,

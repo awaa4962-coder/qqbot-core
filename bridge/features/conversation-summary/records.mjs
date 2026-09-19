@@ -4,7 +4,7 @@ import { loadSummaryCapture, boundedEvidenceText } from "../../group-summary/jou
 import { dateRange, formatDate } from "../../group-summary/date.mjs";
 import { redactSummaryText } from "../../group-summary/formatter.mjs";
 import { isSummaryCommandText, isSummaryNoiseText, normalizeEvidenceText } from "../../group-summary/evidence.mjs";
-import { summaryPrivacy } from "../../group-summary/state.mjs";
+import { isForgottenSummaryRecord, summaryPrivacy } from "../../group-summary/state.mjs";
 import { isConversationSummaryCommand } from "./command.mjs";
 
 export function selectSummaryRecords(groupId, targets, range, options = {}) {
@@ -52,6 +52,7 @@ function loadRange(groupId, range, options) {
 function usableRecords(messages, range, privacy, options) {
   const seen = new Set();
   const repeated = new Map();
+  const lastBySpeakerReply = new Map();
   const result = [];
   let order = 0;
   for (const raw of [...messages].sort((a, b) => a.ts - b.ts)) {
@@ -61,7 +62,10 @@ function usableRecords(messages, range, privacy, options) {
     if (seen.has(id)) continue;
     seen.add(id);
     const key = [item.uid, item.replyToMessageId, normalizeEvidenceText(item.text)].join(":");
-    if (item.ts - (repeated.get(key) ?? -Infinity) < 20 * 60000) continue;
+    const speakerReply = [item.uid, item.replyToMessageId].join(":");
+    const consecutive = lastBySpeakerReply.get(speakerReply) === key;
+    lastBySpeakerReply.set(speakerReply, key);
+    if (consecutive && item.ts - (repeated.get(key) ?? -Infinity) < 20 * 60000) continue;
     repeated.set(key, item.ts); result.push(item);
   }
   return result;
@@ -78,7 +82,7 @@ function eligibleRecord(item, raw, range, privacy, options) {
   if (!item.uid || !Number.isFinite(item.ts) || item.ts < range.from || item.ts > range.to) return false;
   if (item.uid === String(options.selfUin) || raw.role === "assistant") return false;
   if (item.messageId && item.messageId === String(options.excludeMessageId)) return false;
-  if (Number(privacy.users[item.uid] || 0) >= Number(raw.receivedAt || item.ts)) return false;
+  if (isForgottenSummaryRecord({ ...raw, uid: item.uid, ts: item.ts }, privacy)) return false;
   return !isSummaryCommandText(item.text) && !isConversationSummaryCommand(item.text) && !isSummaryNoiseText(item.text);
 }
 

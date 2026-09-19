@@ -22,7 +22,7 @@ export function createSummaryManager(options = {}) {
     busyMessage: "这个群和日期已有任务运行",
     failureMessage: "日报任务失败，请检查记录是否变化或模型是否可用",
     resultError: result => result.message || "日报任务失败",
-    describeResult: result => ({ revisionId: result.revisionId || "", sent: Boolean(result.sent), reason: result.reason || "" }),
+    describeResult: result => ({ revisionId: result.revisionId || "", sent: Boolean(result.sent), pending: Boolean(result.pending), reason: result.reason || "" }),
   });
 
   function scope(input = {}) {
@@ -100,6 +100,7 @@ async function regenerateTopic(revision, input, options) {
   const generated = await generateGroupSummaryResult(revision.bundle.discussions.flatMap(item => item.messages), {
     ...options, structured: true, bundle: revision.bundle, onlyDiscussionId: input.discussionId,
     onlyDiscussionIds: topic.sourceDiscussionIds || [topic.id],
+    privacyEpoch: revision.privacyEpoch, includeDigest: false,
     style: "technical", lowMessageLimit: 0, label: dateLabel(revision.dateText), coverage: revision.coverage,
   });
   const replacement = generated.document?.topics.find(item => item.id === input.discussionId);

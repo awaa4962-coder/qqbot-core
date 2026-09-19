@@ -92,7 +92,7 @@ export async function transferResourceToGroup(options) {
 export async function downloadResourceToTemp(url, options = {}) {
   const maxBytes = options.maxBytes || CFG.resourceMaxBytes;
   const result = await fetchSafeResponse(url, { timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS });
-  const response = validateDownloadResponse(result, maxBytes);
+  const response = await validateDownloadResponse(result, maxBytes);
 
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), RESOURCE_TEMP_PREFIX));
   activeResourceTempDirs.add(path.resolve(tempDir));
@@ -114,12 +114,15 @@ export async function downloadResourceToTemp(url, options = {}) {
   return { tempDir, filePath, fileName, bytes, url: result.url?.href || url };
 }
 
-function validateDownloadResponse(result, maxBytes) {
+async function validateDownloadResponse(result, maxBytes) {
   if (!result.ok) throw new Error(result.reason || "blocked_url");
   if (!result.response?.ok) throw new Error("download_failed");
 
   const contentLength = Number(result.response.headers.get("content-length") || 0);
-  if (contentLength > maxBytes) throw new Error("size_limit");
+  if (contentLength > maxBytes) {
+    try { await result.response.body?.cancel(); } catch {}
+    throw new Error("size_limit");
+  }
   if (!result.response.body) throw new Error("empty_body");
   return result.response;
 }

@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import sharp from "sharp";
 import { perceptualImageHash } from "../../knowledge/memes/image-context.mjs";
 import { callVisionText } from "../../vision-provider.mjs";
+import { callTaskApi } from "../../api-providers/gateway.mjs";
 import { inferStickerTags } from "./analyzer.mjs";
 import { normalizeStickerTags } from "./schema.mjs";
 
@@ -27,7 +28,8 @@ export async function classifyStickerCandidate(image = {}, options = {}) {
   }
 
   try {
-    const classify = options.classify || classifyWithVision;
+    options.ensureAllowed?.();
+    const classify = options.classify || (input => classifyWithVision(input, options));
     const model = normalizeClassification(await classify({
       buffer,
       mimeType: image.mimeType,
@@ -69,7 +71,7 @@ export function normalizeClassification(value) {
   };
 }
 
-async function classifyWithVision(image) {
+async function classifyWithVision(image, options) {
   const dataUrl = "data:" + image.mimeType + ";base64," + image.buffer.toString("base64");
   const request = {
     messages: [{
@@ -94,7 +96,12 @@ async function classifyWithVision(image) {
     thinking: { type: "disabled" },
     tools: [],
   };
-  const result = await callVisionText(request);
+  const result = await callVisionText(request, {
+    callSlot: (...args) => {
+      options.ensureAllowed?.();
+      return (options.callSlot || callTaskApi)(...args);
+    },
+  });
   if (!result.ok) throw new Error("视觉分类输出不可用");
   return result.text;
 }

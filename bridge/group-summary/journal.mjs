@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { CFG } from "../config.mjs";
 import { formatDate, dateRange } from "./date.mjs";
 import { redactSummaryText } from "./formatter.mjs";
-import { readSummaryJson, summaryKey, summaryPrivacy, summaryRoot, withSummaryWriteLock, writeSummaryJson } from "./state.mjs";
+import { isForgottenSummaryRecord, readSummaryJson, summaryKey, summaryPrivacy, summaryRoot, withSummaryWriteLock, writeSummaryJson } from "./state.mjs";
 
 const RETENTION_DAYS = 7;
 const MAX_BYTES = 6 * 1024 * 1024;
@@ -25,6 +25,8 @@ export function captureSummaryMessage(ctx, options = {}) {
 }
 
 function appendRecord(key, ctx, options) {
+  const record = captureRecord(ctx, options);
+  if (isForgottenSummaryRecord(record, summaryPrivacy(options))) return { ok: false, reason: "forgotten_event" };
   const directory = path.join(summaryRoot(options), "journal");
   const filename = path.join(directory, key + ".jsonl");
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -32,7 +34,6 @@ function appendRecord(key, ctx, options) {
   if (index.needsNewline) { fs.appendFileSync(filename, "\n"); index.bytes++; index.needsNewline = false; }
   const messageId = String(ctx.message_id || "");
   if (messageId && index.ids.has(messageId)) return { ok: true, duplicate: true };
-  const record = captureRecord(ctx, options);
   const line = JSON.stringify(record) + "\n";
   if (index.count >= (options.maxMessages || MAX_MESSAGES) || index.bytes + Buffer.byteLength(line) > (options.maxBytes || MAX_BYTES)) {
     writeSummaryJson(path.join(directory, key + ".limit.json"), { capped: true });
@@ -94,8 +95,7 @@ export function loadSummaryCapture(dateText, groupId, options = {}) {
   const legacy = options.legacyMessages || loadLegacy(dateText, groupId, options);
   const seen = new Set();
   const messages = [...journal.messages, ...legacy].filter(message => {
-    const cutoff = Number(privacy.users[String(message.uid)] || 0);
-    if (cutoff && Number(message.receivedAt || message.ts || 0) <= cutoff) return false;
+    if (isForgottenSummaryRecord(message, privacy)) return false;
     const id = message.messageId || createHash("sha256").update(String(message.uid) + ":" + message.ts + ":" + message.text).digest("hex");
     if (seen.has(id)) return false;
     seen.add(id); return true;

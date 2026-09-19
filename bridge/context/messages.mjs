@@ -1,8 +1,9 @@
 import { CFG } from "../config.mjs";
+import { redactSensitiveText } from "../privacy.mjs";
 
 export function safeContextText(value, maxLen = 500) {
   const raw = typeof value === "string" ? value : JSON.stringify(value);
-  return (raw || "").replace(/\s+/g, " ").trim().slice(0, maxLen);
+  return redactSensitiveText(raw).replace(/\s+/g, " ").trim().slice(0, maxLen);
 }
 
 export function speakerLabel(nickname, uid) {

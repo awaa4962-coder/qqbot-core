@@ -1,5 +1,5 @@
 import { CFG } from "../../../config.mjs";
-import { fetchSafeResponse } from "../../../safe-url.mjs";
+import { fetchSafeResponse, readBoundedResponseBuffer } from "../../../safe-url.mjs";
 
 const PLATFORMS = Object.freeze(["weibo", "bilibili", "zhihu", "douyin", "tieba"]);
 const DIRECT_SOURCES = Object.freeze({
@@ -174,7 +174,9 @@ async function fetchJsonResponse(url) {
   if (!result.ok || !result.response?.ok) {
     throw new Error(result.reason || `HTTP ${result.response?.status || 0}`);
   }
-  return await result.response.json();
+  const buffer = await readBoundedResponseBuffer(result.response, 2 * 1024 * 1024);
+  if (buffer === null) throw new Error("trend response too large");
+  return JSON.parse(buffer.toString("utf8"));
 }
 
 function cleanText(value, limit) {
