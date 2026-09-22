@@ -22,12 +22,6 @@ import { VERSION } from "./version.mjs";
 import { refreshJmRuntimeHealth } from "./jm-provider.mjs";
 import { cleanupExpiredMemoryProfiles, flushMemoryProfilesSync } from "./memory-profile.mjs";
 import { flushImageContextCacheSync } from "./knowledge/memes/image-context.mjs";
-import {
-  flushMemeStoreSync,
-  initializeMemeKnowledge,
-  scheduleMemeTrendUpdates,
-  stopMemeTrendUpdates,
-} from "./knowledge/memes/index.mjs";
 import { handleAdminApiRequest } from "./admin-api/index.mjs";
 import { isAuthorizedAdminRequest } from "./admin-api/auth.mjs";
 import { isAllowedBrowserOrigin, isAuthorizedOneBotRequest, readRequestJson } from "./http-ingress.mjs";
@@ -247,12 +241,10 @@ wss.on('connection', function(ws) {
 function flushRuntimeState() {
   dailySummaryCatchUp.stop();
   runtimeMaintenance.stop();
-  stopMemeTrendUpdates();
   shutdownStickerSystem();
   flushSavesSync();
   flushMemoryProfilesSync();
   flushImageContextCacheSync();
-  flushMemeStoreSync();
   cleanupLogger();
 }
 
@@ -287,11 +279,8 @@ server.listen(CFG.listenPort, CFG.listenHost, function() {
     log('jm runtime health:', status.health, status.reason);
   }).catch(error => logE('jm runtime health failed:', error.message));
   cleanupExpiredMemoryProfiles();
-  const memeDecay = initializeMemeKnowledge();
-  log('meme knowledge ready:', JSON.stringify(memeDecay));
   const stickerStatus = initializeStickerSystem();
   log('sticker system ready:', JSON.stringify(stickerStatus));
-  scheduleMemeTrendUpdates();
   dailySummaryCatchUp.start();
 
   // 每小时更新所有用户画像

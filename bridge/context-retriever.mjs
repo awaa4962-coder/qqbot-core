@@ -15,7 +15,6 @@ import { users, groupChats } from "./storage.mjs";
 import { compareRelevance, currentTopicText, isContinuation, messageFeatures, retrievalFeatures } from "./context/relevance.mjs";
 import { selectConversationThread, selectGroupConversation, selectionSource } from "./context/conversation-selection.mjs";
 import { buildMemorySummary, getActiveMemoryContext } from "./memory-profile.mjs";
-import { buildMemeContextBlock } from "./knowledge/memes/index.mjs";
 import { buildMentionContextBlock } from "./mentions/index.mjs";
 import { formatConversationThreadBlock, getConversationThread } from "./cognition/index.mjs";
 import {
@@ -44,7 +43,6 @@ export function buildLayeredReplyContext(options = {}) {
   if (isPassiveInterjection) {
     appendQuotedLayer(layers, options);
     appendMinimalPreferenceLayer(layers, uid);
-    appendMemeLayer(layers, options);
     appendInterjectionGroupLayer(layers, groupId, options);
   } else {
     appendActiveReplyLayers(layers, { ...options, uid, groupId, userMsg, thread });
@@ -72,20 +70,10 @@ function appendActiveReplyLayers(layers, options) {
   appendQuotedLayer(layers, contextOptions);
   appendMentionLayer(layers, contextOptions);
   appendThreadLayer(layers, contextOptions);
-  appendMemeLayer(layers, contextOptions);
   appendPreferenceLayer(layers, contextOptions.uid);
   appendMemoryLayer(layers, contextOptions.uid, contextOptions.groupId);
   appendUserHistoryLayer(layers, contextOptions);
   appendGroupBackgroundLayer(layers, contextOptions.groupId, contextOptions);
-}
-
-function appendMemeLayer(layers, options) {
-  const memeBlock = buildMemeContextBlock({
-    text: options.userMsg,
-    groupId: options.groupId,
-    uid: options.uid,
-  });
-  if (memeBlock) pushLayer(layers, memeBlock, 55);
 }
 
 function appendMentionLayer(layers, options) {

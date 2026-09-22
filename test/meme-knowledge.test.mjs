@@ -104,23 +104,25 @@ describe("meme knowledge", () => {
     assert.match(buildMemeSearchReply("猫雷"), /没有找到/);
   });
 
-  it("supports status, search, and admin toggle commands", () => {
-    assert.match(buildCommandReply("梗库", { userId: 1 }), /梗库状态/);
-    assert.match(buildCommandReply("梗库 搜 哈基米", { userId: 1 }), /哈基米/);
+  it("retires status search and admin toggles without mutating legacy data", () => {
+    const before = JSON.stringify(getMemeStore());
+    assert.match(buildCommandReply("梗库", { userId: 1 }), /已停用/);
+    assert.match(buildCommandReply("梗库 搜 哈基米", { userId: 1 }), /已停用/);
 
     const denied = buildCommandReply("梗库 禁用 哈基米", { userId: 1, admins: ["42"] });
     assert.match(denied, /管理员权限|权限/);
 
     const disabled = buildCommandReply("梗库 禁用 哈基米", { userId: 42, admins: ["42"] });
-    assert.match(disabled, /已禁用梗：哈基米/);
-    assert.equal(matchMemes("哈基米").length, 0);
+    assert.match(disabled, /已停用/);
+    assert.equal(JSON.stringify(getMemeStore()), before);
 
     const enabled = buildCommandReply("梗库 启用 哈基米", { userId: 42, admins: ["42"] });
-    assert.match(enabled, /已启用梗：哈基米/);
-    assert.ok(matchMemes("哈基米").length > 0);
+    assert.match(enabled, /已停用/);
+    assert.equal(JSON.stringify(getMemeStore()), before);
   });
 
-  it("adds meme hints into reply context when current text hits a meme", () => {
+  it("does not add retired meme hints even when the legacy matcher would match", () => {
+    assert.ok(matchMemes("哈基米启动").length > 0);
     const packet = buildReplyContextPacket({
       uid: "42",
       groupId: "1",
@@ -129,7 +131,7 @@ describe("meme knowledge", () => {
       mode: "group-at",
     });
 
-    assert.ok(packet.messages.some(item => item.content.includes("梗库语境提示")));
+    assert.equal(packet.messages.some(item => item.content.includes("梗库语境提示")), false);
   });
 
   it("uses only manual and builtin entries in conservative mode", () => {

@@ -129,6 +129,7 @@ export const COMMAND_DEFINITIONS = Object.freeze([
   },
   {
     id: "meme-status",
+    retired: true,
     permission: "user",
     aliases: ["梗库", "梗库 状态", "meme status"],
     helpPage: 2,
@@ -136,6 +137,7 @@ export const COMMAND_DEFINITIONS = Object.freeze([
   },
   {
     id: "meme-search",
+    retired: true,
     permission: "user",
     aliases: [],
     helpPage: 2,
@@ -234,6 +236,7 @@ export const COMMAND_DEFINITIONS = Object.freeze([
   },
   {
     id: "meme-toggle",
+    retired: true,
     permission: "admin",
     aliases: [],
     adminSection: "base",
@@ -261,13 +264,13 @@ export function commandPatterns(filter = {}) {
 
 export function helpLinesForPage(page) {
   return COMMAND_DEFINITIONS
-    .filter(command => command.permission === "user" && command.helpPage === page && command.helpLine)
+    .filter(command => !command.retired && command.permission === "user" && command.helpPage === page && command.helpLine)
     .map(command => command.helpLine);
 }
 
 export function adminHelpLines(section) {
   return COMMAND_DEFINITIONS
-    .filter(command => command.permission === "admin" && command.adminSection === section && command.helpLine)
+    .filter(command => !command.retired && command.permission === "admin" && command.adminSection === section && command.helpLine)
     .map(command => command.helpLine);
 }
 

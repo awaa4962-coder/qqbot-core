@@ -7,13 +7,14 @@ import { isAdminUser, canUsePrivateChat } from "../commands/permissions.mjs";
 import { messageRouteRejection } from "../event-admission.mjs";
 import { readApiProviderHealth } from "../api-providers/health.mjs";
 import { getJmRuntimeHealth } from "../jm/runtime.mjs";
+import { MEME_RETIRED_MESSAGE } from "../knowledge/memes/archive.mjs";
 
 export const CAPABILITY_CATEGORIES = Object.freeze([
   { id: "chat", number: 1, name: "聊天与识图", aliases: ["聊天", "识图", "图片", "对话"] },
   { id: "group", number: 2, name: "群聊工具", aliases: ["群聊", "群工具", "日报", "词云", "链接"] },
   { id: "resources", number: 3, name: "JM 与资源", aliases: ["jm", "资源", "下载", "漫画"] },
   { id: "personal", number: 4, name: "关系与个性化", aliases: ["关系", "好感度", "熟悉度", "档案", "个性化", "称呼", "风格"] },
-  { id: "memes", number: 5, name: "梗与娱乐", aliases: ["梗", "梗库", "娱乐", "哈基米"] },
+  { id: "memes", number: 5, name: "表情与娱乐", aliases: ["表情", "娱乐", "哈基米"] },
   { id: "system", number: 6, name: "状态与版本", aliases: ["状态", "版本", "更新", "隐私", "系统"] },
 ]);
 
@@ -121,17 +122,6 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
     scopes: ["group", "private"],
     examples: ["@夜星 设置称呼 小明", "@夜星 回复风格 帮助"],
     keywords: ["称呼", "名字", "回复风格", "风格", "个性化"],
-  }),
-  capability({
-    id: "memes.knowledge",
-    category: "memes",
-    name: "梗理解",
-    summary: "在合适语境中参考已审核梗义，不需要专门触发。",
-    interaction: "automatic",
-    scopes: ["group"],
-    examples: ["@夜星 梗库", "@夜星 梗库 搜 哈基米"],
-    keywords: ["梗", "梗库", "哈基米", "meme"],
-    access: "meme-mode",
   }),
   capability({
     id: "memes.stickers",
@@ -256,6 +246,7 @@ export function isCapabilityHelpCommand(commandText) {
 export function buildCapabilityHelpText(query = "", options = {}) {
   const catalog = buildCapabilityCatalog(options);
   const normalized = normalizeQuery(query);
+  if (["梗", "梗库", "meme", "memes"].includes(normalized)) return MEME_RETIRED_MESSAGE;
   if (!normalized) return buildCapabilityHubText(catalog, options);
 
   const category = findCategory(normalized);
@@ -365,12 +356,6 @@ function resolveAccessAvailability(item, options, cfg) {
     return cfg.linkPreviewEnabled
       ? makeAvailability("available", "可用", "自动预览会去重和筛选，也可用 preview 命令明确请求")
       : makeAvailability("unavailable", "已关闭", "链接预览当前已关闭", { enabled: false });
-  }
-  if (item.access === "meme-mode") {
-    const mode = options.memeMode || cfg.memeLearningMode;
-    if (mode === "off") return makeAvailability("unavailable", "已关闭", "梗库已关闭", { enabled: false });
-    if (mode === "shadow") return makeAvailability("limited", "只学习", "当前不会向回复注入梗义");
-    return makeAvailability("available", "可用", "仅使用已启用且符合群范围的词条");
   }
   if (item.access === "summary-groups") {
     return whitelistAvailability(cfg.summaryGroupWhitelist, options, "群报", false);

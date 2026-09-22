@@ -44,7 +44,7 @@ export function buildArchitectureDescription(root = ROOT, options = {}) {
       { id: "transport", name: "NapCat OneBot HTTP/WebSocket", files: ["bridge/startup.mjs", "bridge/napcat.mjs"] },
       { id: "routing", name: "message parsing and reply routing", files: ["bridge/reply.mjs", "bridge/reply-group.mjs", "bridge/reply-private.mjs"] },
       { id: "commands", name: "command registry and manifest", files: ["bridge/commands/"] },
-      { id: "context", name: "context, memory, image and relationship signals", files: ["bridge/context/", "bridge/context-retriever.mjs", "bridge/system-prompts/", "bridge/knowledge/memes/", "bridge/memory-profile.mjs", "bridge/relationship.mjs"] },
+      { id: "context", name: "context, memory, image and relationship signals", files: ["bridge/context/", "bridge/context-retriever.mjs", "bridge/system-prompts/", "bridge/knowledge/memes/image-context.mjs", "bridge/memory-profile.mjs", "bridge/relationship.mjs"] },
       { id: "models", name: "model routing with fallback", files: ["bridge/model-router.mjs", "bridge/model-mimo.mjs", "bridge/model-ds.mjs"] },
       { id: "ops", name: "admin api, launcher, diagnostics and release", files: ["bridge/admin-api/", "launcher/QQFriendLauncher/", "scripts/release.mjs"] },
       { id: "plugin-center", name: "readonly plugin and workflow inventory", files: ["bridge/admin-api/plugin-catalog.mjs", "bridge/admin-api/backup-manager.mjs"] },

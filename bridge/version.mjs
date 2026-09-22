@@ -4,22 +4,22 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.13-capability-state";
-export const VERSION_NAME = "capability-state";
+export const VERSION = "1.4.14-meme-retirement";
+export const VERSION_NAME = "meme-retirement";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "能力说明读取实际群聊、私聊与视觉任务配置，不再写死主模型或依赖旧密钥开关。",
-  "帮助与控制台区分启用、会话权限、模型配置和依赖状态；配置可用不代表接口已经联网验证。",
-  "JM 保留群聊和私聊下载，按实际依赖检查显示状态；管理员命令豁免不放开普通 AI 私聊或 JM。",
-  "修正 Linux 自描述与诊断说明；保留模型主备、思考档位、白名单、关系评分和 FS，Windows 继续冻结。",
+  "自动梗库已停用：不再学习、联网更新或向聊天提示词注入旧释义。",
+  "旧命令只返回退役说明，旧管理操作与后台更新任务不能重新启用。",
+  "旧词条在维护页只读归档，不生成新词条、不覆盖原文件；识图和表情继续保留。",
+  "JM 群聊/私聊下载、大写 FS 与延迟清理保留；模型主备、思考档位、白名单和关系评分不变，Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Capability discovery reads actual group, private and vision task configuration instead of legacy settings.",
-  "Help and console separate enabled state, caller permission, model configuration and dependency checks. Configuration is not a connectivity probe.",
-  "Keeps group/private JM downloads with runtime health checks; admin command access does not grant AI chat or JM access.",
-  "Corrects Linux project facts. Model routes, reasoning modes, allowlists, relationship scoring and FS stay unchanged. Windows stays frozen.",
+  "Retires automatic meme learning, web updates and dictionary hints in chat prompts.",
+  "Legacy commands explain retirement; old management actions and background jobs cannot reactivate updates.",
+  "Preserves old terms in a read-only maintenance archive without seeding or rewriting files. Vision and stickers remain available.",
+  "Keeps group/private JM downloads, FS and delayed cleanup. Model routes, reasoning modes, allowlists and relationship scoring stay unchanged. Windows stays frozen.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

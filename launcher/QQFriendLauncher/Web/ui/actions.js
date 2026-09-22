@@ -3,7 +3,7 @@ import { renderCapabilities } from "../pages/capabilities.js";
 import { configPayload, renderConfig, renderConfigEditor } from "../pages/configuration.js";
 import { diagnosePayload, formatDiagnoseResult, renderDiagnoseSummary } from "../pages/diagnose-message.js";
 import { renderLogs } from "../pages/logs.js";
-import { addMemeSourceRow, applyMemeResearch, clearMemeForm, confirmDiscardMemeChanges, formatMemeOperationResult, memeFormFingerprint, memeFormPayload, renderMemes, selectedMemeName, selectedMemeQuery } from "../pages/memes.js";
+import { renderMemes, RETIRED_MEME_ACTIONS } from "../pages/memes.js";
 import { markStatusStale, renderSnapshot, renderStoppedStatus } from "../pages/overview.js";
 import { renderStickerSimulation, renderStickers, stickerEntryPayload, stickerSettingsPayload, stickerSimulationPayload } from "../pages/stickers.js";
 import { actionGroup, beginAction, endAction, finishActivity, showActivity, toast } from "./activity.js";
@@ -11,9 +11,13 @@ import { applyBackground } from "./appearance.js";
 import { $, setOutput, splitList } from "./dom.js";
 import { ACTION_DONE, ACTION_LABELS, STICKER_ACTIONS } from "./metadata.js";
 import { host, uiState } from "./state.js";
-import { callManagedAction, retainTaskResult, taskPhaseLabel } from "./tasks.js";
+import { callManagedAction, taskPhaseLabel } from "./tasks.js";
 
 export function validateAction(action) {
+  if (RETIRED_MEME_ACTIONS.has(action)) {
+    toast("自动梗库已停用，旧词条只读保留。", "error");
+    return false;
+  }
   if (action === "refreshConfig" && uiState.configDirty) {
     return window.confirm("当前配置有未保存修改。确定重新读取并放弃这些修改吗？");
   }
@@ -75,11 +79,6 @@ export function validateAction(action) {
     }
     return window.confirm("确定恢复上一版 API 实例和插槽配置吗？Key 不会被改动。");
   }
-  if (action === "saveMeme" && !$("memeName").value.trim()) {
-    toast("先填写梗名再保存。", "error");
-    $("memeName").focus();
-    return false;
-  }
   if (action === "saveSticker" && !$("stickerId").value) {
     toast("先从左侧选择一张表情。", "error");
     return false;
@@ -88,29 +87,6 @@ export function validateAction(action) {
     toast("请把用户消息和夜星回复都填上。", "error");
     return false;
   }
-  if (action === "deleteMeme") {
-    const name = selectedMemeName();
-    return Boolean(name) && window.confirm(`确定删除词条“${name}”吗？需要时可从修改记录恢复。`);
-  }
-  if (action === "researchMemeWeb" && !selectedMemeQuery()) {
-    toast("先填写或选择一个词条。", "error");
-    return false;
-  }
-  if (action === "rollbackMemeWebUpdate") {
-    if (!uiState.memeSnapshot.sync?.rollbackAvailable) {
-      toast("目前没有可以回退的联网更新。", "error");
-      return false;
-    }
-    return window.confirm("确定回退上一次联网更新吗？人工保存的内容不会被联网回退覆盖。");
-  }
-  if (action === "restoreMemeHistory") {
-    if (!$("memeHistorySelect").value) {
-      toast("目前没有可恢复的修改记录。", "error");
-      return false;
-    }
-    return window.confirm("确定恢复这次修改之前的词条内容吗？");
-  }
-  if (action === "refreshMemes" && !confirmDiscardMemeChanges()) return false;
   return true;
 }
 
@@ -138,18 +114,6 @@ export function configureRuntimeUi() {
 
 export async function runAction(action, button = null, options = {}) {
   const silent = options.silent === true;
-  if (action === "newMeme") {
-    if (!confirmDiscardMemeChanges()) return;
-    uiState.memeSelectionMode = "entry";
-    clearMemeForm();
-    $("memeName").focus();
-    toast("已打开空白词条。", "success");
-    return;
-  }
-  if (action === "addMemeSource") {
-    addMemeSourceRow();
-    return;
-  }
   if (action === "newApiProvider") {
     startNewApiProvider();
     return;
@@ -160,7 +124,6 @@ export async function runAction(action, button = null, options = {}) {
   }
   if (!validateAction(action) || !beginAction(action, button, silent)) return;
   let failure = null;
-  let completionDetail;
 
   if (action === "diagnose") {
     setOutput("diagnoseOutput", "正在检查消息格式、白名单、@目标和命令路由...", true);
@@ -173,8 +136,8 @@ export async function runAction(action, button = null, options = {}) {
   try {
     let payload = {};
     if (action === "refreshMemes") {
-      renderMemes(await host.call("getMemes"), { forceFill: true });
-      if (!silent) toast("梗库已刷新", "success");
+      renderMemes(await host.call("getMemes"));
+      if (!silent) toast("只读归档已刷新", "success");
       return;
     }
     if (action === "refreshStickers") {
@@ -192,23 +155,12 @@ export async function runAction(action, button = null, options = {}) {
       if (!silent) toast("API 状态已刷新", "success");
       return;
     }
-    if (action === "saveMeme") payload = memeFormPayload();
     if (action === "saveConfig") payload = configPayload();
     if (action === "saveApiProvider") payload = apiProviderPayload();
     if (action === "testApiProvider") payload = { action: "test-provider", providerId: uiState.selectedApiProviderId };
     if (action === "deleteApiProvider") payload = { action: "delete-provider", providerId: uiState.selectedApiProviderId };
     if (action === "saveApiRoutes") payload = apiRoutesPayload();
     if (action === "rollbackApiProviders") payload = { action: "rollback" };
-    if (action === "enableMeme") payload = { action: "enable", name: selectedMemeName() };
-    if (action === "disableMeme") payload = { action: "disable", name: selectedMemeName() };
-    if (action === "activateMeme") payload = { action: "activate", name: selectedMemeName() };
-    if (action === "quarantineMeme") payload = { action: "quarantine", name: selectedMemeName() };
-    if (action === "setMemeMode") payload = { action: "set-mode", mode: button?.dataset.mode || "steady" };
-    if (action === "deleteMeme") payload = { action: "delete", name: selectedMemeName() };
-    if (action === "runMemeWebUpdate") payload = { action: "run-web-update" };
-    if (action === "researchMemeWeb") payload = { action: "research-web", query: selectedMemeQuery() };
-    if (action === "rollbackMemeWebUpdate") payload = { action: "rollback-web-update" };
-    if (action === "restoreMemeHistory") payload = { action: "restore-history", revisionId: $("memeHistorySelect").value };
     if (action === "syncStickers") payload = { action: "sync", analyze: true, analysisLimit: 4 };
     if (action === "analyzeStickers") payload = { action: "analyze", limit: 4 };
     if (action === "saveStickerSettings") payload = stickerSettingsPayload();
@@ -250,36 +202,12 @@ export async function runAction(action, button = null, options = {}) {
     }
 
     const apiActions = ["saveApiProvider", "testApiProvider", "deleteApiProvider", "saveApiRoutes", "rollbackApiProviders"];
-    const memeActions = [
-      "saveMeme",
-      "enableMeme",
-      "disableMeme",
-      "activateMeme",
-      "quarantineMeme",
-      "setMemeMode",
-      "deleteMeme",
-      "runMemeWebUpdate",
-      "researchMemeWeb",
-      "rollbackMemeWebUpdate",
-      "restoreMemeHistory",
-    ];
     const hostAction = STICKER_ACTIONS.includes(action)
       ? "manageStickers"
       : apiActions.includes(action)
       ? "manageApiProviders"
-      : memeActions.includes(action)
-        ? action === "saveMeme"
-          ? "saveMeme"
-          : action === "deleteMeme"
-            ? "deleteMeme"
-            : ["enableMeme", "disableMeme", "activateMeme", "quarantineMeme", "setMemeMode"].includes(action)
-              ? "toggleMeme"
-              : action
         : action === "refreshLogs" ? "getLogs" : action;
-    const researchEditor = action === "researchMemeWeb" ? memeFormFingerprint() : null;
-    let managedJobId;
     const result = await callManagedAction(hostAction, payload, {
-      onStarted: id => { managedJobId = id; },
       onProgress: task => showActivity(ACTION_LABELS[action] || "后台任务", "working", taskPhaseLabel(task.phase)),
     });
 
@@ -350,32 +278,6 @@ export async function runAction(action, button = null, options = {}) {
       const formatted = formatDiagnoseResult(result);
       renderDiagnoseSummary(formatted.summary);
       setOutput("diagnoseRaw", formatted.raw, true);
-    } else if (action === "researchMemeWeb") {
-      if (researchEditor !== memeFormFingerprint()) {
-        if (managedJobId) retainTaskResult(managedJobId);
-        completionDetail = "当前编辑已变化，未覆盖正文。" + (managedJobId ? "查证结果仍在任务缓存中。" : "");
-        $("memeStatus").textContent = "查证已完成；" + completionDetail;
-        return;
-      }
-      const applied = applyMemeResearch(result);
-      if (!applied) {
-        $("memeStatus").textContent = `联网证据不足：${result.reason || payload.query || "-"}`;
-        throw new Error(result.reason || "联网证据不足");
-      }
-      toast("查证结果已回填，确认后保存", "success");
-      return;
-    } else if (memeActions.includes(action)) {
-      const snapshot = result.snapshot || await host.call("getMemes");
-      const forceFill = [
-        "saveMeme",
-        "enableMeme",
-        "disableMeme",
-        "deleteMeme",
-        "rollbackMemeWebUpdate",
-        "restoreMemeHistory",
-      ].includes(action);
-      renderMemes(snapshot, { selectName: action === "deleteMeme" ? "" : selectedMemeName(), forceFill });
-      setOutput("actionOutput", formatMemeOperationResult(action, result), true);
     } else if (["createBackup", "openLogs", "stopBridge", "stopAll"].includes(action)) {
       setOutput(operationOutputId(action), formatOperationResult(result), true);
       if (action === "stopBridge" || action === "stopAll") {
@@ -392,7 +294,7 @@ export async function runAction(action, button = null, options = {}) {
     endAction(action);
     if (!silent) finishActivity(
       failure?.taskStateUnknown ? "任务结果尚未确认" : failure ? `${ACTION_LABELS[action] || "操作"}失败` : ACTION_DONE[action] || "操作完成",
-      failure ? "error" : "success", failure?.taskStateUnknown ? failure.message : completionDetail,
+      failure ? "error" : "success", failure?.taskStateUnknown ? failure.message : undefined,
     );
   }
 }

@@ -5,8 +5,6 @@ const watched = new Map();
 const PENDING_KEY = "qqfriend-pending-tasks-v1";
 const SUPPORTED = {
   manageStickers: ["stickers", ["sync", "analyze", "capabilities", "cleanup"]],
-  runMemeWebUpdate: ["memes", ["run-web-update"]],
-  researchMemeWeb: ["memes", ["research-web"]],
   replayAction: ["replay", ["generate"]],
 };
 
@@ -81,8 +79,9 @@ export async function resumeManagedTasks() {
   const known = new Set(pendingIds());
   const snapshot = await host.call("getTasks");
   const present = new Set(snapshot.tasks.map(task => task.id));
+  for (const task of snapshot.tasks) if (task.module === "memes") remember(task.id, false);
   for (const id of known) if (!present.has(id)) remember(id, false);
-  for (const task of snapshot.tasks.filter(item => !TERMINAL.has(item.phase) || known.has(item.id))) {
+  for (const task of snapshot.tasks.filter(item => item.module !== "memes" && (!TERMINAL.has(item.phase) || known.has(item.id)))) {
     if (watched.has(task.id)) continue;
     remember(task.id, true);
     notify("started", task);

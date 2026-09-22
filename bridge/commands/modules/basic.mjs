@@ -15,7 +15,7 @@ import {
   setUserStylePreference,
 } from "../../user-preferences.mjs";
 import { VERSION, buildVersionQueryText, detectVersionLang, isVersionQueryCommand } from "../../version.mjs";
-import { buildMemeSearchReply, buildMemeStatusReply, getMemeStore } from "../../knowledge/memes/index.mjs";
+import { MEME_RETIRED_MESSAGE } from "../../knowledge/memes/archive.mjs";
 import { buildUserCacheStatsText } from "../../api-providers/usage-metrics.mjs";
 import { extractRawCommandArg } from "../normalize.mjs";
 import { isMemeCommand, isPreferenceCommand } from "../registry.mjs";
@@ -26,7 +26,6 @@ export function buildUserCommandReply(cmd, options) {
     return buildCapabilityHelpText(parsed.query, {
       ...options,
       surface: options.groupId ? "group" : "private",
-      memeMode: getMemeStore().mode,
     });
   }
   if (cmd === "status" || cmd === "状态") return "夜星在线，桥接器运行正常。";
@@ -35,7 +34,7 @@ export function buildUserCommandReply(cmd, options) {
     const builder = options.cacheStatsBuilder || buildUserCacheStatsText;
     return builder(options.userId, options.cacheUsageOptions || {});
   }
-  if (isMemeCommand(cmd)) return buildMemeCommandReply(cmd, options);
+  if (isMemeCommand(cmd)) return MEME_RETIRED_MESSAGE;
   if (isPreferenceCommand(cmd)) return buildPreferenceCommandReply(cmd, options);
   if (isVersionQueryCommand(cmd)) return buildVersionQueryText(cmd, detectVersionLang(cmd), options.version || VERSION);
   return null;
@@ -43,16 +42,6 @@ export function buildUserCommandReply(cmd, options) {
 
 function isCacheStatsCommand(cmd) {
   return ["缓存", "缓存命中", "缓存命中率", "我的缓存", "cache", "cache stats"].includes(cmd);
-}
-
-function buildMemeCommandReply(cmd, options) {
-  if (cmd === "梗库" || cmd === "梗库 状态" || cmd === "meme status") return buildMemeStatusReply();
-  const match = cmd.match(/^(梗库|meme)\s+(搜|搜索|search)\s+(.+)$/);
-  if (!match) return null;
-  return buildMemeSearchReply(
-    extractRawCommandArg(options.rawCommandText, options, match[1] + " " + match[2]),
-    { groupId: options.groupId },
-  );
 }
 
 function buildPreferenceCommandReply(cmd, options) {

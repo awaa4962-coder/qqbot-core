@@ -11,7 +11,6 @@
 
   function timeoutFor(action) {
     if (action === "startAll") return 12 * 60 * 1000;
-    if (["runMemeWebUpdate", "researchMemeWeb"].includes(action)) return 3 * 60 * 1000;
     if (["syncStickers", "analyzeStickers"].includes(action)) return 230 * 1000;
     if (action === "health") return 90 * 1000;
     if (action === "replayAction") return 120 * 1000;
@@ -62,7 +61,7 @@
     if (action === "saveConfig") return apiPost("/admin/config", payload);
     if (action === "manageApiProviders") return apiPost("/admin/api-providers", payload);
     if (action === "manageStickers") return apiPost("/admin/stickers", payload);
-    if (isMemeAction(action)) return apiPost("/admin/memes", payload);
+    if (isMemeAction(action)) throw new Error("自动梗库已停用，旧词条只读保留。");
     if (action === "diagnose") return apiPost("/admin/diagnose/reply", payload);
     if (action === "getMessageTraces") {
       const query = Object.entries(payload).map(([key, value]) => encodeURIComponent(key) + "=" + encodeURIComponent(value)).join("&");

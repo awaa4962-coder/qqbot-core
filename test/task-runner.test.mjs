@@ -83,14 +83,17 @@ test("task quota rejects excess work without invoking another handler", async t 
 
 test("admin task adapter allowlists operations and drops arbitrary client fields", async t => {
   const calls = [];
-  const manager = createAdminTaskManager(sandbox(t, { handlers: { memes: async payload => { calls.push(payload); return { ok: true, entry: { meaning: "result" }, snapshot: { secret: "must-not-retain" } }; } } }));
+  const manager = createAdminTaskManager(sandbox(t, { handlers: { stickers: async payload => { calls.push(payload); return { ok: true, result: { analyzed: 1 }, snapshot: { secret: "must-not-retain" } }; } } }));
   assert.throws(() => manager.start({ module: "config", payload: { action: "save" } }), /不支持/);
-  assert.throws(() => manager.start({ module: "memes", payload: { action: "delete" } }), /不支持/);
-  const job = manager.start({ module: "memes", payload: { action: "research-web", query: "示例", admin: true, filename: "/etc/private" } });
+  for (const action of ["delete", "run-web-update", "research-web"]) {
+    assert.throws(() => manager.start({ module: "memes", payload: { action, query: "示例" } }), /已停用/);
+  }
+  assert.deepEqual(calls, []);
+  const job = manager.start({ module: "stickers", payload: { action: "analyze", limit: 100, admin: true, filename: "/etc/private" } });
   await manager.wait();
-  assert.deepEqual(calls, [{ action: "research-web", query: "示例" }]);
+  assert.deepEqual(calls, [{ action: "analyze", limit: 4, analysisLimit: 4, analyze: true }]);
   const task = manager.snapshot({ id: job.jobId }).task;
-  assert.equal(task.phase, "done"); assert.equal(task.result.entry.meaning, "result");
+  assert.equal(task.phase, "done"); assert.equal(task.result.result.analyzed, 1);
   assert.equal(Object.hasOwn(task.result, "snapshot"), false);
 });
 

@@ -127,47 +127,48 @@ if (!vm.SourceTextModule) {
     assert.equal(h.session.get("qqfriend-admin-token"), "new-test-token");
   });
 
-  for (const changed of ["selection", "dirty"]) test("meme research preserves edits after " + changed + " changes", async () => {
-    const h = harness(); let finish;
-    const id = "00000000-0000-0000-0000-000000000001";
-    h.host.call = async action => action === "startTask" ? { jobId: id } : new Promise(resolve => { finish = resolve; });
+  for (const changed of ["selection", "search"]) test("retired research cannot overwrite archive after " + changed, async () => {
+    const h = harness(); const calls = [];
+    h.host.call = async action => { calls.push(action); throw new Error("retired action must not call host"); };
     const [actions, memes] = await h.imports(["ui/actions.js", "pages/memes.js"]);
-    memes.fillMemeForm({ name: "A", meaning: "saved-A" });
-    const pending = actions.runAction("researchMemeWeb", null, { silent: true }); await flush();
-    if (changed === "selection") memes.fillMemeForm({ name: "B", meaning: "saved-B" });
-    h.element("memeMeaning").value = "my-unsaved-edit"; memes.updateMemeDirty();
-    finish({ task: { id, phase: "done", resultAvailable: true, result: { ok: true, query: "A", entry: { name: "A", meaning: "late-result" } } } });
-    await pending;
-    assert.equal(h.element("memeMeaning").value, "my-unsaved-edit");
-    assert.equal(memes.memeFormPayload().entry.originalName, changed === "selection" ? "B" : "A");
-    assert.match(h.element("memeStatus").textContent, /未覆盖/);
-    assert.deepEqual(JSON.parse(h.session.get("qqfriend-pending-tasks-v1")), [id]);
-  });
-
-  test("unchanged meme editor still receives successful research", async () => {
-    const h = harness();
-    h.host.call = async action => action === "startTask" ? { jobId: "00000000-0000-0000-0000-000000000001" }
-      : { task: { phase: "done", resultAvailable: true, result: { ok: true, query: "A", entry: { name: "A", meaning: "verified" } } } };
-    const [actions, memes] = await h.imports(["ui/actions.js", "pages/memes.js"]);
-    memes.fillMemeForm({ name: "A", meaning: "before" });
+    memes.renderMemes({ available: true, count: 2, entries: [{ name: "A", meaning: "saved-A" }, { name: "B", meaning: "saved-B" }] });
+    if (changed === "selection") { h.element("memeSelect").value = "1"; memes.showMemeArchiveEntry(); }
+    else { h.element("memeArchiveSearch").value = "B"; memes.filterMemeArchive(); }
+    const before = h.element("memeArchiveDetail").innerHTML;
     await actions.runAction("researchMemeWeb", null, { silent: true });
-    assert.equal(h.element("memeMeaning").value, "verified");
+    assert.match(before, /saved-B/);
+    assert.equal(h.element("memeArchiveDetail").innerHTML, before);
+    assert.deepEqual(calls, []);
   });
 
-  test("resumed meme research protects selection changes while refreshing its result", async () => {
-    const h = harness(); let finish;
-    h.host.call = () => new Promise(resolve => { finish = resolve; });
+  test("unchanged archive also rejects legacy update and save actions", async () => {
+    const h = harness(); let calls = 0;
+    h.host.call = async () => { calls++; throw new Error("unexpected host call"); };
+    const [actions, memes] = await h.imports(["ui/actions.js", "pages/memes.js"]);
+    memes.renderMemes({ available: true, count: 1, entries: [{ name: "A", meaning: "<script>old</script>" }] });
+    const before = h.element("memeArchiveDetail").innerHTML;
+    for (const action of memes.RETIRED_MEME_ACTIONS) await actions.runAction(action, null, { silent: true });
+    assert.equal(calls, 0);
+    assert.equal(h.element("memeArchiveDetail").innerHTML, before);
+    assert.match(before, /&lt;script&gt;/);
+    assert.doesNotMatch(before, /<script>/);
+  });
+
+  test("resumed legacy meme tasks cannot fetch results or modify the readonly archive", async () => {
+    const h = harness(); let calls = 0;
+    h.host.call = async () => { calls++; throw new Error("retired task must not resume"); };
     const [feedback, memes] = await h.imports(["ui/background-feedback.js", "pages/memes.js"]);
     feedback.installTaskFeedback();
-    memes.fillMemeForm({ name: "A", meaning: "saved-A" });
+    memes.renderMemes({ available: true, count: 1, entries: [{ name: "B", meaning: "saved-B" }] });
+    const before = h.element("memeArchiveDetail").innerHTML;
     const task = { id: "00000000-0000-0000-0000-000000000003", module: "memes", action: "research-web", phase: "running" };
-    const notify = (type, value) => h.window.dispatchEvent({ type: "qqfriend:task", detail: { type, task: value } });
-    notify("started", task);
-    notify("complete", { ...task, phase: "done", resultAvailable: true, result: { ok: true, query: "A", entry: { name: "A", meaning: "late" } } });
-    memes.fillMemeForm({ name: "B", meaning: "saved-B" });
-    finish({ entries: [{ name: "A" }, { name: "B" }] }); await flush();
-    assert.equal(h.element("memeName").value, "B"); assert.equal(h.element("memeMeaning").value, "saved-B");
-    assert.match(h.element("memeStatus").textContent, /未覆盖/);
+    for (const type of ["started", "complete"]) {
+      h.window.dispatchEvent({ type: "qqfriend:task", detail: { type, task: { ...task, result: { entry: { name: "A", meaning: "late" } } } } });
+    }
+    await flush();
+    assert.equal(calls, 0);
+    assert.equal(h.element("memeArchiveDetail").innerHTML, before);
+    assert.match(h.element("memeStatus").textContent, /不会恢复/);
   });
 
   test("daily dirty refresh retains the editing head used for conflict checks", async () => {
@@ -198,6 +199,22 @@ if (!vm.SourceTextModule) {
       return { phase: "done" };
     }, { sleep: async ms => pauses.push(ms) });
     assert.equal(done.phase, "done"); assert.equal(reads, 3); assert.deepEqual(pauses, [1000, 2000]);
+  });
+
+  test("task restoration forgets retired meme jobs without polling or restarting them", async () => {
+    const h = harness(); const calls = [];
+    const id = "00000000-0000-0000-0000-000000000009";
+    h.session.set("qqfriend-pending-tasks-v1", JSON.stringify([id]));
+    h.host.call = async (action, payload) => {
+      calls.push({ action, payload });
+      return { tasks: [{ id, module: "memes", action: "research-web", phase: "running" }] };
+    };
+    const [tasks] = await h.imports(["ui/tasks.js"]);
+    await tasks.resumeManagedTasks(); await flush();
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].action, "getTasks");
+    assert.equal(h.events.length, 0);
+    assert.deepEqual(JSON.parse(h.session.get("qqfriend-pending-tasks-v1")), []);
   });
 
   test("daily background completion preserves dirty text and its original conflict baseline", async () => {

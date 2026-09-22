@@ -1,12 +1,11 @@
 import path from "node:path";
 import { CFG } from "../config.mjs";
 import { createTaskRunner } from "../tasks/runner.mjs";
-import { applyMemeKnowledgeAction } from "./meme-manager.mjs";
+import { MEME_RETIRED_MESSAGE } from "../knowledge/memes/archive.mjs";
 import { applyStickerManagerAction } from "./sticker-manager.mjs";
 import { replayService } from "../diagnostics/replay.mjs";
 
 const ALLOWED = Object.freeze({
-  memes: ["run-web-update", "research-web"],
   stickers: ["sync", "analyze", "capabilities", "cleanup"],
   replay: ["generate"],
 });
@@ -14,10 +13,11 @@ const ALLOWED = Object.freeze({
 export function createAdminTaskManager(options = {}) {
   const tasks = createTaskRunner({ filename: options.filename || path.join(CFG.dataRoot, ".qqfriend", "tasks", "admin.json"),
     maxConcurrent: 2, historyLimit: 20 });
-  const handlers = options.handlers || { memes: applyMemeKnowledgeAction, stickers: applyStickerManagerAction, replay: payload => replayService.act(payload) };
+  const handlers = options.handlers || { stickers: applyStickerManagerAction, replay: payload => replayService.act(payload) };
 
   function start(input = {}) {
     const module = String(input.module || "");
+    if (module === "memes") throw new Error(MEME_RETIRED_MESSAGE);
     const payload = normalizePayload(module, input.payload);
     return tasks.start({
       scope: module, meta: { module }, action: payload.action, timeoutMs: options.timeoutMs,
@@ -37,11 +37,6 @@ function normalizePayload(module, value) {
   const input = value && typeof value === "object" ? value : {};
   const action = String(input.action || "");
   if (!Object.hasOwn(ALLOWED, module) || !ALLOWED[module].includes(action)) throw new Error("不支持的后台任务");
-  if (module === "memes" && action === "research-web") {
-    if (typeof input.query !== "string" || !input.query.trim() || input.query.length > 200) throw new Error("请填写 200 字以内的查询词");
-    return { action, query: input.query.trim() };
-  }
-  if (module === "memes") return { action };
   if (module === "replay") return { action, caseId: String(input.caseId || "").slice(0, 80) };
   return batchPayload(input, action);
 }

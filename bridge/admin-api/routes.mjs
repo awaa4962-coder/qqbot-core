@@ -20,7 +20,6 @@ import { buildRuntimeStatus } from "./runtime-status.mjs";
 import { applyStickerManagerAction, buildStickerManagerSnapshot } from "./sticker-manager.mjs";
 import { loadStickerPreview } from "../features/stickers/index.mjs";
 import { buildProjectSelfDescription, buildWorkflowDescription } from "../self-description.mjs";
-import { getMemeStore } from "../knowledge/memes/index.mjs";
 import { CFG } from "../config.mjs";
 import { listMessageTraces } from "../diagnostics/message-trace.mjs";
 import { replayService } from "../diagnostics/replay.mjs";
@@ -84,7 +83,7 @@ export async function handleAdminApiRequest(req, res, context = {}) {
     return true;
   }
 
-  return await handleAuthorizedAdminRoute(req, res, { pathname, url, sendJson });
+  return await handleAuthorizedAdminRoute(req, res, { pathname, url, sendJson, loadMemeArchive: context.loadMemeArchive });
 }
 
 async function handleStickerPreviewRoute(req, res, context) {
@@ -135,7 +134,6 @@ function handleCommandsRoute(_req, res, context) {
 function handleCapabilitiesRoute(_req, res, context) {
   context.sendJson(res, 200, buildCapabilityCatalog({
     surface: "console",
-    memeMode: getMemeStore().mode,
   }), 2);
 }
 
@@ -172,7 +170,7 @@ function handleApiProvidersReadRoute(_req, res, context) {
 }
 
 function handleMemesReadRoute(_req, res, context) {
-  context.sendJson(res, 200, buildMemeKnowledgeSnapshot(), 2);
+  context.sendJson(res, 200, (context.loadMemeArchive || buildMemeKnowledgeSnapshot)(), 2);
 }
 
 function handleStickersReadRoute(_req, res, context) {
@@ -219,7 +217,7 @@ async function handleMemesSaveRoute(req, res, context) {
   const { sendJson } = context;
   try {
     const payload = await readJsonRequestBody(req);
-    sendJson(res, 200, await applyMemeKnowledgeAction(payload), 2);
+    sendJson(res, 410, await applyMemeKnowledgeAction(payload), 2);
   } catch (error) {
     sendJson(res, 400, { error: error.message });
   }

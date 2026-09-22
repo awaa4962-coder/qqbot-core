@@ -5,7 +5,6 @@ import { getStormStatus } from "../logger.mjs";
 import { getAdmissionStatus } from "../event-admission.mjs";
 import { getPipelineStatus } from "../pipeline-state.mjs";
 import { getCachedNapCatReadiness } from "../napcat-readiness.mjs";
-import { getMemeStore } from "../knowledge/memes/index.mjs";
 import { linkPreviewStatus } from "../services/link-preview/index.mjs";
 import { users, groupChats } from "../storage.mjs";
 import { VERSION, VERSION_NAME } from "../version.mjs";
@@ -18,8 +17,7 @@ import { readApiProviderHealth } from "../api-providers/health.mjs";
 export function buildRuntimeStatus(options = {}) {
   const now = options.now || new Date();
   const memory = process.memoryUsage();
-  const memeStore = getMemeStore();
-  const modules = buildRuntimeModules(now, memeStore);
+  const modules = buildRuntimeModules(now);
   const moduleHealth = summarizeModuleHealth(modules);
   return {
     status: "ok",
@@ -53,7 +51,7 @@ export function buildRuntimeStatus(options = {}) {
   };
 }
 
-function buildRuntimeModules(now, memeStore) {
+function buildRuntimeModules(now) {
   const nowMs = now.getTime();
   return {
     commands: { enabled: true, health: "ready" },
@@ -70,7 +68,7 @@ function buildRuntimeModules(now, memeStore) {
     imageContext: { ...getImageContextCacheStatus({ now: nowMs }), health: "ready" },
     linkPreview: buildLinkPreviewModule(),
     wordcloud: buildWordcloudModule(),
-    memeKnowledge: buildMemeKnowledgeModule(memeStore),
+    memeKnowledge: { enabled: false, retired: true, health: "disabled", mode: "off", autoUpdate: false },
     resourceTransfer: buildWhitelistModule(CFG.resourceGroupWhitelist),
     apiProviders: readApiProviderHealth(),
     stickers: getStickerRuntimeStatus(),
@@ -123,20 +121,6 @@ function buildWordcloudModule() {
 function buildWhitelistModule(groups) {
   const enabled = groups.length > 0;
   return { enabled, health: enabled ? "ready" : "disabled" };
-}
-
-function buildMemeKnowledgeModule(memeStore) {
-  const entries = Array.isArray(memeStore.entries) ? memeStore.entries : [];
-  return {
-    enabled: true,
-    health: memeStore.sync?.error ? "degraded" : "ready",
-    mode: memeStore.mode || CFG.memeLearningMode,
-    entries: entries.length,
-    webVerified: entries.filter(entry => entry.source === "web-verified").length,
-    autoUpdate: CFG.memeAutoUpdateEnabled,
-    lastUpdateAt: String(memeStore.sync?.lastSuccessAt || ""),
-    updateError: Boolean(memeStore.sync?.error),
-  };
 }
 
 function buildConfigStatus() {

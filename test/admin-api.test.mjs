@@ -100,8 +100,9 @@ test("runtime status is sanitized and does not expose raw model keys", () => {
   assert.equal(typeof status.modelKeys.mimo, "boolean");
   assert.equal(status.modules.imageContext.storesImages, false);
   assert.equal(status.modules.imageContext.storesChatText, false);
-  assert.equal(status.modules.memeKnowledge.enabled, true);
-  assert.equal(typeof status.modules.memeKnowledge.entries, "number");
+  assert.equal(status.modules.memeKnowledge.enabled, false);
+  assert.equal(status.modules.memeKnowledge.retired, true);
+  assert.equal(status.modules.memeKnowledge.autoUpdate, false);
   const serialized = JSON.stringify(status);
   for (const key of [CFG.mimoKey, CFG.dsKey, CFG.tavilyKey, CFG.doubaoKey]) {
     if (key && key.length >= 8) {

@@ -2,14 +2,14 @@ import { applyApiPreset, applyGlobalReasoningPreset, renderApiProviders, syncGlo
 import { applyCapabilityFilter } from "./pages/capabilities.js";
 import { commitListEditor, removeListEditorValue, renderConfigEditor, renderListEditors, updateConfigDirty } from "./pages/configuration.js";
 import { applyLogFilter } from "./pages/logs.js";
-import { confirmDiscardMemeChanges, fillMemeForm, updateMemeDirty, updateMemeScopeInput } from "./pages/memes.js";
+import { filterMemeArchive, showMemeArchiveEntry } from "./pages/memes.js";
 import { markStatusStale, renderSnapshot, renderStatus } from "./pages/overview.js";
 import { disposeStickerPreviews, renderStickers } from "./pages/stickers.js";
 import { configureRuntimeUi, runAction, showActionError } from "./ui/actions.js";
 import { beginAction, endAction, groupIsBusy, toast } from "./ui/activity.js";
 import { applyBackground, applyUiPreferences, saveUiPreferences } from "./ui/appearance.js";
 import { $ } from "./ui/dom.js";
-import { CONFIG_FIELDS, MEME_FIELD_IDS, PAGE_META } from "./ui/metadata.js";
+import { CONFIG_FIELDS, PAGE_META } from "./ui/metadata.js";
 import { host, uiState } from "./ui/state.js";
 import { resumeManagedTasks } from "./ui/tasks.js";
 import { installTaskFeedback } from "./ui/background-feedback.js";
@@ -21,14 +21,6 @@ export function canLeaveCurrentView(nextView) {
   if (uiState.currentView === "configuration" && uiState.configDirty) {
     const leave = window.confirm("配置有未保存修改。确定离开并放弃这些修改吗？");
     if (leave) renderConfigEditor(uiState.lastConfigSnapshot, { force: true });
-    return leave;
-  }
-  if (uiState.currentView === "memes" && uiState.memeDirty) {
-    const leave = confirmDiscardMemeChanges();
-    if (leave) {
-      const selected = (uiState.memeSnapshot.entries || []).find((item) => item.name === uiState.lastEntrySelection);
-      if (selected) fillMemeForm(selected);
-    }
     return leave;
   }
   return true;
@@ -48,7 +40,7 @@ export function showView(view) {
     panel.classList.toggle("active", active);
   });
   document.querySelectorAll(".view-tab").forEach((button) => {
-    const active = button.dataset.view === view;
+    const active = button.dataset.view === view || (view === "memes" && button.dataset.view === "maintenance");
     button.classList.toggle("active", active);
     if (active) button.setAttribute("aria-current", "page");
     else button.removeAttribute("aria-current");
@@ -74,12 +66,6 @@ document.addEventListener("click", (event) => {
   const reasoningPreset = event.target.closest("[data-reasoning-preset]");
   if (reasoningPreset) {
     applyGlobalReasoningPreset(reasoningPreset.dataset.reasoningPreset || "auto");
-    return;
-  }
-  const sourceRemove = event.target.closest("[data-remove-meme-source]");
-  if (sourceRemove) {
-    sourceRemove.closest(".meme-source-row")?.remove();
-    updateMemeDirty();
     return;
   }
   const stickerTile = event.target.closest("[data-sticker-id]");
@@ -161,8 +147,7 @@ document.addEventListener("input", (event) => {
   if (event.target && event.target.id === "blurStrength") {
     document.documentElement.style.setProperty("--backdrop-blur", `${event.target.value}px`);
   }
-  if (event.target && MEME_FIELD_IDS.includes(event.target.id)) updateMemeDirty();
-  if (event.target?.closest?.(".meme-source-list")) updateMemeDirty();
+  if (event.target?.id === "memeArchiveSearch") filterMemeArchive();
   if (event.target && Object.prototype.hasOwnProperty.call(CONFIG_FIELDS, event.target.id)) updateConfigDirty();
 });
 
@@ -213,19 +198,9 @@ document.addEventListener("change", (event) => {
     return;
   }
   if (event.target.id === "memeSelect") {
-    if (!confirmDiscardMemeChanges()) {
-      event.target.value = uiState.lastEntrySelection;
-      return;
-    }
-    uiState.memeSelectionMode = "entry";
-    uiState.lastEntrySelection = event.target.value;
-    const entry = (uiState.memeSnapshot.entries || []).find((item) => item.name === event.target.value);
-    fillMemeForm(entry);
+    showMemeArchiveEntry();
     return;
   }
-  if (event.target.id === "memeScopeType") updateMemeScopeInput();
-  if (event.target.matches("[data-meme-lock]")) updateMemeDirty();
-  if (MEME_FIELD_IDS.includes(event.target.id)) updateMemeDirty();
   if (Object.prototype.hasOwnProperty.call(CONFIG_FIELDS, event.target.id)) updateConfigDirty();
 });
 

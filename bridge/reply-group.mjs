@@ -13,7 +13,6 @@ import {
 } from "./reply-handlers.mjs";
 import { dispatchGroupCommand } from "./commands/action-dispatcher.mjs";
 import { observeMemoryEvent, getActiveMemoryContext } from "./memory-profile.mjs";
-import { observeMemeUsage } from "./knowledge/memes/index.mjs";
 import { observeGroupDuplicate } from "./duplicate-message.mjs";
 import { interjectionToleranceFactor } from "./context-retriever.mjs";
 import { hydrateMentions } from "./mentions/index.mjs";
@@ -89,12 +88,6 @@ function logGroupMemberMessage(ctx) {
       replyToMessageId: ctx.replyData?.id,
     });
   observeMemoryEvent({
-    uid: ctx.user_id,
-    groupId: ctx.group_id,
-    nickname: ctx.nickname,
-    text: ctx.text,
-  });
-  observeMemeUsage({
     uid: ctx.user_id,
     groupId: ctx.group_id,
     nickname: ctx.nickname,

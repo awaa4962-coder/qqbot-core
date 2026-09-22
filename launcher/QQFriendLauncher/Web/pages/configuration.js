@@ -9,7 +9,6 @@ export function renderConfig(status, configSnapshot) {
   const modelKeys = status.modelKeys || {};
   const linkPreview = modules.linkPreview || {};
   const wordcloud = modules.wordcloud || {};
-  const memeKnowledge = modules.memeKnowledge || {};
   const cognition = modules.cognition || {};
   const imageContext = modules.imageContext || {};
   const files = configSnapshot.files && typeof configSnapshot.files === "object"
@@ -43,12 +42,6 @@ export function renderConfig(status, configSnapshot) {
       `错误 ${linkPreview.errors || 0}`,
     ], "logs"],
     ["群词云", [wordcloud.enabled ? "已启用" : "已关闭", `${Array.isArray(wordcloud.groups) ? wordcloud.groups.length : 0} 个群`, `最多 ${wordcloud.maxMessages || 0} 条消息`], "configuration"],
-    ["梗库", [
-      memeKnowledge.enabled ? "已启用" : "已关闭",
-      memeKnowledge.mode === "shadow" ? "仅人工" : memeKnowledge.mode === "off" ? "已关闭" : "人工 + 联网",
-      `${memeKnowledge.entries || 0} 个词条`,
-      `${memeKnowledge.webVerified || 0} 个联网查证`,
-    ], "memes"],
     ["图片语境", [imageContext.enabled ? "已启用" : "未启用", `${Number(imageContext.entries || 0)} 个表情包指纹`, `${Number(imageContext.hits || 0)} 次复用`, imageContext.storesImages ? "保存图片" : "不存图片"], "services"],
     ["模型服务", Object.entries(modelKeys).filter(([, enabled]) => enabled).map(([name]) => modelLabel(name)), "services"],
     ["配置文件", files.length > 0 ? [`${editableFiles} 个可直接编辑`, `${createOnSaveFiles} 个保存时创建`] : ["等待配置状态"], "maintenance"],
@@ -153,7 +146,7 @@ export function moduleLabel(name) {
     jm: "JM 下载",
     linkPreview: "链接预览",
     imageContext: "图片语境",
-    memeKnowledge: "梗库理解",
+    memeKnowledge: "旧梗库归档",
     stickers: "收藏表情",
     memory: "用户画像",
     relationship: "互动熟悉度",

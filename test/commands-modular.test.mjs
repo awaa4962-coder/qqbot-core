@@ -53,7 +53,7 @@ describe("modular command entry", () => {
     assert.doesNotMatch(adminHelp, /<qq>|csv\|json/i);
   });
 
-  it("passes the current group to meme search without exposing group entries in private chat", () => {
+  it("retired meme commands expose no archived group entries in any chat", () => {
     const store = getMemeStore();
     const previousEntries = store.entries;
     store.entries = [...previousEntries, {
@@ -62,7 +62,8 @@ describe("modular command entry", () => {
       source: "manual", level: "B", confidence: 0.8,
     }];
     try {
-      assert.match(buildCommandReply("meme search scope-probe", { userId: 42, groupId: 123456 }), /synthetic group-only meaning/);
+      assert.match(buildCommandReply("meme search scope-probe", { userId: 42, groupId: 123456 }), /已停用/);
+      assert.doesNotMatch(buildCommandReply("meme search scope-probe", { userId: 42, groupId: 123456 }), /synthetic group-only meaning/);
       assert.doesNotMatch(buildCommandReply("meme search scope-probe", { userId: 42, groupId: 234567 }), /synthetic group-only meaning/);
       assert.doesNotMatch(buildCommandReply("meme search scope-probe", { userId: 42 }), /synthetic group-only meaning/);
     } finally {

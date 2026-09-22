@@ -23,7 +23,6 @@
         <button type="button" class="view-tab" data-view="api-center"><span>API</span><i id="apiNavCount">-</i></button>
         <button type="button" class="view-tab" data-view="services"><span>服务</span></button>
         <button type="button" class="view-tab" data-view="configuration"><span>配置</span></button>
-        <button type="button" class="view-tab" data-view="memes"><span>梗库</span><i id="memeNavCount">-</i></button>
         <button type="button" class="view-tab" data-view="stickers"><span>表情</span><i id="stickerNavCount">-</i></button>
         <button type="button" class="view-tab" data-view="diagnostics"><span>诊断</span></button>
         <button type="button" class="view-tab" data-view="summaries" id="summaryNav" hidden><span>日报</span></button>
@@ -235,33 +234,16 @@
         <section class="view" data-view-panel="memes" hidden>
           <section class="surface workspace-surface">
             <div class="section-head">
-              <div><p class="eyebrow">内容管理</p><div class="heading-row"><h2>联网梗库</h2><span class="save-state" id="memeDirtyState">已保存</span><span class="save-state neutral" id="memeUpdateState">等待更新</span></div></div>
-              <div class="action-row"><button type="button" data-action="refreshMemes">刷新</button><button type="button" data-action="runMemeWebUpdate">联网更新</button><button type="button" class="primary" data-action="saveMeme">保存词条</button><button type="button" class="more-button" data-menu-toggle="memeMoreMenu">更多操作</button></div>
+              <div><p class="eyebrow">已停用 · 只读</p><h2>旧梗库归档</h2></div>
+              <button type="button" data-action="refreshMemes">刷新</button>
             </div>
-            <div class="action-menu" id="memeMoreMenu" hidden><button type="button" data-action="researchMemeWeb">查证当前词</button><button type="button" data-action="rollbackMemeWebUpdate">回退上次更新</button><button type="button" data-action="quarantineMeme">移入隔离</button><button type="button" data-action="activateMeme">恢复启用</button><button type="button" data-action="disableMeme">停用</button><button type="button" class="danger-quiet" data-action="deleteMeme">删除并防复活</button></div>
+            <p id="memeStatus" role="status">等待读取归档</p>
             <div class="meme-editor">
               <aside class="meme-list">
-                <div class="meme-mode"><span>使用范围</span><div class="segmented"><button type="button" data-action="setMemeMode" data-mode="steady">全部词条</button><button type="button" data-action="setMemeMode" data-mode="shadow">仅人工</button><button type="button" data-action="setMemeMode" data-mode="off">关闭</button></div></div>
-                <div class="meme-list-head"><label>词条<select id="memeSelect"></select></label></div>
-                <button type="button" data-action="newMeme">新建词条</button>
-                <div class="meme-history"><label>修改记录<select id="memeHistorySelect"></select></label><button type="button" data-action="restoreMemeHistory">恢复此版本</button></div>
-                <pre class="output compact" id="memeStatus">等待加载梗库</pre>
+                <label>搜索旧词条<input id="memeArchiveSearch" type="search"></label>
+                <label>词条<select id="memeSelect" size="12"></select></label>
               </aside>
-              <div class="meme-form" id="memeForm">
-                <div class="form-grid"><label>梗名<input id="memeName" placeholder="例如：哈基米"></label><label>等级<select id="memeLevel"><option>S</option><option>A</option><option>B</option></select></label><label>置信度<input id="memeConfidence" type="number" min="0" max="100" step="1" value="70"></label><label>状态<select id="memeEntryStatus"><option value="active">启用</option><option value="quarantined">隔离</option><option value="disabled">停用</option><option value="stale">过期</option></select></label></div>
-                <div class="form-grid scope-grid"><label>作用范围<select id="memeScopeType"><option value="global">全部群</option><option value="groups">指定群</option></select></label><label class="wide-field">群号<input id="memeScopeGroups" placeholder="多个群号用空格分隔"></label></div>
-                <label>别名<input id="memeAliases" placeholder="用空格、逗号或顿号分隔"></label>
-                <label>触发词<input id="memeTriggers" placeholder="用空格、逗号或顿号分隔"></label>
-                <label>含义<textarea id="memeMeaning" rows="3" placeholder="这个梗大概是什么意思"></textarea></label>
-                <label>用法<textarea id="memeUsage" rows="3" placeholder="什么时候能接，什么时候只理解不复读"></textarea></label>
-                <label>例句<textarea id="memeExamples" rows="3" placeholder="每行一个真实用法"></textarea></label>
-                <section class="meme-source-editor">
-                  <div class="subsection-head"><div><b>资料来源</b><small>网页标题与链接</small></div><button type="button" data-action="addMemeSource">添加来源</button></div>
-                  <div class="meme-source-list" id="memeSourceList"></div>
-                </section>
-                <fieldset class="meme-locks"><legend>人工保护</legend><label><input type="checkbox" data-meme-lock="name">梗名</label><label><input type="checkbox" data-meme-lock="aliases">别名</label><label><input type="checkbox" data-meme-lock="triggers">触发词</label><label><input type="checkbox" data-meme-lock="meaning">含义</label><label><input type="checkbox" data-meme-lock="usage">用法</label><label><input type="checkbox" data-meme-lock="examples">例句</label><label><input type="checkbox" data-meme-lock="sources">来源</label><label><input type="checkbox" data-meme-lock="scope">范围</label><label><input type="checkbox" data-meme-lock="confidence">置信度</label><label><input type="checkbox" data-meme-lock="level">等级</label><label><input type="checkbox" data-meme-lock="status">状态</label></fieldset>
-                <div class="meme-entry-meta" id="memeEntryMeta">选择词条后显示来源、范围和审核证据</div>
-              </div>
+              <div id="memeArchiveDetail" class="meme-archive-detail"></div>
             </div>
           </section>
         </section>
@@ -467,6 +449,7 @@
           <section class="surface advanced-tools">
             <div class="section-head"><div><p class="eyebrow">高级入口</p><h2>工程工具</h2></div></div>
             <div class="tool-links">
+              <button type="button" data-view="memes">旧梗库归档</button>
               <button type="button" data-native-page="命令">命令清单</button><button type="button" data-native-page="模块">模块状态</button><button type="button" data-native-page="工作流">工作流</button><button type="button" data-native-page="插件">插件</button><button type="button" data-native-page="命令生成">命令生成</button><button type="button" data-native-page="备份">备份记录</button><button type="button" data-native-page="审计">审计</button><button type="button" data-native-page="自描述">自描述</button><button type="button" data-native-page="配置">原始配置</button><button type="button" data-native-page="启动输出">启动输出</button>
             </div>
           </section>

@@ -126,8 +126,8 @@ test('launcher host client forwards unsolicited snapshot events', async () => {
 
 test('launcher host client keeps long-running actions above normal timeout', async () => {
   const harness = await createHostHarness();
-  assert.equal(harness.host.timeoutFor('runMemeWebUpdate'), 180_000);
-  assert.equal(harness.host.timeoutFor('researchMemeWeb'), 180_000);
+  assert.equal(harness.host.timeoutFor('syncStickers'), 230_000);
+  assert.equal(harness.host.timeoutFor('analyzeStickers'), 230_000);
   assert.equal(harness.host.timeoutFor('restartBridge'), 90_000);
   assert.equal(harness.host.timeoutFor('refreshStatus'), 30_000);
 });
@@ -146,6 +146,15 @@ test('browser host routes Linux status calls and keeps service control terminal-
   assert.equal(status.status, 'ok');
   assert.equal(requests[0].url, '/admin/status');
   await assert.rejects(harness.host.call('startAll'), /Docker Compose.*systemd/);
+});
+
+test('browser host rejects every legacy meme mutation before making a request', async () => {
+  const requests = [];
+  const harness = await createBrowserHostHarness(async (url) => { requests.push(url); return jsonResponse(200, {}); });
+  for (const action of ['saveMeme', 'toggleMeme', 'deleteMeme', 'runMemeWebUpdate', 'researchMemeWeb', 'rollbackMemeWebUpdate', 'restoreMemeHistory']) {
+    await assert.rejects(harness.host.call(action, { action: 'research-web', query: 'synthetic' }), /已停用/);
+  }
+  assert.deepEqual(requests, []);
 });
 
 test('Linux diagnostics host routes encoded filters and explicit replay actions', async () => {
@@ -191,14 +200,14 @@ test('launcher frontend separates daily work into focused views', async () => {
   assert.match(html, /data-native-page="命令"/);
   assert.doesNotMatch(html, /class="hero /);
   assert.match(html, /id="diagnoseDetails"/);
-  assert.match(html, /id="memeDirtyState"/);
-  assert.match(html, /id="memeUpdateState"/);
-  assert.match(html, /data-action="runMemeWebUpdate"/);
-  assert.match(html, /data-action="researchMemeWeb"/);
-  assert.match(html, /data-action="rollbackMemeWebUpdate"/);
-  assert.match(html, /id="memeHistorySelect"/);
-  assert.match(html, /id="memeSourceList"/);
-  assert.match(html, /data-meme-lock="meaning"/);
+  assert.match(html, /旧梗库归档/);
+  assert.match(html, /id="memeArchiveSearch"/);
+  assert.match(html, /id="memeArchiveDetail"/);
+  assert.doesNotMatch(html, /data-action="runMemeWebUpdate"/);
+  assert.doesNotMatch(html, /data-action="researchMemeWeb"/);
+  assert.doesNotMatch(html, /data-action="rollbackMemeWebUpdate"/);
+  assert.doesNotMatch(html, /data-action="saveMeme"/);
+  assert.doesNotMatch(html, /class="view-tab" data-view="memes"/);
   assert.doesNotMatch(html, /data-action="importChinaMemes"/);
   assert.match(html, /id="configDirtyState"/);
   assert.match(html, /id="capabilityList"/);
