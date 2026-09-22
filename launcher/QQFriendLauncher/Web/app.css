@@ -350,6 +350,8 @@ h3 { margin-bottom: 0; font-size: 14px; }
   font-size: 12px;
 }
 .capability-summary b { color: var(--ink); }
+.capability-state { display: block; margin-top: 4px; }
+[data-action="refreshCapabilities"] { white-space: nowrap; flex-shrink: 0; }
 .capability-summary .available { color: var(--green); }
 .capability-summary .limited { color: var(--amber); }
 .capability-summary .unavailable { color: var(--red); }

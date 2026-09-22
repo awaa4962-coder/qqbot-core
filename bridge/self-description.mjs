@@ -11,22 +11,25 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export function buildProjectSelfDescription(options = {}) {
   const root = options.root || ROOT;
   return {
-    architecture: buildArchitectureDescription(root),
+    architecture: buildArchitectureDescription(root, options),
     modules: buildModuleDescription(options),
     commands: buildCommandDescription(),
-    workflows: buildWorkflowDescription(),
-    diagnostics: buildDiagnosticsDescription(),
+    workflows: buildWorkflowDescription(options),
+    diagnostics: buildDiagnosticsDescription(options),
   };
 }
 
-export function buildArchitectureDescription(root = ROOT) {
+export function buildArchitectureDescription(root = ROOT, options = {}) {
   const pkg = readPackage(root);
   return {
     schemaVersion: 1,
     project: {
       name: pkg.name || "qqfriend",
       version: pkg.version || "unknown",
-      runtime: "Node.js ESM + Windows WinForms launcher",
+      runtime: "Node.js ESM + browser console",
+      platform: options.platform || process.platform,
+      updateTarget: "linux",
+      windowsInstallationFrozen: true,
       entrypoint: "napcat_bridge.mjs",
     },
     roots: {
@@ -34,7 +37,7 @@ export function buildArchitectureDescription(root = ROOT) {
       launcher: "launcher/QQFriendLauncher/",
       scripts: "scripts/",
       tests: "test/",
-      docs: "docs/",
+      docs: "deploy/linux/",
       generated: ".qqfriend/",
     },
     layers: [
@@ -50,7 +53,7 @@ export function buildArchitectureDescription(root = ROOT) {
       "Do not expose model keys or .env_* values.",
       "Do not send reasoning_content, analysis, thinking fields or chain-of-thought.",
       "Do not enable relationship export unless explicitly implemented and reviewed.",
-      "Do not call real model APIs from diagnostics.",
+      "Reply diagnosis and offline replay checks do not call models; explicit bounded replay generation can call configured model APIs, but never sends to QQ.",
       "Image meme cache may store perceptual fingerprints and objective descriptions, never image files or raw group chat.",
       "Keep release packages free of logs, memory files, private docs and .env_* files.",
     ],
@@ -73,19 +76,32 @@ export function buildCommandDescription() {
   };
 }
 
-export function buildWorkflowDescription() {
+export function buildWorkflowDescription(options = {}) {
+  const workflows = WORKFLOWS.map(workflow => ({ ...workflow }));
+  if ((options.platform || process.platform) === "linux") {
+    workflows[0] = {
+      id: "start-all", name: "启动 Linux 服务", surface: "cli/docker",
+      steps: ["检查当前发布目录及私有配置", "docker compose up -d", "检查已有 NapCat 登录", "npm run check:jm", "核对唯一日报定时任务", "GET /health", "GET /ready"],
+      verify: ["/health 返回 ok", "/ready 返回 ready", "JM 依赖可用", "不启动 Windows Bot"],
+    };
+  }
   return {
     schemaVersion: 1,
-    count: WORKFLOWS.length,
-    workflows: WORKFLOWS.map(workflow => ({ ...workflow })),
+    count: workflows.length,
+    workflows,
   };
 }
 
-export function buildDiagnosticsDescription() {
+export function buildDiagnosticsDescription(options = {}) {
+  const diagnostics = DIAGNOSTICS.map(item => ({ ...item }));
+  if ((options.platform || process.platform) === "linux") {
+    const daily = diagnostics.find(item => item.id === "daily-summary-issue");
+    daily.safeFixes = ["核对 .env_summary_groups", "检查发送账本和日期后决定是否补发", "核对 Linux 唯一 cron/systemd 定时任务与运行日志"];
+  }
   return {
     schemaVersion: 1,
-    count: DIAGNOSTICS.length,
-    diagnostics: DIAGNOSTICS.map(item => ({ ...item })),
+    count: diagnostics.length,
+    diagnostics,
   };
 }
 

@@ -3,6 +3,10 @@
 import { CFG } from "../config.mjs";
 import { COMMAND_DEFINITIONS } from "../commands/manifest.mjs";
 import { getStickerSettings } from "../features/stickers/catalog-store.mjs";
+import { isAdminUser, canUsePrivateChat } from "../commands/permissions.mjs";
+import { messageRouteRejection } from "../event-admission.mjs";
+import { readApiProviderHealth } from "../api-providers/health.mjs";
+import { getJmRuntimeHealth } from "../jm/runtime.mjs";
 
 export const CAPABILITY_CATEGORIES = Object.freeze([
   { id: "chat", number: 1, name: "聊天与识图", aliases: ["聊天", "识图", "图片", "对话"] },
@@ -204,9 +208,10 @@ const HELP_HEADS = new Set([
 
 export function buildCapabilityCatalog(options = {}) {
   const cfg = options.cfg || CFG;
+  const resolvedOptions = { ...options, modelHealth: options.modelHealth || readApiProviderHealth(options.apiOptions) };
   const capabilities = CAPABILITY_DEFINITIONS
     .filter(item => isVisibleToUser(item, options, cfg))
-    .map(item => buildCapabilityView(item, options, cfg));
+    .map(item => buildCapabilityView(item, resolvedOptions, cfg));
   const categories = CAPABILITY_CATEGORIES.map(category => {
     const members = capabilities.filter(item => item.category === category.id);
     return {
@@ -316,7 +321,9 @@ function capability(input) {
 }
 
 function buildCapabilityView(item, options, cfg) {
-  const resolved = resolveAvailability(item, options, cfg);
+  const denial = capabilityScopeDenial(item, options, cfg);
+  const available = resolveAvailability(item, options, cfg);
+  const resolved = denial ? { ...denial, enabled: available.enabled } : available;
   return {
     id: item.id,
     category: item.category,
@@ -331,20 +338,23 @@ function buildCapabilityView(item, options, cfg) {
     status: resolved.status,
     statusLabel: resolved.label,
     statusDetail: resolved.detail,
+    state: {
+      installed: true,
+      enabled: resolved.enabled,
+      permitted: options.surface === "console" || !options.surface ? null : resolved.permitted,
+      health: resolved.health,
+      checkedAt: resolved.checkedAt || null,
+    },
   };
 }
 
 function resolveAvailability(item, options, cfg) {
-  if (item.reserved) return makeAvailability("reserved", "预留", "当前版本尚未启用");
+  if (item.reserved) return makeAvailability("reserved", "预留", "当前版本尚未启用", { enabled: false, permitted: false });
   if (item.id === "chat.reply") {
-    return cfg.mimoKey || cfg.dsKey
-      ? makeAvailability("available", "可用", "MiMo 主答，DeepSeek 可兜底")
-      : makeAvailability("unavailable", "不可用", "聊天模型尚未配置");
+    return chatModelAvailability(options);
   }
   if (item.id === "vision.context") {
-    return cfg.mimoKey || cfg.doubaoKey
-      ? makeAvailability("available", "可用", "图片只用于当前理解，不保存原图")
-      : makeAvailability("unavailable", "不可用", "视觉模型尚未配置");
+    return modelAvailability("vision", options);
   }
   if (item.access === "sticker-mode") return stickerAvailability(options, cfg);
   return resolveAccessAvailability(item, options, cfg);
@@ -354,11 +364,11 @@ function resolveAccessAvailability(item, options, cfg) {
   if (item.access === "link-preview") {
     return cfg.linkPreviewEnabled
       ? makeAvailability("available", "可用", "自动预览会去重和筛选，也可用 preview 命令明确请求")
-      : makeAvailability("unavailable", "已关闭", "链接预览当前已关闭");
+      : makeAvailability("unavailable", "已关闭", "链接预览当前已关闭", { enabled: false });
   }
   if (item.access === "meme-mode") {
     const mode = options.memeMode || cfg.memeLearningMode;
-    if (mode === "off") return makeAvailability("unavailable", "已关闭", "梗库已关闭");
+    if (mode === "off") return makeAvailability("unavailable", "已关闭", "梗库已关闭", { enabled: false });
     if (mode === "shadow") return makeAvailability("limited", "只学习", "当前不会向回复注入梗义");
     return makeAvailability("available", "可用", "仅使用已启用且符合群范围的词条");
   }
@@ -379,16 +389,16 @@ function resolveAccessAvailability(item, options, cfg) {
 function stickerAvailability(options, cfg) {
   const settings = options.stickerSettings || getStickerSettings();
   if (!cfg.stickerEnabled || settings.mode === "off") {
-    return makeAvailability("unavailable", "已关闭", "收藏表情回复当前已关闭");
+    return makeAvailability("unavailable", "已关闭", "收藏表情回复当前已关闭", { enabled: false });
   }
   if (settings.mode === "shadow") {
     return makeAvailability("limited", "观察模式", "会选择匹配表情，但不会实际发送");
   }
   if (options.surface === "private" && settings.privateEnabled === false) {
-    return makeAvailability("unavailable", "私聊已关闭", "收藏表情不会在私聊中发送");
+    return makeAvailability("unavailable", "私聊已关闭", "收藏表情不会在私聊中发送", { enabled: false });
   }
   if (options.surface === "group" && settings.groupEnabled === false) {
-    return makeAvailability("unavailable", "群聊已关闭", "收藏表情不会在群聊中发送");
+    return makeAvailability("unavailable", "群聊已关闭", "收藏表情不会在群聊中发送", { enabled: false });
   }
   const groups = settings.allowedGroups?.length ? settings.allowedGroups : cfg.stickerGroupWhitelist;
   return whitelistAvailability(groups, options, "收藏表情回复", true);
@@ -399,17 +409,31 @@ function whitelistAvailability(whitelist, options, label, privateAllowed) {
   if (options.surface === "group" && options.groupId) {
     return values.includes(Number(options.groupId))
       ? makeAvailability("available", "本群可用", label + "已为当前群启用")
-      : makeAvailability("limited", "本群未开放", label + "仅在已配置群使用");
+      : makeAvailability("limited", "本群未开放", label + "仅在已配置群使用", { permitted: false });
   }
-  if (options.surface === "private" && !privateAllowed) {
-    return makeAvailability("limited", "仅限群聊", label + "不在私聊中运行");
+  if (options.surface === "private") {
+    return privateAllowed
+      ? makeAvailability("available", "私聊可用", label + "已为当前私聊启用")
+      : makeAvailability("limited", "仅限群聊", label + "不在私聊中运行", { permitted: false });
   }
   if (!values.length) return makeAvailability("unavailable", "未配置", "尚未配置可用群");
   return makeAvailability("available", "已启用", values.length + " 个群已开放");
 }
 
 function jmAvailability(options, cfg) {
-  if (!cfg.jmPython) return makeAvailability("unavailable", "依赖不可用", "JM Python 运行环境未配置");
+  const access = jmScopeAvailability(options, cfg);
+  if (access.status !== "available") return access;
+  const runtime = options.jmHealth || getJmRuntimeHealth();
+  if (runtime.stale || runtime.reason === "checking") {
+    return makeAvailability("limited", "检查中", "JM 依赖状态正在刷新", { health: "unknown", checkedAt: runtime.checkedAt });
+  }
+  if (!runtime.dependencyReady || !runtime.sevenZipReady) {
+    return makeAvailability("unavailable", "依赖不可用", "JM 的 Python 依赖或压缩工具暂不可用", { health: "degraded", checkedAt: runtime.checkedAt });
+  }
+  return { ...access, health: "ready", checkedAt: runtime.checkedAt };
+}
+
+function jmScopeAvailability(options, cfg) {
   if (options.surface === "group" && options.groupId) {
     return whitelistAvailability(cfg.resourceGroupWhitelist, options, "JM", true);
   }
@@ -417,7 +441,7 @@ function jmAvailability(options, cfg) {
     const allowed = (cfg.jmUserWhitelist || []).map(Number).includes(Number(options.userId));
     return allowed
       ? makeAvailability("available", "私聊可用", "当前账号已开放 JM")
-      : makeAvailability("limited", "需要白名单", "当前账号未开放私聊 JM");
+      : makeAvailability("limited", "需要白名单", "当前账号未开放私聊 JM", { permitted: false });
   }
   const groupCount = (cfg.resourceGroupWhitelist || []).length;
   const userCount = (cfg.jmUserWhitelist || []).length;
@@ -425,15 +449,48 @@ function jmAvailability(options, cfg) {
   return makeAvailability("available", "已启用", groupCount + " 个群、" + userCount + " 个私聊账号已开放");
 }
 
-function makeAvailability(status, label, detail) {
-  return { status, label, detail };
+function modelAvailability(task, options) {
+  const state = options.modelHealth.tasks?.[task];
+  if (!state?.ready) return makeAvailability("unavailable", "配置不可用", "当前任务没有配置可调用的模型，请管理员检查 API 设置", { health: "configuration_error" });
+  const detail = state.primary.ready ? "按当前任务配置调用；接口连通状态以实际请求为准" : "主模型配置不可用，当前仅备用配置可调用";
+  return makeAvailability("available", "已配置", detail, { health: "configured" });
+}
+
+function chatModelAvailability(options) {
+  if (options.surface !== "console") return modelAvailability(options.surface === "private" ? "private_chat" : "group_chat", options);
+  const group = modelAvailability("group_chat", options);
+  const direct = modelAvailability("private_chat", options);
+  if (group.status === direct.status) {
+    return group.status === "available"
+      ? makeAvailability("available", "已配置", "群聊与私聊按各自任务配置调用；连通状态以实际请求为准", { health: "configured" })
+      : group;
+  }
+  const detail = group.status === "available" ? "群聊模型已配置，私聊模型配置不可用" : "私聊模型已配置，群聊模型配置不可用";
+  return makeAvailability("limited", "部分配置", detail, { health: "partially_configured" });
+}
+
+function capabilityScopeDenial(item, options, cfg) {
+  if (!options.surface || options.surface === "console") return null;
+  const { surface, userId, groupId } = options;
+  if ((surface === "group" && !groupId) || (surface === "private" && !userId)) {
+    return makeAvailability("limited", "范围待确认", "需要当前会话信息才能确认权限", { permitted: null });
+  }
+  const rejection = messageRouteRejection({ message_type: surface, user_id: userId, group_id: groupId }, cfg);
+  if (rejection) return makeAvailability("limited", "会话未开放", "当前会话不满足机器人准入条件", { permitted: false });
+  if (!item.scopes.includes(surface)) return makeAvailability("limited", "仅限群聊", "此功能不在当前会话类型运行", { permitted: false });
+  if (surface !== "private" || item.access === "jm" || canUsePrivateChat(userId, cfg)) return null;
+  if (item.interaction === "command" && isAdminUser(userId, options.admins || cfg.adminUins)) return null;
+  return makeAvailability("limited", "需要白名单", "当前账号未开放普通私聊", { permitted: false });
+}
+
+function makeAvailability(status, label, detail, state = {}) {
+  return { status, label, detail, enabled: true, permitted: true, health: "not_checked", ...state };
 }
 
 function isVisibleToUser(item, options, cfg) {
   if (item.permission !== "admin") return true;
   if (options.surface === "console") return true;
-  const admins = (options.admins || cfg.adminUins || []).map(String);
-  return admins.includes(String(options.userId || ""));
+  return isAdminUser(options.userId || "", options.admins || cfg.adminUins || []);
 }
 
 function buildCapabilityHubText(catalog, options) {

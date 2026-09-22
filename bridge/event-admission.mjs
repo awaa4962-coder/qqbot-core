@@ -43,7 +43,7 @@ export function createEventAdmissionController(options = {}) {
     telemetry.received();
     if (!ingress.take("all").ok) return reject("ingress_rate_limited", eventScope(ctx));
 
-    const routeRejection = rejectRoute(ctx, cfg);
+    const routeRejection = messageRouteRejection(ctx, cfg);
     if (routeRejection) return reject(routeRejection, eventScope(ctx));
     const messageKey = eventMessageKey(ctx);
     if (messageKey && isDuplicate(messageKey)) {
@@ -114,7 +114,7 @@ export function getAdmissionStatus() {
   return defaultController.status();
 }
 
-function rejectRoute(ctx, cfg) {
+export function messageRouteRejection(ctx, cfg = CFG) {
   if (listIncludes(cfg.botBlacklist, ctx?.user_id)) return "blacklisted_user";
   if (ctx?.message_type !== "group") return "";
   if (Number(ctx.user_id) === Number(cfg.selfUin)) return "self_message";

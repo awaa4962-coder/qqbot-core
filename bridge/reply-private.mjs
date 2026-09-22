@@ -1,5 +1,4 @@
 // bridge/reply-private.mjs - private message command and AI handling.
-import { CFG } from "./config.mjs";
 import { log } from "./logger.mjs";
 import { getUser, users, groupChats } from "./storage.mjs";
 import { describeFiles, fetchFileContent, sendPrivateMsg } from "./napcat.mjs";
@@ -11,6 +10,7 @@ import { getPreferredDisplayName } from "./user-preferences.mjs";
 import { isSuccessfulOutbound, recordConversationTurn } from "./cognition/index.mjs";
 import { maybeSendStickerAfterReply } from "./features/stickers/index.mjs";
 import { traceStage } from "./diagnostics/message-trace.mjs";
+import { canUsePrivateChat } from "./commands/permissions.mjs";
 
 export async function handlePrivateMessage(ctx) {
   if (await handlePrivateJmTransferCommand(ctx)) {
@@ -19,7 +19,7 @@ export async function handlePrivateMessage(ctx) {
   }
   if (isAdminUser(ctx.user_id) && await trySendPrivateCommand(ctx)) return;
 
-  if (!CFG.friendWhitelist.includes(ctx.user_id)) {
+  if (!canUsePrivateChat(ctx.user_id)) {
     traceStage("route", { status: "skipped", reason: "private_not_whitelisted" });
     log("private msg from non-whitelist:", ctx.user_id);
     return;
@@ -36,7 +36,7 @@ export async function handlePrivateMessage(ctx) {
 
 export async function privateReply(userId, text) {
   const uid = Number(userId);
-  if (!CFG.friendWhitelist.includes(uid)) {
+  if (!canUsePrivateChat(uid)) {
     log("privateReply: user not in whitelist:", uid);
     return;
   }

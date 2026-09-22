@@ -9,7 +9,7 @@ import {
   buildProjectSelfDescription,
   handleAdminApiRequest,
 } from "../bridge/admin-api/index.mjs";
-import { writeProjectSelfDescription } from "../bridge/self-description.mjs";
+import { buildArchitectureDescription, buildWorkflowDescription, buildDiagnosticsDescription, writeProjectSelfDescription } from "../bridge/self-description.mjs";
 import { moduleIds } from "../bridge/modules/manifest.mjs";
 import { commandIds } from "../bridge/commands/manifest.mjs";
 
@@ -77,4 +77,21 @@ test("admin self-description route returns project facts", async () => {
   assert.ok(writes[0].payload.architecture);
   assert.ok(writes[0].payload.modules);
   assert.ok(writes[0].payload.workflows);
+});
+
+test("Linux self-description follows actual deployment and bounded diagnostic behavior", () => {
+  const architecture = buildArchitectureDescription(undefined, { platform: "linux" });
+  assert.equal(architecture.project.platform, "linux");
+  assert.equal(architecture.project.updateTarget, "linux");
+  assert.equal(architecture.project.windowsInstallationFrozen, true);
+  assert.doesNotMatch(architecture.project.runtime, /WinForms/);
+  assert.equal(architecture.roots.docs, "deploy/linux/");
+  assert.match(architecture.safetyBoundaries.join(" "), /bounded replay generation can call/);
+  const workflows = buildWorkflowDescription({ platform: "linux" });
+  assert.equal(workflows.workflows[0].surface, "cli/docker");
+  assert.match(workflows.workflows[0].steps.join(" "), /GET \/ready/);
+  const daily = buildDiagnosticsDescription({ platform: "linux" }).diagnostics.find(item => item.id === "daily-summary-issue");
+  assert.doesNotMatch(daily.safeFixes.join(" "), /Windows/);
+  assert.match(daily.safeFixes.join(" "), /发送账本/);
+  assert.equal(buildWorkflowDescription({ platform: "win32" }).workflows[0].surface, "launcher");
 });

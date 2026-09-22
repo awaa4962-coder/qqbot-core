@@ -13,7 +13,7 @@ import { getCognitionStatus } from "../cognition/index.mjs";
 import { getImageContextCacheStatus } from "../knowledge/memes/image-context.mjs";
 import { getStickerRuntimeStatus } from "../features/stickers/index.mjs";
 import { getJmRuntimeHealth } from "../jm-provider.mjs";
-import { loadApiConfig, readProviderSecret } from "../api-providers/store.mjs";
+import { readApiProviderHealth } from "../api-providers/health.mjs";
 
 export function buildRuntimeStatus(options = {}) {
   const now = options.now || new Date();
@@ -158,66 +158,6 @@ function buildConfigStatus() {
     stickerGroupWhitelist: CFG.stickerGroupWhitelist,
     stickerEnabled: CFG.stickerEnabled,
   };
-}
-
-function buildApiProviderHealth(config) {
-  const issues = collectRouteIssues(config);
-  issues.push(...collectVisionIssues(config));
-  if (config.routes?.group_chat?.fallback !== "deepseek") issues.push("group_chat:fallback_not_protected");
-  return {
-    enabled: true,
-    health: issues.length ? "degraded" : "ready",
-    issues,
-    routes: buildRouteSummary(config.routes),
-  };
-}
-
-function readApiProviderHealth() {
-  try {
-    return buildApiProviderHealth(loadApiConfig());
-  } catch (error) {
-    return { enabled: true, health: "degraded", issues: ["configuration_invalid"],
-      routes: {}, configurationError: error.message };
-  }
-}
-
-function collectRouteIssues(config) {
-  const issues = [];
-  for (const [task, route] of Object.entries(config.routes || {})) {
-    collectProviderIssue(issues, config, task, "primary", route.primary);
-    if (route.fallback) collectProviderIssue(issues, config, task, "fallback", route.fallback);
-  }
-  return issues;
-}
-
-function collectProviderIssue(issues, config, task, position, providerId) {
-  const provider = config.providers?.[providerId];
-  if (!provider?.enabled) {
-    issues.push(task + ":" + position + "_unavailable");
-    return;
-  }
-  if (provider.auth !== "none" && !readProviderSecret(provider)) {
-    issues.push(task + ":" + position + "_credentials_missing");
-  }
-}
-
-function collectVisionIssues(config) {
-  const issues = [];
-  const visionRoute = config.routes?.vision;
-  for (const position of ["primary", "fallback"]) {
-    const id = visionRoute?.[position];
-    if (!id) continue;
-    if (!config.providers?.[id]?.capabilities?.includes("vision")) issues.push("vision:" + position + "_not_multimodal");
-  }
-  return issues;
-}
-
-function buildRouteSummary(routes) {
-  return Object.fromEntries(Object.entries(routes || {}).map(([task, route]) => [task, {
-      primary: route.primary,
-      fallback: route.fallback || null,
-      reasoning: route.reasoning,
-  }]));
 }
 
 function summarizeModuleHealth(modules) {

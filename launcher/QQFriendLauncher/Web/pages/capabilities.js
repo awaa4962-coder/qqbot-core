@@ -20,7 +20,7 @@ export function renderCapabilities(snapshot) {
   const counts = countCapabilityStatuses(capabilities);
   $("capabilitySummary").innerHTML = [
     `<b>${fmt.format(capabilities.length)} 项能力</b>`,
-    `<span class="available">${fmt.format(counts.available)} 可用</span>`,
+    `<span class="available">${fmt.format(counts.available)} 可调用</span>`,
     `<span class="limited">${fmt.format(counts.limited)} 受限</span>`,
     `<span class="unavailable">${fmt.format(counts.unavailable)} 不可用</span>`,
     `<span class="reserved">${fmt.format(counts.reserved)} 预留</span>`,
@@ -59,6 +59,7 @@ export function applyCapabilityFilter() {
       `<div class="capability-title"><h3>${escapeHtml(item.name)}</h3><span class="capability-badge">${escapeHtml(item.statusLabel)}</span></div>`,
       `<p>${escapeHtml(item.summary)}</p>`,
       `<small>${escapeHtml(scope)} · ${escapeHtml(item.statusDetail)}</small>`,
+      `<small class="capability-state">${escapeHtml(capabilityStateLabel(item.state))}</small>`,
       examples ? `<div class="capability-examples">${examples}</div>` : "",
       "</div>",
       "</article>",
@@ -76,4 +77,13 @@ export function countCapabilityStatuses(capabilities) {
 
 export function capabilityScopeLabel(scope) {
   return ({ group: "群聊", private: "私聊", console: "控制台" })[scope] || scope;
+}
+
+export function capabilityStateLabel(state) {
+  if (!state) return "状态待刷新";
+  const enabled = state.enabled ? "已启用" : "未启用";
+  const permission = state.permitted === null ? "权限按实际会话判断" : state.permitted ? "会话已许可" : "当前会话受限";
+  const health = ({ ready: "依赖检查通过", configured: "模型已配置，连通性未探测", partially_configured: "部分会话模型配置不可用",
+    configuration_error: "模型配置不可用", degraded: "依赖异常", unknown: "检查中", not_checked: "未做运行探测" })[state.health] || "状态待确认";
+  return [enabled, permission, health].join(" · ");
 }
