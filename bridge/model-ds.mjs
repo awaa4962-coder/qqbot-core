@@ -1,11 +1,11 @@
-// bridge/model-ds.mjs — DeepSeek V4 Flash 兜底 + 私聊
+// Private/file chat and group fallback; task routes select the actual provider.
 import { LONG_GROUPS } from "./config.mjs";
 import { log, logE } from "./logger.mjs";
 import { webSearch, needsSearch } from "./search.mjs";
 import { buildSystem } from "./model-mimo.mjs";
 import { callApiProvider, callTaskApi } from "./api-providers/gateway.mjs";
 import { buildCurrentInput } from "./context/messages.mjs";
-import { buildOutputPacket } from "./output-pipeline.mjs";
+import { chatError, parseChatOutcome } from "./chat-outcome.mjs";
 import { selectPersonaCue } from "./persona-style.mjs";
 
 async function buildSearchContext(userMsg) {
@@ -35,6 +35,10 @@ function resolveDeepSeekMaxTokens(groupId, isAtMe) {
 }
 
 export async function tryDeepSeek(userMsg, userName, history, groupId, isAtMe, mood, options = {}) {
+  return (await tryDeepSeekResult(userMsg, userName, history, groupId, isAtMe, mood, options)).text;
+}
+
+export async function tryDeepSeekResult(userMsg, userName, history, groupId, isAtMe, mood, options = {}) {
   if (isAtMe === undefined) isAtMe = true;
   const maxTok = resolveDeepSeekMaxTokens(groupId, isAtMe);
   const searchCtx = await buildSearchContext(userMsg);
@@ -57,26 +61,20 @@ export async function tryDeepSeek(userMsg, userName, history, groupId, isAtMe, m
       temperature: 0.7,
       timeoutMs: 30000,
       usageContext: buildDeepSeekUsageContext(options, task, privateRequest),
+      selfContext: { surface: privateRequest ? "private" : "group", groupId, userId: options.currentUserId },
     };
     const result = options.providerId
       ? await callApiProvider(options.providerId, request)
       : await callTaskApi(task, options.position || (privateRequest ? "primary" : "fallback"), request);
-    if (!result.ok) return null;
-    const packet = buildOutputPacket(result.raw, {
+    if (!result.ok) return chatError();
+    return parseChatOutcome(result.raw, {
       provider: result.provider || "deepseek",
       finishReason: result.finishReason,
       usage: result.usage,
     });
-    log("DeepSeek output packet:", JSON.stringify({
-      ok: packet.ok,
-      finishReason: packet.finishReason,
-      risks: packet.risks,
-      lengths: packet.lengths,
-    }));
-    return packet.ok ? packet.text : null;
   } catch (e) {
     logE('tryDeepSeek error:', e.message);
-    return null;
+    return chatError("request_failed");
   }
 }
 

@@ -9,7 +9,6 @@ import {
   executeChatTask,
   resolveChatVisionContext,
 } from "./model-router.mjs";
-import { buildSafeInterjectionReply } from "./reply-handlers.mjs";
 import { buildReplyContextPacket } from "./context/index.mjs";
 import { getPreferredDisplayName } from "./user-preferences.mjs";
 import { isSuccessfulOutbound, recordConversationTurn } from "./cognition/index.mjs";
@@ -17,6 +16,7 @@ import { selectPersonaCue } from "./persona-style.mjs";
 import { maybeSendStickerAfterReply } from "./features/stickers/index.mjs";
 import { wallAgeMs } from "./runtime-clock.mjs";
 import { traceStage } from "./diagnostics/message-trace.mjs";
+import { MODEL_FAILURE_NOTICE, normalizeChatOutcome } from "./chat-outcome.mjs";
 
 const PROFILE_REFRESH_MS = 6 * 60 * 60 * 1000;
 const PROFILE_REFRESH_MESSAGES = 30;
@@ -54,7 +54,7 @@ export async function aiReply(group_id, userId, userMsg, userName, imageUrls, re
   const mimoOptions = isPassiveInterjection
     ? { allowTools: false, replyMode: "interjection", currentUserId: uid, personaCue }
     : { allowTools: true, replyMode: "chat", currentUserId: uid, personaCue };
-  const reply = await resolveAiReply({
+  const outcome = await resolveAiReply({
     userMsg,
     userName: preferredUserName,
     fullHistory: contextPacket.messages,
@@ -65,8 +65,12 @@ export async function aiReply(group_id, userId, userMsg, userName, imageUrls, re
     mimoOptions,
     uid,
     isPassiveInterjection,
-  });
-  if (!reply) return;
+  }, runtime);
+  if (outcome.kind !== "reply") {
+    await notifyGroupFailure(outcome, isPassiveInterjection, group_id, replyTo);
+    return;
+  }
+  const reply = outcome.text;
 
   const sendResult = await sendMsg(group_id, reply, replyTo);
   if (!isSuccessfulOutbound(sendResult)) {
@@ -103,6 +107,10 @@ export async function aiReply(group_id, userId, userMsg, userName, imageUrls, re
   }
 }
 
+async function notifyGroupFailure(outcome, passive, groupId, replyTo) {
+  if (outcome.kind === "error" && !passive) await sendMsg(groupId, MODEL_FAILURE_NOTICE, replyTo);
+}
+
 export function shouldGenerateProfile(uid, now = Date.now()) {
   const u = users[String(uid)];
   const chatCount = Array.isArray(u?.chats) ? u.chats.length : 0;
@@ -135,35 +143,12 @@ function markProfileGenerated(uid, now) {
   saveUsers();
 }
 
-const LAST_RESORT_REPLIES = [
-  "诶嘿～",
-  "有意思喵",
-  "ww",
-  "确实确实",
-  "好家伙",
-  "原来如此",
-];
-const LAST_RESORT_MIN_LENGTH = 8;
-
-function shouldLastResortInterject(userMsg) {
-  const t = String(userMsg || '').trim();
-  if (!t || t.length < LAST_RESORT_MIN_LENGTH) return false;
-  if (/[?？]$/.test(t) || /^(?:怎么|为什么|咋办|如何|能不能)/.test(t)) return false;
-  // skip pure emoji / single-word echo
-  if (/^[\u{1F600}-\u{1F64F}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{200D}]+$/u.test(t)) return false;
-  return true;
-}
-
-function pickLastResortReply() {
-  return LAST_RESORT_REPLIES[Math.floor(Math.random() * LAST_RESORT_REPLIES.length)];
-}
-
-async function resolveAiReply(ctx) {
+export async function resolveAiReply(ctx, runtime = {}) {
   const hasImages = Boolean(ctx.imageUrls?.length);
   const visionContext = hasImages
-    ? await resolveChatVisionContext(ctx.imageUrls, { userId: ctx.uid })
+    ? await (runtime.resolveVision || resolveChatVisionContext)(ctx.imageUrls, { userId: ctx.uid })
     : undefined;
-  const modelResult = await executeChatTask({
+  const modelResult = await (runtime.executeChatTask || executeChatTask)({
     userMsg: ctx.userMsg,
     userName: ctx.userName,
     history: ctx.fullHistory,
@@ -176,21 +161,10 @@ async function resolveAiReply(ctx) {
       ...(hasImages ? { visionContext } : {}),
     },
   });
-  let reply = modelResult.text;
-  traceStage("output", { status: reply ? "ok" : "failed", position: modelResult.position, reason: reply ? undefined : "model_unavailable" });
-  if (reply) log("aiReply route:", modelResult.position);
-
-  if (!reply && ctx.isPassiveInterjection) {
-    reply = buildSafeInterjectionReply(ctx.userMsg);
-    if (!reply && !hasImages && shouldLastResortInterject(ctx.userMsg)) {
-      reply = pickLastResortReply();
-    }
-    if (reply) log("random interjection safe fallback; route: local");
-    else log("random interjection dropped after model failure");
-    return reply;
-  }
-
-  return reply || "啊，我现在有点卡卡的，等我缓一下再回复你~ 🤔";
+  const outcome = normalizeChatOutcome(modelResult);
+  traceStage("output", { status: outcome.kind === "reply" ? "ok" : outcome.kind === "silence" ? "skipped" : "failed",
+    position: modelResult.position, reason: outcome.kind === "reply" ? undefined : outcome.reason });
+  return { ...outcome, position: modelResult.position };
 }
 
 export { buildModelFallbackHistory };

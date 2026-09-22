@@ -12,9 +12,10 @@ const REASONS = new Set([
   "short", "no_probability", "cooldown", "random", "triggered", "empty_reply",
   "empty_content", "empty_content_with_reasoning", "reasoning_leak", "secret_leak",
   "sanitized_empty", "unsafe_output", "unsafe_reasoning", "model_unavailable", "send_failed", "exception",
+  "intentional_silence", "invalid_interjection", "request_failed", "tools_unavailable",
 ]);
 const ROUTES = new Set(["group_at", "interjection", "private_chat", "private_file", "command", "jm", "resource-transfer", "link-preview", "wordcloud", "preview", "file"]);
-const NUMBERS = ["chars", "messages", "pruned", "truncated", "images", "mentions", "httpStatus", "attempt", "reasoningLength", "promptTokens", "cachedTokens", "completionTokens", "probability"];
+const NUMBERS = ["chars", "messages", "pruned", "truncated", "images", "mentions", "httpStatus", "attempt", "reasoningLength", "promptTokens", "cachedTokens", "completionTokens", "probability", "selfFactsVersion", "capabilityCount"];
 
 // Records accept metadata only. No caller can attach message bodies or raw errors.
 function safeDetails(details) {
@@ -22,6 +23,7 @@ function safeDetails(details) {
   if (STATES.has(details.status)) safe.status = details.status;
   if (REASONS.has(details.reason)) safe.reason = details.reason;
   if (ROUTES.has(details.route)) safe.route = details.route;
+  if (/^[a-z0-9][a-z0-9._+-]{0,95}$/i.test(details.model || "") && !/^(sk-|bearer|token|secret)/i.test(details.model)) safe.model = details.model;
   for (const key of ["provider", "task", "position"]) {
     if (/^[a-z][a-z0-9_-]{0,47}$/i.test(details[key] || "") && !/^(sk-|bearer|token|secret)/i.test(details[key])) safe[key] = details[key];
   }
@@ -121,7 +123,10 @@ export function createTraceRecorder(options = {}) {
 function finalStatus(record, failed) {
   if (record.sends && (failed || record.sendFailures)) return "partial";
   if (failed || record.sendFailures) return "failed";
+  const output = record.stages.findLast(item => item.stage === "output");
+  if (output?.status === "failed") return "failed";
   if (record.sends) return "sent";
+  if (output?.reason === "intentional_silence") return "silent";
   if (record.stages.some(item => item.status === "skipped")) return "ignored";
   return record.route ? "no_reply" : "processed";
 }

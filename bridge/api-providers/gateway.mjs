@@ -6,6 +6,7 @@ import { callOpenAiResponses } from "./adapters/openai-responses.mjs";
 import { applyReasoningPolicy } from "./reasoning-policy.mjs";
 import { normalizeProviderUsage, recordApiUsage } from "./usage-metrics.mjs";
 import { traceStage } from "../diagnostics/message-trace.mjs";
+import { withBotSelfContext } from "../capabilities/self-context.mjs";
 import {
   getProvider,
   getTaskRoute,
@@ -41,7 +42,11 @@ async function invokeApiProvider(providerId, request = {}, options = {}) {
     if (!adapter) return failed(provider.id, "没有可用的协议适配器");
     validateProviderEndpoint(provider);
     const key = options.key !== undefined ? String(options.key || "").trim() : readProviderSecret(provider, options);
-    const result = await adapter(provider, key, request);
+    const prepared = withBotSelfContext(request, provider, options);
+    if (prepared.snapshot) traceStage("model", { provider: provider.id, task: options.usageTask,
+      position: options.usagePosition, selfFactsVersion: prepared.snapshot.version,
+      capabilityCount: prepared.snapshot.capabilityCount, model: prepared.snapshot.model });
+    const result = await adapter(provider, key, prepared.request);
     if (!result.ok) {
       logE("api-provider", provider.id, "failed:", result.error);
       return { ...result, provider: provider.id, raw: null };

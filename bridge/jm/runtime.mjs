@@ -15,6 +15,11 @@ export let jmHealthPromise = null;
 
 export const JM_HEALTH_CACHE_MS = 5 * 60 * 1000;
 
+export function peekJmRuntimeHealth() {
+  return jmHealthCache ? { ...jmHealthCache, stale: jmHealthExpiresAt <= monotonicNow() }
+    : { health: "unknown", reason: "checking", checkedAt: null };
+}
+
 export function runJmDownload(jmId, outputDir, options = {}) {
   const script = path.resolve("scripts", "jm_download_once.py");
   return runPythonJson({

@@ -47,7 +47,7 @@ describe("model router boundaries", () => {
       },
     });
 
-    assert.deepEqual(result, { text: "fallback reply", position: "fallback" });
+    assert.deepEqual(result, { kind: "reply", text: "fallback reply", reason: "reply", position: "fallback" });
     assert.match(fallbackRequest.history.at(-1).content, /一只猫/);
     assert.equal(fallbackRequest.options.currentUserId, "42");
   });
@@ -63,18 +63,36 @@ describe("model router boundaries", () => {
         return "fallback reply";
       },
     });
-    assert.deepEqual(result, { text: "fallback reply", position: "fallback" });
+    assert.deepEqual(result, { kind: "reply", text: "fallback reply", reason: "reply", position: "fallback" });
     assert.equal(fallbackCalled, true);
   });
 
-  it("keeps passive interjection local when both model slots are unavailable", async () => {
+  it("reports passive failure without inventing a local reply when both slots are unavailable", async () => {
     const result = await executeChatTask({
       options: { replyMode: "interjection" },
     }, {
       primaryChat: async () => null,
       interjectionFallback: async () => null,
     });
-    assert.deepEqual(result, { text: null, position: "local" });
+    assert.deepEqual(result, { kind: "error", text: null, reason: "model_unavailable", position: "unavailable" });
+  });
+
+  it("does not call fallback after intentional silence", async () => {
+    const result = await executeChatTask({ options: { replyMode: "interjection" } }, {
+      primaryChat: async () => ({ kind: "silence" }),
+      interjectionFallback: async () => assert.fail("silence must not trigger a second opinion"),
+    });
+    assert.deepEqual(result, { kind: "silence", text: null, reason: "intentional_silence", position: "primary" });
+  });
+
+  it("handles a thrown primary failure and accepts fallback silence", async () => {
+    const result = await executeChatTask({ options: { replyMode: "interjection" } }, {
+      primaryChat: async () => { throw new Error("private request details"); },
+      interjectionFallback: async () => ({ kind: "silence" }),
+    });
+    assert.equal(result.kind, "silence");
+    assert.equal(result.position, "fallback");
+    assert.doesNotMatch(JSON.stringify(result), /private request/);
   });
 
   it("rejects unknown raw providers before touching model implementations", async () => {
@@ -98,7 +116,7 @@ describe("model router boundaries", () => {
     assert.deepEqual(calls.map(item => [item.task, item.position]), [["private_chat", "primary"], ["private_chat", "fallback"]]);
     assert.match(calls[0].history.at(-1).content, /synthetic image description/);
     assert.deepEqual(calls[0].history, calls[1].history);
-    assert.deepEqual(result, { text: "answer", position: "fallback" });
+    assert.deepEqual(result, { kind: "reply", text: "answer", reason: "reply", position: "fallback" });
   });
 
   it("keeps file_chat distinct and stops after a successful private primary", async () => {
@@ -108,7 +126,7 @@ describe("model router boundaries", () => {
     });
     assert.equal(calls.length, 1);
     assert.equal(calls[0].task, "file_chat");
-    assert.deepEqual(result, { text: "file answer", position: "primary" });
+    assert.deepEqual(result, { kind: "reply", text: "file answer", reason: "reply", position: "primary" });
   });
 
   it("keeps private replies absent when both slots fail and preserves failed vision", async () => {
@@ -119,7 +137,7 @@ describe("model router boundaries", () => {
         return null;
       },
     });
-    assert.deepEqual(result, { text: null, position: "unavailable" });
+    assert.deepEqual(result, { kind: "error", text: null, reason: "model_unavailable", position: "unavailable" });
   });
 
   it("keeps reply modules behind model-router", () => {

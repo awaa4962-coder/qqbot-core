@@ -4,21 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.14-meme-retirement";
-export const VERSION_NAME = "meme-retirement";
+export const VERSION = "1.4.15-self-context";
+export const VERSION_NAME = "self-context";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "自动梗库已停用：不再学习、联网更新或向聊天提示词注入旧释义。",
-  "旧命令只返回退役说明，旧管理操作与后台更新任务不能重新启用。",
-  "旧词条在维护页只读归档，不生成新词条、不覆盖原文件；识图和表情继续保留。",
+  "聊天请求带入本会话权限内的能力与实际请求模型标识，不公开配置、密钥或其他群资料。",
+  "主动不插话与模型失败分开：主动沉默不触发备用模型，两边失败不再随机补话。",
+  "直接提问失败会收到简短提示，不写入成功对话；诊断页可筛选主动不回复并查看运行事实版本。",
   "JM 群聊/私聊下载、大写 FS 与延迟清理保留；模型主备、思考档位、白名单和关系评分不变，Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Retires automatic meme learning, web updates and dictionary hints in chat prompts.",
-  "Legacy commands explain retirement; old management actions and background jobs cannot reactivate updates.",
-  "Preserves old terms in a read-only maintenance archive without seeding or rewriting files. Vision and stickers remain available.",
+  "Chat receives scoped capability facts and the requested model identifier, without credentials or other groups' data.",
+  "Intentional silence does not trigger fallback. Failed model calls no longer produce random filler replies.",
+  "Direct failures show a short notice without recording a successful turn. Diagnostics distinguish silence and show fact versions.",
   "Keeps group/private JM downloads, FS and delayed cleanup. Model routes, reasoning modes, allowlists and relationship scoring stay unchanged. Windows stays frozen.",
 ]);
 

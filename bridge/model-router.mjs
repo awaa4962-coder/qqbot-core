@@ -1,9 +1,11 @@
 // bridge/model-router.mjs - stable task-level model dispatch facade.
-import { parseMiMoResponse, resolveVisionContext, tryMiMo } from "./model-mimo.mjs";
-import { tryDeepSeek } from "./model-ds.mjs";
+import { parseMiMoResponse, resolveVisionContext, tryMiMoResult } from "./model-mimo.mjs";
+import { tryDeepSeekResult } from "./model-ds.mjs";
 import { callApiProvider, callTaskApi } from "./api-providers/gateway.mjs";
 import { buildOutputPacket } from "./output-pipeline.mjs";
 import { appendImageContext } from "./system-prompts/image-context.mjs";
+import { callChatSlot, chatError } from "./chat-outcome.mjs";
+import { traceStage } from "./diagnostics/message-trace.mjs";
 
 export const MODEL_PROVIDERS = Object.freeze({
   PRIMARY: "mimo",
@@ -25,7 +27,7 @@ export async function callPrimaryChat(request = {}) {
   const task = request.options?.replyMode === "interjection"
     ? MODEL_TASKS.INTERJECTION
     : MODEL_TASKS.GROUP_CHAT;
-  return await tryMiMo(
+  return await tryMiMoResult(
     request.userMsg || "",
     request.userName || "",
     request.history || [],
@@ -41,7 +43,7 @@ export async function callFallbackChat(request = {}) {
   const privateRequest = request.groupId === null || request.groupId === undefined;
   const task = request.task ||
     (privateRequest ? MODEL_TASKS.PRIVATE_CHAT : MODEL_TASKS.GROUP_CHAT);
-  return await tryDeepSeek(
+  return await tryDeepSeekResult(
     request.userMsg || "",
     request.userName || "",
     request.history || [],
@@ -74,14 +76,14 @@ export async function executePrivateChatTask(request = {}, runtime = {}) {
   };
   const callSlot = runtime.callSlot || callFallbackChat;
   for (const position of ["primary", "fallback"]) {
-    const text = await callSlot({ ...prepared, position });
-    if (text) return { text, position };
+    const result = await callChatSlot(callSlot, { ...prepared, position });
+    if (result.kind !== "error") return finishChatResult(result, position);
   }
-  return { text: null, position: "unavailable" };
+  return finishChatResult(chatError(), "unavailable");
 }
 
 export async function callInterjectionFallback(request = {}) {
-  return await tryMiMo(
+  return await tryMiMoResult(
     request.userMsg || "",
     request.userName || "",
     request.history || [],
@@ -99,23 +101,23 @@ export async function callInterjectionFallback(request = {}) {
 
 export async function executeChatTask(request = {}, runtime = {}) {
   const primaryChat = runtime.primaryChat || callPrimaryChat;
-  const primaryText = await primaryChat(request);
-  if (primaryText) return { text: primaryText, position: "primary" };
+  const primary = await callChatSlot(primaryChat, request);
+  if (primary.kind !== "error") return finishChatResult(primary, "primary");
   if (request.options?.replyMode === "interjection") {
     const fallbackChat = runtime.interjectionFallback || runtime.fallbackChat || callInterjectionFallback;
-    const fallbackText = await fallbackChat(request);
-    return {
-      text: fallbackText || null,
-      position: fallbackText ? "fallback" : "local",
-    };
+    const fallback = await callChatSlot(fallbackChat, request);
+    return finishChatResult(fallback, fallback.kind === "error" ? "unavailable" : "fallback");
   }
 
   const fallbackChat = runtime.fallbackChat || callFallbackChat;
-  const fallbackText = await fallbackChat(buildFallbackChatRequest(request));
-  return {
-    text: fallbackText || null,
-    position: fallbackText ? "fallback" : "unavailable",
-  };
+  const fallback = await callChatSlot(fallbackChat, buildFallbackChatRequest(request));
+  return finishChatResult(fallback, fallback.kind === "error" ? "unavailable" : "fallback");
+}
+
+function finishChatResult(result, position) {
+  traceStage("output", { status: result.kind === "reply" ? "ok" : result.kind === "silence" ? "skipped" : "failed",
+    reason: result.kind === "reply" ? undefined : result.reason, position });
+  return { ...result, position };
 }
 
 function buildFallbackChatRequest(request) {

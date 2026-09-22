@@ -81,7 +81,7 @@ export async function bingSearch(query) {
   } catch (e) { logE('bingSearch error:', e.message); return '搜索暂时不可用: ' + e.message; }
 }
 
-export async function buildSearchFallback(toolResults, toolResults2, userMsg, userName) {
+export async function buildSearchFallback(toolResults, toolResults2, userMsg, userName, selfContext) {
   const allResults = (toolResults || []).concat(toolResults2 || []);
   const rawText = redactSensitiveText(allResults.map(t => typeof t.content === 'string' ? t.content : '').filter(c => c && c !== '未找到相关结果' && c !== '搜索功能未配置' && !c.startsWith('搜索暂时不可用')).join('\n\n'));
   if (!rawText.trim()) return '唔…好像没找到什么有用的结果呢，换个关键词试试叭～';
@@ -94,6 +94,7 @@ export async function buildSearchFallback(toolResults, toolResults2, userMsg, us
       maxTokens: 300,
       temperature: 0.7,
       timeoutMs: 15000,
+      selfContext,
     });
     const packet = result.ok ? buildOutputPacket(result.raw, { provider: result.provider }) : null;
     const summary = packet?.ok ? packet.text : "";

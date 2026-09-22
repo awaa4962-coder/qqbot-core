@@ -11,6 +11,7 @@ import { isSuccessfulOutbound, recordConversationTurn } from "./cognition/index.
 import { maybeSendStickerAfterReply } from "./features/stickers/index.mjs";
 import { traceStage } from "./diagnostics/message-trace.mjs";
 import { canUsePrivateChat } from "./commands/permissions.mjs";
+import { MODEL_FAILURE_NOTICE } from "./chat-outcome.mjs";
 
 export async function handlePrivateMessage(ctx) {
   if (await handlePrivateJmTransferCommand(ctx)) {
@@ -41,7 +42,7 @@ export async function privateReply(userId, text) {
     return;
   }
   const context = buildPrivateReplyContext({ user_id: uid, nickname: "朋友" }, text);
-  const { text: reply } = await executePrivateChatTask({
+  const outcome = await executePrivateChatTask({
     userMsg: text,
     userName: context.userName,
     history: context.history,
@@ -50,6 +51,7 @@ export async function privateReply(userId, text) {
     mood: "",
     options: { currentUserId: uid },
   });
+  const reply = await privateReplyText(uid, outcome);
   if (reply) {
     const result = await sendPrivateMsg(uid, reply);
     if (isSuccessfulOutbound(result)) {
@@ -72,7 +74,7 @@ export async function tryDeepSeekFriend(userId, userMsg) {
     mood: "",
     options: { currentUserId: uid },
   });
-  return reply || "抱歉，我现在有点不在状态...";
+  return reply || MODEL_FAILURE_NOTICE;
 }
 
 async function handlePrivateFileMessage(ctx) {
@@ -85,7 +87,7 @@ async function handlePrivateFileMessage(ctx) {
   }
   const fullMsg = ctx.text + " " + fileDesc + (fileContent ? "\n[文件内容]:\n" + fileContent : "");
   const { history, userName } = buildPrivateReplyContext(ctx, fullMsg);
-  const { text: reply } = await executePrivateChatTask({
+  const outcome = await executePrivateChatTask({
     task: MODEL_TASKS.FILE_CHAT,
     imageUrls: ctx.images,
     userMsg: fullMsg,
@@ -96,6 +98,7 @@ async function handlePrivateFileMessage(ctx) {
     mood: "",
     options: { currentUserId: ctx.user_id },
   });
+  const reply = await privateReplyText(ctx.user_id, outcome);
   if (reply) {
     const result = await sendPrivateMsg(ctx.user_id, reply);
     if (isSuccessfulOutbound(result)) {
@@ -109,7 +112,7 @@ async function handlePrivateChatMessage(ctx) {
   traceStage("route", { status: "ok", route: "private_chat" });
   const fullMsg = ctx.text + (ctx.images.length ? " [图片" + ctx.images.length + "张]" : "");
   const { history, userName } = buildPrivateReplyContext(ctx, fullMsg);
-  const { text: reply } = await executePrivateChatTask({
+  const outcome = await executePrivateChatTask({
     imageUrls: ctx.images,
     userMsg: fullMsg,
     userName,
@@ -119,6 +122,7 @@ async function handlePrivateChatMessage(ctx) {
     mood: "",
     options: { currentUserId: ctx.user_id },
   });
+  const reply = await privateReplyText(ctx.user_id, outcome);
   if (reply) {
     const result = await sendPrivateMsg(ctx.user_id, reply);
     if (isSuccessfulOutbound(result)) {
@@ -127,6 +131,11 @@ async function handlePrivateChatMessage(ctx) {
       await maybeSendPrivateSticker(ctx.user_id, fullMsg, reply, history);
     }
   }
+}
+
+async function privateReplyText(userId, outcome) {
+  if (outcome.kind === "error") await sendPrivateMsg(userId, MODEL_FAILURE_NOTICE);
+  return outcome.kind === "reply" ? outcome.text : null;
 }
 
 function buildPrivateReplyContext(ctx, userMsg) {

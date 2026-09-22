@@ -108,3 +108,39 @@ test("trace filters and returned snapshots cannot mutate stored records", () => 
   assert.ok(recorder.list().items[0].stages.length > 0);
   assert.equal(recorder.list({ status: "sent" }).total, 0);
 });
+
+test("intentional silence is distinct from admission skips and model failures", async () => {
+  const recorder = createTraceRecorder();
+  await withMessageTrace(ctx, () => {
+    traceStage("output", { status: "skipped", reason: "intentional_silence" });
+  }, recorder);
+  assert.equal(recorder.list({ status: "silent" }).total, 1);
+  assert.equal(recorder.list().items[0].reason, "intentional_silence");
+  await withMessageTrace({ ...ctx, message_id: 34 }, () => {
+    traceStage("output", { status: "failed", reason: "model_unavailable" });
+    traceStage("send", { status: "ok" });
+  }, recorder);
+  assert.equal(recorder.list().items[0].status, "failed", "a failure notice is not a successful model answer");
+  await withMessageTrace({ ...ctx, message_id: 35 }, () => {
+    traceStage("output", { status: "failed", reason: "empty_content" });
+    traceStage("output", { status: "ok", position: "fallback" });
+    traceStage("send", { status: "ok" });
+  }, recorder);
+  assert.equal(recorder.list().items[0].status, "sent");
+});
+
+test("self-fact traces retain counts and safe model ids, not snapshots or endpoints", async () => {
+  const recorder = createTraceRecorder();
+  await withMessageTrace(ctx, () => {
+    traceStage("model", { selfFactsVersion: 1, capabilityCount: 4, model: "test-flash", snapshot: "private snapshot" });
+    traceStage("model", { model: "https://example.com/private" });
+    traceStage("model", { model: "sk-" + "a".repeat(40) });
+  }, recorder);
+  const stages = recorder.list().items[0].stages.filter(item => item.stage === "model");
+  assert.equal(stages[0].model, "test-flash");
+  assert.equal(stages[0].selfFactsVersion, 1);
+  assert.equal(stages[0].capabilityCount, 4);
+  assert.equal(stages[1].model, undefined);
+  assert.equal(stages[2].model, undefined);
+  assert.doesNotMatch(JSON.stringify(stages), /private/);
+});

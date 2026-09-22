@@ -15,7 +15,7 @@ import { callManagedAction, taskPhaseLabel } from "./ui/tasks.js";
   let loaded = false;
   const busy = new Set();
   const labels = {
-    processing: "处理中", sent: "已发送", partial: "部分成功", failed: "失败", ignored: "未触发", no_reply: "未产生回复", processed: "处理结束",
+    processing: "处理中", sent: "已发送", partial: "部分成功", failed: "失败", silent: "主动不回复", ignored: "未触发", no_reply: "未产生回复", processed: "处理结束",
     received: "接收", admission: "准入", route: "路由", context: "上下文", model: "模型", output: "正文检查", send: "发送", complete: "结束",
     started: "开始", ok: "成功", skipped: "跳过", primary: "主模型", fallback: "备用模型", local: "本地恢复", unavailable: "模型不可用", model_unavailable: "模型未产生可用正文",
     group_at: "群聊 @", interjection: "自动插话", private_chat: "私聊", private_file: "私聊文件", command: "命令", preview: "链接预览", file: "文件", jm: "JM", "resource-transfer": "资源转发", "link-preview": "链接预览", wordcloud: "词云", "conversation-summary": "成员聊天总结",
@@ -23,6 +23,7 @@ import { callManagedAction, taskPhaseLabel } from "./ui/tasks.js";
     ingress_rate_limited: "入口限流", scope_rate_limited: "当前会话限流", priority_rate_limited: "优先通道限流",
     accepted: "已接纳", preview_sent: "链接预览抑制插话", mentioned: "已进入 @ 回复", short: "消息太短", empty: "内容为空", no_probability: "该场景不自动插话", cooldown: "插话冷却中", random: "本次未命中插话概率", triggered: "触发插话",
     empty_content: "模型正文为空", empty_content_with_reasoning: "只有推理，没有正文", unsafe_reasoning: "正文含推理内容", secret_leak: "正文安全检查未通过", send_failed: "发送重试后失败", exception: "处理异常",
+    intentional_silence: "模型决定不插话", invalid_interjection: "插话输出格式无效", request_failed: "模型请求失败", tools_unavailable: "本轮工具未开放",
   };
   const label = (value) => labels[value] || value || "待判断";
 
@@ -122,7 +123,8 @@ import { callManagedAction, taskPhaseLabel } from "./ui/tasks.js";
   }
 
   function stepDetails(step) {
-    return [step.reason && label(step.reason), step.provider, step.position && label(step.position), step.route && label(step.route),
+    return [step.reason && label(step.reason), step.provider, step.position && label(step.position), step.route && label(step.route), step.model,
+      step.selfFactsVersion && `运行事实 v${step.selfFactsVersion} · ${step.capabilityCount || 0} 项能力`,
       step.chars !== undefined && `${step.chars} 字符`, step.messages !== undefined && `${step.messages} 层上下文`,
       step.pruned > 0 && `裁剪 ${step.pruned} 层`, step.httpStatus > 0 && `HTTP ${step.httpStatus}`,
       step.attempt && `第 ${step.attempt} 次`, step.probability !== undefined && `概率 ${Math.round(step.probability * 100)}%`,

@@ -1,12 +1,12 @@
-// bridge/model-mimo.mjs - MiMo V2.5 主力聊天 + 工具调用
+// Group chat and bounded tool rounds; task routes select the actual provider.
 import { LONG_GROUPS } from "./config.mjs";
 import { log, logE } from "./logger.mjs";
 import { callApiProvider, callTaskApi } from "./api-providers/gateway.mjs";
 import { webSearch, buildSearchFallback, MIMO_TOOLS } from "./search.mjs";
 import { tryMiMoVision } from "./vision.mjs";
-import { isLeakedReasoning, normalizeInterjectionReply } from "./thinking.mjs";
+import { isLeakedReasoning } from "./thinking.mjs";
 import { buildCurrentInput } from "./context/messages.mjs";
-import { buildOutputPacket } from "./output-pipeline.mjs";
+import { chatError, normalizeChatOutcome, parseChatOutcome } from "./chat-outcome.mjs";
 import { buildChatSystemPrompt } from "./system-prompts/chat.mjs";
 import { buildInterjectionSystemPrompt } from "./system-prompts/interjection.mjs";
 import { buildImageContextMessage } from "./system-prompts/image-context.mjs";
@@ -54,6 +54,7 @@ export async function callMiMoApi(systemPrompt, messages, maxTokens, options = {
     tools: options.allowTools === false ? [] : MIMO_TOOLS,
     toolChoice: "auto",
     usageContext: options.usageContext,
+    selfContext: options.selfContext,
   };
   const result = options.providerId
     ? await callApiProvider(options.providerId, request)
@@ -63,18 +64,7 @@ export async function callMiMoApi(systemPrompt, messages, maxTokens, options = {
 
 /** 解析 MiMo 响应为纯文本(不含 tool_call 处理) */
 export function parseMiMoResponse(rawResponse, options = {}) {
-  const packet = buildOutputPacket(rawResponse, {
-    provider: options.provider || rawResponse?.provider || "mimo",
-  });
-  log("MiMo output packet:", JSON.stringify({
-    ok: packet.ok,
-    finishReason: packet.finishReason,
-    risks: packet.risks,
-    lengths: packet.lengths,
-  }));
-  if (!packet.ok) return null;
-  if (options.replyMode === 'interjection') return normalizeInterjectionReply(packet.text);
-  return packet.text || null;
+  return parseChatOutcome(rawResponse, options).text;
 }
 
 function resolveMaxTokens(groupId, isAtMe) {
@@ -107,21 +97,25 @@ async function buildMiMoMessages(history, imageUrls, userMsg, userName, options)
 
 async function parseInitialMiMoResult(system, msgs, response, maxTok, userMsg, userName, options) {
   const choice = response?.choices?.[0];
-  if (!choice) return null;
+  if (!choice) return chatError();
 
   const msg = choice.message;
   if (msg?.tool_calls?.length) {
     if (options.allowTools === false) {
       log('MiMo tool_calls ignored because tools are disabled');
-      return null;
+      return chatError("tools_unavailable");
     }
-    return await handleToolCalls(system, msgs, msg, maxTok, userMsg, userName, options);
+    return normalizeChatOutcome(await handleToolCalls(system, msgs, msg, maxTok, userMsg, userName, options));
   }
 
-  return parseMiMoResponse(response, options);
+  return parseChatOutcome(response, options);
 }
 
 export async function tryMiMo(userMsg, userName, history, imageUrls, groupId, isAtMe, mood, options = {}) {
+  return (await tryMiMoResult(userMsg, userName, history, imageUrls, groupId, isAtMe, mood, options)).text;
+}
+
+export async function tryMiMoResult(userMsg, userName, history, imageUrls, groupId, isAtMe, mood, options = {}) {
   const shouldAnswer = isAtMe === undefined ? true : isAtMe;
   const maxTok = resolveMaxTokens(groupId, shouldAnswer);
   const mimoOptions = {
@@ -137,6 +131,7 @@ export async function tryMiMo(userMsg, userName, history, imageUrls, groupId, is
     position: options.position || "primary",
     reasoningSignals: { hasImages: Boolean(imageUrls?.length) },
     usageContext: buildMiMoUsageContext(options),
+    selfContext: { surface: "group", groupId, userId: options.currentUserId },
     ...(Object.prototype.hasOwnProperty.call(options, 'visionContext')
       ? { visionContext: options.visionContext }
       : {}),
@@ -153,11 +148,12 @@ export async function tryMiMo(userMsg, userName, history, imageUrls, groupId, is
       position: mimoOptions.position,
       reasoningSignals: mimoOptions.reasoningSignals,
       usageContext: mimoOptions.usageContext,
+      selfContext: mimoOptions.selfContext,
     });
     return await parseInitialMiMoResult(system, msgs, response, maxTok, userMsg, userName, mimoOptions);
   } catch (e) {
     logE('tryMiMo error:', e.message);
-    return null;
+    return chatError("request_failed");
   }
 }
 
@@ -211,9 +207,9 @@ function usableReply(response, roundLabel) {
   return null;
 }
 
-async function fallbackFromSearch(toolResults, toolResults2, userMsg, userName, roundLabel) {
+async function fallbackFromSearch(toolResults, toolResults2, userMsg, userName, roundLabel, modelOptions) {
   log('MiMo ' + roundLabel + ' think-only, using search data as fallback');
-  return await buildSearchFallback(toolResults, toolResults2, userMsg, userName);
+  return await buildSearchFallback(toolResults, toolResults2, userMsg, userName, modelOptions.selfContext);
 }
 
 async function handleSecondRoundTools(
@@ -240,7 +236,7 @@ async function handleSecondRoundTools(
     maxTok,
     modelOptions
   );
-  return usableReply(d3, 'r3') || await fallbackFromSearch(toolResults, toolResults2, userMsg, userName, 'r3');
+  return usableReply(d3, 'r3') || await fallbackFromSearch(toolResults, toolResults2, userMsg, userName, 'r3', modelOptions);
 }
 
 async function handleToolCalls(system, msgs, msg, maxTok, userMsg, userName, modelOptions = {}) {
@@ -265,5 +261,5 @@ async function handleToolCalls(system, msgs, msg, maxTok, userMsg, userName, mod
   );
   if (r3Reply) return r3Reply;
 
-  return usableReply(d2, 'r2') || await fallbackFromSearch(toolResults, [], userMsg, userName, 'r2');
+  return usableReply(d2, 'r2') || await fallbackFromSearch(toolResults, [], userMsg, userName, 'r2', modelOptions);
 }

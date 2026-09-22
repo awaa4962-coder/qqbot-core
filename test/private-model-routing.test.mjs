@@ -15,6 +15,7 @@ const { handlePrivateMessage } = await import("../bridge/reply-private.mjs");
 const { saveApiProvider, saveApiRoutes } = await import("../bridge/api-providers/store.mjs");
 const { executePrivateChatTask } = await import("../bridge/model-router.mjs");
 const { buildRuntimeStatus } = await import("../bridge/admin-api/runtime-status.mjs");
+const { MODEL_FAILURE_NOTICE } = await import("../bridge/chat-outcome.mjs");
 const originalFetch = globalThis.fetch;
 const originalFriends = CFG.friendWhitelist.slice();
 
@@ -67,26 +68,45 @@ describe("private entrypoint model routing", () => {
     });
     assert.deepEqual(bodies.map(item => item.model), ["private-primary", "private-backup"]);
     for (const body of bodies) assert.match(JSON.stringify(body.messages), /synthetic image description/);
+    for (const body of bodies) {
+      const facts = body.messages.filter(message => message.content?.startsWith("[本轮机器人运行事实]"));
+      assert.equal(facts.length, 1);
+      assert.equal(JSON.parse(facts[0].content.split("\n").at(-1)).requestedModel, body.model);
+      assert.equal(Object.hasOwn(body, "selfContext"), false);
+    }
     assert.equal(visionCalls, 1);
-    assert.deepEqual(result, { text: "synthetic answer", position: "fallback" });
+    assert.deepEqual(result, { kind: "reply", text: "synthetic answer", reason: "reply", position: "fallback" });
   });
 
-  it("does not send a private message when both configured slots produce no final content", async () => {
+  it("only sends a fixed failure notice when both slots produce private reasoning without final content", async () => {
     CFG.friendWhitelist.splice(0, CFG.friendWhitelist.length, 42);
     const models = [];
+    const sent = [];
     globalThis.fetch = async (url, options) => {
-      assert.ok(String(url).startsWith("https://example.com/"), "no QQ send is allowed");
+      if (String(url).endsWith("/send_private_msg")) {
+        sent.push(JSON.stringify(JSON.parse(options.body).message));
+        return response({ status: "ok", retcode: 0, data: { message_id: 2 } });
+      }
+      assert.ok(String(url).startsWith("https://example.com/"));
       models.push(JSON.parse(options.body).model);
       return response({ choices: [{ message: { reasoning_content: "private only" } }] });
     };
     await handlePrivateMessage({ user_id: 42, nickname: "synthetic-user", text: "ordinary greeting", images: [], files: [], message_id: 2 });
     assert.deepEqual(models, ["private-primary", "private-backup"]);
+    assert.equal(sent.length, 1);
+    assert.ok(sent[0].includes(MODEL_FAILURE_NOTICE));
+    assert.doesNotMatch(sent[0], /private only/);
   });
 
   it("passes private image failures into both model prompts rather than only an image count", async () => {
     CFG.friendWhitelist.splice(0, CFG.friendWhitelist.length, 42);
     const bodies = [];
+    const sent = [];
     globalThis.fetch = async (url, options) => {
+      if (String(url).endsWith("/send_private_msg")) {
+        sent.push(JSON.stringify(JSON.parse(options.body).message));
+        return response({ status: "ok", retcode: 0, data: { message_id: 3 } });
+      }
       assert.ok(String(url).startsWith("https://example.com/"), "invalid image must not be fetched or sent");
       bodies.push(JSON.parse(options.body));
       return response({ choices: [{ message: { reasoning_content: "private only" } }] });
@@ -94,6 +114,9 @@ describe("private entrypoint model routing", () => {
     await handlePrivateMessage({ user_id: 42, nickname: "synthetic-user", text: "describe image", images: ["not-a-valid-url"], files: [], message_id: 3 });
     assert.deepEqual(bodies.map(body => body.model), ["private-primary", "private-backup"]);
     for (const body of bodies) assert.match(JSON.stringify(body.messages), /视觉识别失败/);
+    assert.equal(sent.length, 1);
+    assert.ok(sent[0].includes(MODEL_FAILURE_NOTICE));
+    assert.doesNotMatch(sent[0], /private only/);
   });
 
   it("keeps runtime status available with an explicit degraded API config error", () => {

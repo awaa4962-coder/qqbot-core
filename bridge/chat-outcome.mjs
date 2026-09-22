@@ -1,0 +1,42 @@
+import { buildOutputPacket } from "./output-pipeline.mjs";
+import { normalizeInterjectionReply } from "./thinking.mjs";
+
+export const MODEL_FAILURE_NOTICE = "这次模型没有生成可用回复，请稍后再试。";
+const ERROR_REASONS = new Set(["model_unavailable", "request_failed", "tools_unavailable", "invalid_interjection",
+  "empty_content", "empty_content_with_reasoning", "unsafe_reasoning", "secret_leak"]);
+
+export function chatError(reason = "model_unavailable") {
+  return { kind: "error", text: null, reason: ERROR_REASONS.has(reason) ? reason : "model_unavailable" };
+}
+
+export function parseChatOutcome(raw, options = {}) {
+  const packet = buildOutputPacket(raw, options);
+  if (!packet.ok) return chatError(packet.reason);
+  if (options.replyMode !== "interjection") return { kind: "reply", text: packet.text, reason: "reply" };
+  if (packet.wasTruncated) return chatError("invalid_interjection");
+  const value = packet.text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+  if (value.startsWith("{")) {
+    let parsed;
+    try { parsed = JSON.parse(value); } catch { return chatError("invalid_interjection"); }
+    if (!parsed || typeof parsed.reply !== "string") return chatError("invalid_interjection");
+    if (!parsed.reply.trim()) return { kind: "silence", text: null, reason: "intentional_silence" };
+  }
+  const text = normalizeInterjectionReply(packet.text);
+  return text ? { kind: "reply", text, reason: "reply" } : chatError("invalid_interjection");
+}
+
+// Legacy injected providers may still return text/null; the live router uses outcomes.
+export function normalizeChatOutcome(value) {
+  if (value?.kind === "silence") return { kind: "silence", text: null, reason: "intentional_silence" };
+  if (value?.kind === "error") return chatError(value.reason || "model_unavailable");
+  // Typed replies have already crossed the output boundary; legacy strings have not.
+  if (value?.kind === "reply" && typeof value.text === "string" && value.text.trim()) {
+    return { kind: "reply", text: value.text, reason: "reply" };
+  }
+  return typeof value === "string" && value.trim() ? parseChatOutcome({ content: value }) : chatError();
+}
+
+export async function callChatSlot(call, request) {
+  try { return normalizeChatOutcome(await call(request)); }
+  catch { return chatError("request_failed"); }
+}
