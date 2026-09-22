@@ -10,7 +10,7 @@ import {
   stripBotMention,
 } from "../bridge/admin-commands.mjs";
 import { CFG } from "../bridge/config.mjs";
-import { VERSION } from "../bridge/version.mjs";
+import { VERSION, VERSION_NOTES_EN } from "../bridge/version.mjs";
 
 describe("admin command parsing", () => {
   it("strips CQ at and visible bot mention", () => {
@@ -279,9 +279,7 @@ describe("admin command parsing", () => {
     assert.match(reply, new RegExp("Current version: v" + VERSION));
     assert.match(reply, /Still reserved:/);
     assert.match(reply, /export-relationships/);
-    assert.match(reply, /Authenticates ingress/);
-    assert.match(reply, /unknown delivery is never blindly replayed/);
-    assert.match(reply, /authenticated previews/);
+    for (const note of VERSION_NOTES_EN) assert.ok(reply.includes(note));
     assert.match(reply, /Windows stays frozen/);
     assert.doesNotMatch(reply, /key|token|secret/i);
   });

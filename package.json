@@ -1,6 +1,6 @@
 {
   "name": "qqfriend",
-  "version": "1.4.11-audit-fixes",
+  "version": "1.4.12-model-refresh",
   "description": "夜星 QQ 机器人桥接器",
   "type": "module",
   "main": "napcat_bridge.mjs",

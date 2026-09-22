@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, it } from "node:test";
 
 import { callApiProvider, callTaskApi } from "../bridge/api-providers/gateway.mjs";
-import { listApiPresets } from "../bridge/api-providers/presets.mjs";
+import { findApiPreset, listApiPresets } from "../bridge/api-providers/presets.mjs";
 import {
   applyApiProviderAction,
   buildApiProviderManagerSnapshot,
@@ -29,6 +29,33 @@ afterEach(() => {
 });
 
 describe("API provider presets and storage", () => {
+  it("offers separate MiMo 2.6 tiers and the canonical multimodal DeepSeek Flash preset", () => {
+    for (const [id, model] of [["mimo-official", "mimo-v2.6-flash"], ["mimo-pro-official", "mimo-v2.6-pro"], ["deepseek-official", "deepseek-flash"]]) {
+      const preset = findApiPreset(id);
+      assert.equal(preset.model, model);
+      assert.ok(preset.capabilities.includes("vision"));
+      assert.ok(preset.capabilities.includes("reasoning"));
+      assert.equal(preset.protocol, "openai-chat");
+    }
+    assert.equal(findApiPreset("mimo-pro-official").tokenField, "max_completion_tokens");
+  });
+
+  it("new presets do not silently overwrite already saved model IDs or task reasoning", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-model-refresh-"));
+    try {
+      const stored = createDefaultApiConfig();
+      stored.providers.mimo.model = "mimo-v2.5";
+      stored.providers.deepseek.model = "deepseek-v4-flash";
+      stored.routes.group_chat.reasoning = "deep";
+      fs.mkdirSync(path.join(root, ".qqfriend"));
+      fs.writeFileSync(path.join(root, ".qqfriend/api-providers.json"), JSON.stringify(stored));
+      const loaded = loadApiConfig({ root });
+      assert.equal(loaded.providers.mimo.model, "mimo-v2.5");
+      assert.equal(loaded.providers.deepseek.model, "deepseek-v4-flash");
+      assert.deepEqual(loaded.routes, stored.routes);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("ships protocol presets without secrets", () => {
     const presets = listApiPresets();
     assert.ok(presets.length >= 20);
@@ -39,7 +66,7 @@ describe("API provider presets and storage", () => {
     assert.equal(JSON.stringify(presets).includes("apiKey"), false);
   });
 
-  it("uses DeepSeek V4 Flash for summaries while protecting the group-chat fallback", () => {
+  it("uses DeepSeek V4.1 Flash for summaries while protecting the group-chat fallback", () => {
     const config = createDefaultApiConfig();
     assert.equal(config.schemaVersion, 2);
     assert.equal(config.routes.group_chat.primary, "mimo");
@@ -53,8 +80,9 @@ describe("API provider presets and storage", () => {
     assert.equal(config.routes.vision.primary, "mimo");
     assert.equal(config.routes.vision.fallback, null);
     assert.equal(config.routes.vision.reasoning, "economy");
-    assert.equal(config.providers.deepseek.name, "DeepSeek V4 Flash");
-    assert.equal(config.providers.deepseek.model, "deepseek-v4-flash");
+    assert.equal(config.providers.deepseek.name, "DeepSeek V4.1 Flash");
+    assert.equal(config.providers.deepseek.model, "deepseek-flash");
+    assert.ok(config.providers.deepseek.capabilities.includes("vision"));
   });
 
   it("migrates legacy routes to task reasoning defaults", () => {
@@ -87,7 +115,7 @@ describe("API provider presets and storage", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-api-cache-"));
     const first = loadApiConfig({ root });
     first.providers.mimo.model = "mutated-only-in-caller";
-    assert.equal(loadApiConfig({ root }).providers.mimo.model, "mimo-v2.5");
+    assert.equal(loadApiConfig({ root }).providers.mimo.model, "mimo-v2.6-flash");
 
     saveApiRoutes({
       group_chat: { primary: "mimo", fallback: "deepseek", reasoning: "deep" },
@@ -139,8 +167,8 @@ describe("API provider presets and storage", () => {
     }, { root, mode: "create" }), /已存在.*不会覆盖/);
 
     const stored = loadApiConfig({ root });
-    assert.equal(stored.providers.mimo.name, "MiMo 主力");
-    assert.equal(stored.providers.mimo.model, "mimo-v2.5");
+    assert.equal(stored.providers.mimo.name, "MiMo 2.6 Flash");
+    assert.equal(stored.providers.mimo.model, "mimo-v2.6-flash");
   });
 
   it("requires update mode to target an existing provider", () => {

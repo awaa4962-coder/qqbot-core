@@ -38,8 +38,8 @@ export function createDefaultApiConfig() {
     schemaVersion: 2,
     revision: 1,
     providers: {
-      mimo: defaultProvider("mimo", "MiMo 主力", "mimo-official", ".env_mimo"),
-      deepseek: defaultProvider("deepseek", "DeepSeek V4 Flash", "deepseek-official", ".env_ds", true),
+      mimo: defaultProvider("mimo", "MiMo 2.6 Flash", "mimo-official", ".env_mimo"),
+      deepseek: defaultProvider("deepseek", "DeepSeek V4.1 Flash", "deepseek-official", ".env_ds", true),
     },
     routes: {
       group_chat: route("mimo", "deepseek", "group_chat"),

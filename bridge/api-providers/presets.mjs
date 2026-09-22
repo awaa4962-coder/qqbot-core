@@ -28,16 +28,22 @@ export const API_PROTOCOLS = Object.freeze([
 ]);
 
 const PRESETS = [
-  preset("mimo-official", "MiMo 官方", "openai-chat", {
+  preset("mimo-official", "MiMo 2.6 Flash 官方", "openai-chat", {
     endpoint: "https://api.xiaomimimo.com/v1/chat/completions",
-    model: "mimo-v2.5",
+    model: "mimo-v2.6-flash",
     tokenField: "max_completion_tokens",
     capabilities: ["text", "vision", "tools", "reasoning"],
   }),
-  preset("deepseek-official", "DeepSeek 官方", "openai-chat", {
+  preset("mimo-pro-official", "MiMo 2.6 Pro 官方", "openai-chat", {
+    endpoint: "https://api.xiaomimimo.com/v1/chat/completions",
+    model: "mimo-v2.6-pro",
+    tokenField: "max_completion_tokens",
+    capabilities: ["text", "vision", "tools", "reasoning"],
+  }),
+  preset("deepseek-official", "DeepSeek V4.1 Flash 官方", "openai-chat", {
     endpoint: "https://api.deepseek.com/v1/chat/completions",
-    model: "deepseek-v4-flash",
-    capabilities: ["text", "tools", "reasoning"],
+    model: "deepseek-flash",
+    capabilities: ["text", "vision", "tools", "reasoning"],
   }),
   preset("openai-chat", "OpenAI Chat", "openai-chat", {
     endpoint: "https://api.openai.com/v1/chat/completions",

@@ -45,7 +45,7 @@ describe("llm client provider token fields", () => {
     await mimoVision([], { maxTokens: 123 });
     const body = readBody();
 
-    assert.equal(body.model, "mimo-v2.5");
+    assert.equal(body.model, "mimo-v2.6-flash");
     assert.equal(body.max_completion_tokens, 123);
     assert.equal(Object.hasOwn(body, "max_tokens"), false);
     assert.match(body.messages[0].content[0].text, /主体、可见文字、表情或动作/);
@@ -57,7 +57,7 @@ describe("llm client provider token fields", () => {
     await deepseekChat([{ role: "user", content: "hi" }], { maxTokens: 456 });
     const body = readBody();
 
-    assert.equal(body.model, "deepseek-v4-flash");
+    assert.equal(body.model, "deepseek-flash");
     assert.equal(body.max_tokens, 456);
     assert.equal(Object.hasOwn(body, "max_completion_tokens"), false);
   });

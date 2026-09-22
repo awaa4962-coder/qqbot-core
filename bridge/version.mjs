@@ -4,26 +4,22 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.11-audit-fixes";
-export const VERSION_NAME = "audit-fixes";
+export const VERSION = "1.4.12-model-refresh";
+export const VERSION_NAME = "model-refresh";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "修复入口鉴权、下载重定向与地址校验，发送结果未知时不再盲目重试。",
-  "修复遗忘后旧结果回填、跨群画像串用和敏感文本残留；保留完整个人风格设置。",
-  "私聊图片、文件与主备模型接线补齐；损坏的 API 配置明确报错，不静默改用其他接口。",
-  "日报保留状态反转后的确认，模型调用前重查清理状态，预览不会发送或登记成功。",
-  "控制台修复配置回退、查证覆盖错词条、日报编辑冲突与表情预览鉴权；后台查询失败显示待确认。",
-  "收紧发布包私有文件排除，修复表情采集总开关、JM 超时和日志风暴；Windows 继续冻结。",
+  "模型升级：DeepSeek V4.1 Flash、MiMo 2.6 Flash 与 MiMo 2.6 Pro。",
+  "控制台新增独立 MiMo Pro 预设，Flash 与 Pro 可分别选择；补齐 DeepSeek 视觉能力声明。",
+  "保留既有任务分配、主备兜底和思考档位；只外发最终正文，不外发推理内容。",
+  "服务器模型实例原位更新，不改白名单、关系评分或日报范围；Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Authenticates ingress and hardens bounded downloads; unknown delivery is never blindly replayed.",
-  "Prevents forgotten data writeback and cross-group inferred profiles; preserves all explicit style settings.",
-  "Connects private images, files and fallback routes; invalid API configuration fails visibly without switching providers.",
-  "Preserves summary state reversals, checks privacy before every call and makes dry runs non-publishing.",
-  "Fixes saved configuration, asynchronous editor conflicts, authenticated previews and uncertain task feedback.",
-  "Excludes private deployment state from releases; fixes capture switches, archive deadlines and log storms. Windows stays frozen.",
+  "Updates models to DeepSeek V4.1 Flash, MiMo 2.6 Flash and MiMo 2.6 Pro.",
+  "Adds a separate MiMo Pro console preset and declares DeepSeek vision support.",
+  "Preserves task routing, fallback and reasoning settings; only final answers are sent to QQ.",
+  "Upgrades server instances in place without changing allowlists, relationship scoring or report groups. Windows stays frozen.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

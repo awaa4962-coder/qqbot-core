@@ -3,7 +3,7 @@ import { llmCall } from "../llm-client.mjs";
 import { CFG } from "../../config.mjs";
 
 const ENDPOINT = "https://api.deepseek.com/v1/chat/completions";
-const MODEL = "deepseek-v4-flash";
+const MODEL = "deepseek-flash";
 
 export async function deepseekChat(messages, { maxTokens = 1024, temperature = 0.7, timeoutMs = 30000 } = {}) {
   return llmCall({

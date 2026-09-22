@@ -30,7 +30,7 @@ describe("MiMo output sizing", () => {
     const { body } = await captureMiMoBody(() =>
       tryMiMo("hello", "user", [], [], 123, false, "", { replyMode: "interjection" })
     );
-    assert.equal(body.model, "mimo-v2.5");
+    assert.equal(body.model, "mimo-v2.6-flash");
     assert.equal(body.max_completion_tokens, 192);
     assert.deepEqual(body.thinking, { type: "disabled" });
     assert.equal(Object.prototype.hasOwnProperty.call(body, "tools"), false);

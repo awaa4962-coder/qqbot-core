@@ -3,7 +3,7 @@ import { llmCall } from "../llm-client.mjs";
 import { CFG } from "../../config.mjs";
 
 const ENDPOINT = "https://api.xiaomimimo.com/v1/chat/completions";
-const MODEL = "mimo-v2.5";
+const MODEL = "mimo-v2.6-flash";
 
 export async function mimoChat(messages, { maxTokens = 1024, temperature = 0.7, timeoutMs = 30000, tools } = {}) {
   const extra = {};

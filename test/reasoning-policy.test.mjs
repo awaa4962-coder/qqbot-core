@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { findApiPreset } from "../bridge/api-providers/presets.mjs";
 
 import {
   applyReasoningPolicy,
@@ -10,6 +11,16 @@ import {
 } from "../bridge/api-providers/reasoning-policy.mjs";
 
 describe("reasoning policy", () => {
+  it("controls thinking on both MiMo 2.6 tiers and DeepSeek V4.1 Flash", () => {
+    for (const id of ["mimo-official", "mimo-pro-official", "deepseek-official"]) {
+      const configured = { ...findApiPreset(id), presetId: id };
+      assert.equal(getProviderReasoningControl(configured).configurable, true);
+      for (const [mode, type] of [["economy", "disabled"], ["deep", "enabled"]]) {
+        assert.deepEqual(applyReasoningPolicy(configured, request("你好"), { mode }).request.thinking, { type });
+      }
+    }
+  });
+
   it("uses task-aware defaults", () => {
     assert.equal(defaultReasoningMode("group_chat"), "auto");
     assert.equal(defaultReasoningMode("interjection"), "economy");

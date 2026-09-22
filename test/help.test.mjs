@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { buildAdminHelpText, buildHelpPage1, buildHelpPage2, buildHelpText } from "../bridge/help.mjs";
-import { buildChangelogText, VERSION } from "../bridge/version.mjs";
+import { buildChangelogText, VERSION, VERSION_NOTES_EN } from "../bridge/version.mjs";
 
 describe("help text", () => {
   it("builds a compact capability hub and promotes mention format", () => {
@@ -42,9 +42,7 @@ describe("help text", () => {
 
     const en = buildChangelogText("en");
     assert.match(en, new RegExp("Current version: v" + VERSION));
-    assert.match(en, /Authenticates ingress/);
-    assert.match(en, /unknown delivery is never blindly replayed/);
-    assert.match(en, /authenticated previews/);
+    for (const note of VERSION_NOTES_EN) assert.ok(en.includes(note));
     assert.match(en, /Windows stays frozen/);
     assert.match(en, /Still reserved:/);
   });

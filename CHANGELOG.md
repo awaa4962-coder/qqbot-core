@@ -1,5 +1,14 @@
 # 夜星桥接器更新日志
 
+## v1.4.12-model-refresh - 2026-09-22 - Linux 模型更新
+- 官方 DeepSeek 预设和兼容客户端使用 V4.1 Flash 的规范接口名 `deepseek-flash`，声明文本、视觉、工具和思考能力。官方旧 `deepseek-v4-flash` 已临时指向新模型，本次显式更新名称，避免依赖旧别名。
+- MiMo 默认预设和兼容客户端升级为 `mimo-v2.6-flash`，控制台增加独立 `mimo-pro-official` / `mimo-v2.6-pro` 预设。仍使用原 Chat Completions 地址与 `max_completion_tokens`，不接入 UltraSpeed 或更改调用协议。
+- 服务器三个既有实例按 Flash→Flash、Pro→Pro 原位升级；保留内部实例 ID、全部任务引用、主备关系、思考档位、认证配置和白名单。预设更新不会自动重写其他安装已有的模型配置，服务器迁移显式备份并核验。
+- 保留私有推理隔离、DeepSeek 兜底和 Windows 冻结。版本及中英文更新命令同步；新增预设、旧配置不被覆盖和三个模型思考控制的回归测试。
+- 上线前合成接口验证共 9 次：三个模型各一次关闭/开启思考，MiMo Flash 一次纯色图片识别及两轮函数调用；全部 HTTP 200，只检查最终正文与字段长度，不打印完整推理、不使用真实群记录、不向 QQ 发送测试消息。这验证协议连通性，不代表复杂聊天质量已全面验收。
+- 官方依据：[DeepSeek 更新日志](https://api-docs.deepseek.com/updates/)、[MiMo 模型列表](https://mimo.mi.com/docs/zh-CN/quick-start/summary/model)、[MiMo 思考接口](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/text-generation/deep-thinking)。
+- 本地门禁：`npm ci`、lint 零错误零告警、发布检查、启动鉴权冒烟及 13/13 离线回放通过；877 项测试中 876 通过、1 项 Windows 文件软链接权限跳过，Linux 候选需全量补验。控制台新预设回填模型 ID 与视觉能力声明经过真实浏览器验证。
+
 ## v1.4.11-audit-fixes - 2026-09-19 - Linux 全量审计修复
 - OneBot HTTP/反向 WebSocket 必须校验既有 NapCat Bearer 令牌；手动发送和消息检查沿用管理鉴权。CORS 精确检查环回来源，空请求、过大请求、断连和读取超时都正常结束，不占住处理链。
 - 公网下载每一跳重新校验地址，实际连接固定使用已验证的 DNS 结果，保留原主机名和 TLS 证书验证；拒绝内网、IPv6 私有/过渡地址，跨域不转发认证，流式超限即取消。复用统一限量读取，不新增下载框架或依赖。
