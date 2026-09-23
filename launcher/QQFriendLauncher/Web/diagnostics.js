@@ -24,6 +24,8 @@ import { callManagedAction, taskPhaseLabel } from "./ui/tasks.js";
     accepted: "已接纳", preview_sent: "链接预览抑制插话", mentioned: "已进入 @ 回复", short: "消息太短", empty: "内容为空", no_probability: "该场景不自动插话", cooldown: "插话冷却中", random: "本次未命中插话概率", triggered: "触发插话",
     empty_content: "模型正文为空", empty_content_with_reasoning: "只有推理，没有正文", unsafe_reasoning: "正文含推理内容", secret_leak: "正文安全检查未通过", send_failed: "发送重试后失败", exception: "处理异常",
     intentional_silence: "模型决定不插话", invalid_interjection: "插话输出格式无效", request_failed: "模型请求失败", tools_unavailable: "本轮工具未开放",
+    cancelled: "已停止", privacy_changed: "记忆已清理，旧回复作废", permission_changed: "会话权限已变化", preferences_changed: "称呼或偏好已更新", reply_superseded: "已有更新的回复请求", reply_expired: "回复处理超时", reply_capacity: "进行中的回复过多", bridge_stopping: "服务正在停止",
+    unknown: "回执未知", send_unknown: "发送结果未知，请先核实",
   };
   const label = (value) => labels[value] || value || "待判断";
 
@@ -125,6 +127,7 @@ import { callManagedAction, taskPhaseLabel } from "./ui/tasks.js";
   function stepDetails(step) {
     return [step.reason && label(step.reason), step.provider, step.position && label(step.position), step.route && label(step.route), step.model,
       step.selfFactsVersion && `运行事实 v${step.selfFactsVersion} · ${step.capabilityCount || 0} 项能力`,
+      step.turnRevision && `回复修订 ${step.turnRevision}`, step.privacyRevision !== undefined && `隐私代次 ${step.privacyRevision}`,
       step.chars !== undefined && `${step.chars} 字符`, step.messages !== undefined && `${step.messages} 层上下文`,
       step.pruned > 0 && `裁剪 ${step.pruned} 层`, step.httpStatus > 0 && `HTTP ${step.httpStatus}`,
       step.attempt && `第 ${step.attempt} 次`, step.probability !== undefined && `概率 ${Math.round(step.probability * 100)}%`,

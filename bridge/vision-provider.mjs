@@ -1,12 +1,15 @@
 import { callTaskApi } from "./api-providers/gateway.mjs";
 import { buildOutputPacket } from "./output-pipeline.mjs";
+import { assertChatRunCurrent } from "./cognition/chat-run.mjs";
 
 export async function callVisionText(request, options = {}) {
   const callSlot = options.callSlot || callTaskApi;
   const positions = options.positions || ["primary", "fallback"];
   const failures = [];
   for (const position of positions) {
+    assertChatRunCurrent();
     const result = await callSlot("vision", position, request);
+    assertChatRunCurrent();
     if (!result?.ok) {
       failures.push({ position, reason: result?.error || "provider_unavailable" });
       continue;

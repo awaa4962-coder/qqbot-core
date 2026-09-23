@@ -72,7 +72,7 @@ test("actual entrypoint records a whitelist rejection without model or send", as
   assert.equal(record.stages.some(item => item.stage === "model" || item.stage === "send"), false);
 });
 
-test("outbound retry success is sent, exhausted retries are failed", async () => {
+test("outbound retry success is sent, an unconfirmed delivery remains unknown", async () => {
   const originalFetch = globalThis.fetch;
   const recorder = createTraceRecorder();
   let calls = 0;
@@ -83,7 +83,8 @@ test("outbound retry success is sent, exhausted retries are failed", async () =>
     assert.equal(recorder.list().items[0].status, "sent");
     globalThis.fetch = async () => { throw new Error("private network details"); };
     await withMessageTrace({ ...ctx, message_id: 44 }, () => sendTextToGroup({ groupId: 22, text: "synthetic reply", maxAttempts: 1 }), recorder);
-    assert.equal(recorder.list().items[0].status, "failed");
+    assert.equal(recorder.list().items[0].status, "unknown");
+    assert.equal(recorder.list().items[0].unknownSends, 1);
   } finally { globalThis.fetch = originalFetch; }
 });
 
@@ -143,4 +144,17 @@ test("self-fact traces retain counts and safe model ids, not snapshots or endpoi
   assert.equal(stages[1].model, undefined);
   assert.equal(stages[2].model, undefined);
   assert.doesNotMatch(JSON.stringify(stages), /private/);
+});
+
+test("bounded timeline truncation cannot hide a final cancellation or unknown delivery", () => {
+  for (const unknown of [false, true]) {
+    const recorder = createTraceRecorder();
+    const record = recorder.begin(ctx);
+    for (let i = 0; i < 80; i++) recorder.append(record, "model", { status: "ok" });
+    recorder.append(record, "send", { status: unknown ? "failed" : "ok", reason: unknown ? "send_unknown" : undefined });
+    recorder.append(record, "output", { status: "skipped", reason: "privacy_changed" });
+    recorder.finish(record);
+    assert.equal(recorder.list().items[0].status, unknown ? "unknown" : "partial");
+    assert.equal(recorder.list().items[0].reason, "privacy_changed");
+  }
 });

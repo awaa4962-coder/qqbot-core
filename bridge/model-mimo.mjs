@@ -12,6 +12,7 @@ import { buildInterjectionSystemPrompt } from "./system-prompts/interjection.mjs
 import { buildImageContextMessage } from "./system-prompts/image-context.mjs";
 import { buildInterjectionPrompt } from "./interjection-policy.mjs";
 import { selectPersonaCue } from "./persona-style.mjs";
+import { assertChatRunCurrent } from "./cognition/chat-run.mjs";
 
 export function buildSystem(_userName, groupId, mood, options = {}) {
   const gid = String(groupId);
@@ -177,13 +178,15 @@ function parseToolCallPayload(tc) {
 }
 
 async function executeKnownTool(tc, roundLabel) {
+  assertChatRunCurrent();
   if (tc.function?.name !== 'web_search') return null;
   const args = parseToolCallPayload(tc);
   if (!args?.query) return null;
 
-  log('MiMo web_search' + roundLabel + ' query:', JSON.stringify(args.query.slice(0,100)));
+  log('MiMo web_search' + roundLabel + ' query chars:', String(args.query).length);
   const result = await webSearch(args.query);
-  log('MiMo web_search' + roundLabel + ' result:', result.slice(0, 100));
+  assertChatRunCurrent();
+  log('MiMo web_search' + roundLabel + ' result chars:', result.length);
   return { role: 'tool', tool_call_id: tc.id, content: result };
 }
 

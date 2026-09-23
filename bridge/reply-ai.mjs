@@ -17,6 +17,7 @@ import { maybeSendStickerAfterReply } from "./features/stickers/index.mjs";
 import { wallAgeMs } from "./runtime-clock.mjs";
 import { traceStage } from "./diagnostics/message-trace.mjs";
 import { MODEL_FAILURE_NOTICE, normalizeChatOutcome } from "./chat-outcome.mjs";
+import { chatRunStopReason, withChatRun } from "./cognition/chat-run.mjs";
 
 const PROFILE_REFRESH_MS = 6 * 60 * 60 * 1000;
 const PROFILE_REFRESH_MESSAGES = 30;
@@ -24,6 +25,11 @@ const PROFILE_MIN_MESSAGES = 10;
 const profileRefreshInFlight = new Map();
 
 export async function aiReply(group_id, userId, userMsg, userName, imageUrls, replyTo, replyText, isAtMe, mentions = [], runtime = {}) {
+  return await withChatRun({ surface: "group", groupId: group_id, userId }, () =>
+    runAiReply(group_id, userId, userMsg, userName, imageUrls, replyTo, replyText, isAtMe, mentions, runtime));
+}
+
+async function runAiReply(group_id, userId, userMsg, userName, imageUrls, replyTo, replyText, isAtMe, mentions, runtime) {
   if (isAtMe === undefined) isAtMe = true;
   const gid = String(group_id);
   const uid = String(userId);
@@ -73,6 +79,7 @@ export async function aiReply(group_id, userId, userMsg, userName, imageUrls, re
   const reply = outcome.text;
 
   const sendResult = await sendMsg(group_id, reply, replyTo);
+  if (chatRunStopReason()) return;
   if (!isSuccessfulOutbound(sendResult)) {
     logE("aiReply send failed for", preferredUserName, "in", gid);
     return;
@@ -102,7 +109,7 @@ export async function aiReply(group_id, userId, userMsg, userName, imageUrls, re
     isPassive: isPassiveInterjection,
   });
 
-  if (CFG.legacyProfileRefreshEnabled) {
+  if (CFG.legacyProfileRefreshEnabled && !chatRunStopReason()) {
     maybeGenerateProfile(uid).catch(function (e) { logE("profile update failed for", uid, ":", e.message); });
   }
 }
@@ -128,7 +135,7 @@ export async function maybeGenerateProfile(uid, generator = generateProfile, now
   if (profileRefreshInFlight.has(key)) return await profileRefreshInFlight.get(key);
   if (!shouldGenerateProfile(key, now)) return "";
   const task = Promise.resolve(generator(key)).then(result => {
-    if (result) markProfileGenerated(key, now);
+    if (result && !chatRunStopReason()) markProfileGenerated(key, now);
     return result;
   }).finally(() => profileRefreshInFlight.delete(key));
   profileRefreshInFlight.set(key, task);
@@ -162,7 +169,7 @@ export async function resolveAiReply(ctx, runtime = {}) {
     },
   });
   const outcome = normalizeChatOutcome(modelResult);
-  traceStage("output", { status: outcome.kind === "reply" ? "ok" : outcome.kind === "silence" ? "skipped" : "failed",
+  traceStage("output", { status: outcome.kind === "reply" ? "ok" : outcome.kind === "error" ? "failed" : "skipped",
     position: modelResult.position, reason: outcome.kind === "reply" ? undefined : outcome.reason });
   return { ...outcome, position: modelResult.position };
 }

@@ -10,10 +10,10 @@ import { selectPersonaCue } from "./persona-style.mjs";
 
 async function buildSearchContext(userMsg) {
   if (needsSearch(userMsg)) {
-    log('DS pre-search triggered for:', JSON.stringify(userMsg.slice(0,80)));
+    log('DS pre-search input chars:', userMsg.length);
     const searchResult = await webSearch(userMsg);
     if (searchResult && searchResult !== '未找到相关结果' && searchResult !== '搜索功能未配置') {
-      log('DS pre-search result:', searchResult.slice(0, 100));
+      log('DS pre-search result chars:', searchResult.length);
       return '[联网搜索结果]\n' + searchResult + '\n\n请基于以上搜索结果回答用户问题。如果搜索结果不相关，请诚实说明。\n\n';
     }
   }

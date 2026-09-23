@@ -1,4 +1,5 @@
 import { log, logE } from "../../logger.mjs";
+import { chatRunStopReason } from "../../cognition/chat-run.mjs";
 import {
   buildStickerCatalogSnapshot,
   flushStickerCatalogSync,
@@ -100,9 +101,11 @@ export {
 
 export async function maybeSendStickerAfterReply(context = {}, options = {}) {
   try {
+    if (chatRunStopReason()) return { ok: false, stage: "cancelled", reason: chatRunStopReason() };
     const policy = evaluateStickerPolicy(context, options.policyOptions);
     if (!policy.ok) return { ok: false, stage: "policy", reason: policy.reason };
     const decision = await (options.select || selectSticker)(context, options.selectorOptions);
+    if (chatRunStopReason()) return { ok: false, stage: "cancelled", reason: chatRunStopReason() };
     if (decision.action !== "send") {
       return { ok: false, stage: "selection", reason: decision.reason, decision };
     }
@@ -111,6 +114,7 @@ export async function maybeSendStickerAfterReply(context = {}, options = {}) {
       return { ok: true, sent: false, stage: "shadow", decision };
     }
     const outbound = await (options.send || sendStickerDecision)(decision, context, options.senderOptions);
+    if (chatRunStopReason()) return { ok: false, stage: "cancelled", reason: chatRunStopReason() };
     recordStickerSend(decision.stickerId, outbound.ok, { error: outbound.error });
     if (!outbound.ok) {
       syncStickerFavorites({ analyze: false }).catch(error => logE("sticker refresh after send failure:", error.message));

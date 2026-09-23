@@ -19,6 +19,9 @@ import {
 } from "../bridge/features/stickers/capture-service.mjs";
 import { addBufferToCloudFavorites } from "../bridge/features/stickers/cloud-favorites.mjs";
 import { classifyStickerCandidate } from "../bridge/features/stickers/image-classifier.mjs";
+import { maybeSendStickerAfterReply } from "../bridge/features/stickers/index.mjs";
+import { withChatRun } from "../bridge/cognition/chat-run.mjs";
+import { invalidateMemoryPrivacyGeneration } from "../bridge/memory-profile/generation.mjs";
 
 const NOW = Date.parse("2026-09-17T00:00:00Z");
 let root;
@@ -51,6 +54,23 @@ test("global sticker off blocks enqueue and direct workers before external calls
   assert.equal(observed.reason, "sticker_off");
   assert.equal(result.reason, "sticker_off");
   assert.equal(downloads, 0);
+});
+
+test("late chat sticker selection cannot send or refresh favorites after a privacy clear", async () => {
+  let selections = 0;
+  const result = await withChatRun({ surface: "private", userId: 456 }, () => maybeSendStickerAfterReply({
+    private: true, userId: 456, userMessage: "hello", assistantText: "hello back",
+  }, {
+    policyOptions: { settings: { mode: "steady", privateEnabled: true, chance: 1 }, random: () => 0 },
+    select: async () => {
+      selections++;
+      invalidateMemoryPrivacyGeneration();
+      return { action: "send", stickerId: "synthetic" };
+    },
+    send: async () => assert.fail("a stale selection must not send"),
+  }), { cfg: { ...CFG, friendWhitelist: [456], botBlacklist: [] } });
+  assert.equal(selections, 1);
+  assert.equal(result.kind, "cancelled");
 });
 
 test("workers recheck live settings between download, vision and cloud calls", async () => {

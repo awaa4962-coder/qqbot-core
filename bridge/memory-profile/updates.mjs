@@ -3,7 +3,7 @@ import { MEMORY_TOPIC_RULES } from "../knowledge/topic-rules.mjs";
 import { getMemoryStatus } from "./query.mjs";
 import { memoryProfiles, saveMemoryProfiles } from "./store.mjs";
 import { containsSensitiveText, redactSensitiveText } from "../privacy.mjs";
-import { invalidateUserMemoryGeneration } from "./generation.mjs";
+import { invalidateMemoryPrivacyGeneration, invalidateUserMemoryGeneration } from "./generation.mjs";
 
 export function isSensitiveMemoryText(text) {
   return containsSensitiveText(text);
@@ -234,6 +234,7 @@ export function clearUserMemoryProfile(uid) {
 export function clearGroupMemoryProfile(groupId) {
   const gid = String(groupId || "");
   if (!gid) return false;
+  invalidateMemoryPrivacyGeneration();
   delete memoryProfiles.groupProfiles[gid];
   for (const key of Object.keys(memoryProfiles.userGroupProfiles)) {
     if (key.startsWith(gid + ":")) delete memoryProfiles.userGroupProfiles[key];

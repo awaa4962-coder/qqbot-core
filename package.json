@@ -1,6 +1,6 @@
 {
   "name": "qqfriend",
-  "version": "1.4.15-self-context",
+  "version": "1.4.16-chat-lifecycle",
   "description": "夜星 QQ 机器人桥接器",
   "type": "module",
   "main": "napcat_bridge.mjs",

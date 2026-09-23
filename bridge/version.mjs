@@ -4,21 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.15-self-context";
-export const VERSION_NAME = "self-context";
+export const VERSION = "1.4.16-chat-lifecycle";
+export const VERSION_NAME = "chat-lifecycle";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "聊天请求带入本会话权限内的能力与实际请求模型标识，不公开配置、密钥或其他群资料。",
-  "主动不插话与模型失败分开：主动沉默不触发备用模型，两边失败不再随机补话。",
-  "直接提问失败会收到简短提示，不写入成功对话；诊断页可筛选主动不回复并查看运行事实版本。",
+  "聊天生成期间清理记忆、撤销权限或更新称呼/偏好后，旧回复在后续检查点停止，不再降级续答或写回旧结果。",
+  "同一用户同一会话的新并发回复替换旧生成，停止服务时中止进行中的聊天模型请求；不同用户和会话互不替换。",
+  "长回复逐段复核，已送达内容不伪称撤回；诊断区分已停止、部分发送与回执未知，未知回执不自动重发。",
   "JM 群聊/私聊下载、大写 FS 与延迟清理保留；模型主备、思考档位、白名单和关系评分不变，Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Chat receives scoped capability facts and the requested model identifier, without credentials or other groups' data.",
-  "Intentional silence does not trigger fallback. Failed model calls no longer produce random filler replies.",
-  "Direct failures show a short notice without recording a successful turn. Diagnostics distinguish silence and show fact versions.",
+  "Privacy clears, revoked access and updated preferences stop stale chat results at subsequent boundaries without fallback or write-back.",
+  "New concurrent replies supersede the same user's active reply in the same conversation. Shutdown aborts active chat model requests.",
+  "Rechecks each outgoing chunk. Diagnostics distinguish cancellation, partial delivery and unknown receipts; unknown delivery is never blindly retried.",
   "Keeps group/private JM downloads, FS and delayed cleanup. Model routes, reasoning modes, allowlists and relationship scoring stay unchanged. Windows stays frozen.",
 ]);
 

@@ -1,5 +1,6 @@
 import { buildOutputPacket } from "./output-pipeline.mjs";
 import { normalizeInterjectionReply } from "./thinking.mjs";
+import { chatCancellation, chatRunStopReason } from "./cognition/chat-run.mjs";
 
 export const MODEL_FAILURE_NOTICE = "这次模型没有生成可用回复，请稍后再试。";
 const ERROR_REASONS = new Set(["model_unavailable", "request_failed", "tools_unavailable", "invalid_interjection",
@@ -27,6 +28,7 @@ export function parseChatOutcome(raw, options = {}) {
 
 // Legacy injected providers may still return text/null; the live router uses outcomes.
 export function normalizeChatOutcome(value) {
+  if (value?.kind === "cancelled") return chatCancellation(value.reason);
   if (value?.kind === "silence") return { kind: "silence", text: null, reason: "intentional_silence" };
   if (value?.kind === "error") return chatError(value.reason || "model_unavailable");
   // Typed replies have already crossed the output boundary; legacy strings have not.
@@ -37,6 +39,11 @@ export function normalizeChatOutcome(value) {
 }
 
 export async function callChatSlot(call, request) {
-  try { return normalizeChatOutcome(await call(request)); }
-  catch { return chatError("request_failed"); }
+  if (chatRunStopReason()) return chatCancellation();
+  try {
+    const result = await call(request);
+    return chatRunStopReason() ? chatCancellation() : normalizeChatOutcome(result);
+  } catch {
+    return chatRunStopReason() ? chatCancellation() : chatError("request_failed");
+  }
 }

@@ -5,6 +5,7 @@ import { clearUserCacheUsage } from "./api-providers/usage-metrics.mjs";
 import { clearMessageFeatureCache } from "./context/relevance.mjs";
 import { forgetSummaryUser } from "./group-summary/journal.mjs";
 import { containsSensitiveText, redactSensitiveText } from "./privacy.mjs";
+import { invalidateUserMemoryGeneration } from "./memory-profile/generation.mjs";
 
 const DEFAULT_STYLE = Object.freeze({
   length: "normal",
@@ -75,6 +76,7 @@ export function setUserStylePreference(uid, rawText, options = {}) {
     ...parsed.patch,
     updatedAt: options.now || Date.now(),
   };
+  invalidateUserMemoryGeneration(uid, { privacy: false });
   if (!options.skipSave) saveUsers();
   return {
     ok: true,
@@ -85,6 +87,7 @@ export function setUserStylePreference(uid, rawText, options = {}) {
 export function resetUserStylePreference(uid, options = {}) {
   const user = ensureUserPreferenceRoot(uid, options.users || users);
   user.preferences.style = { ...DEFAULT_STYLE, updatedAt: options.now || Date.now() };
+  invalidateUserMemoryGeneration(uid, { privacy: false });
   if (!options.skipSave) saveUsers();
   return "已重置回复风格：\n" + formatStyle(user.preferences.style);
 }
@@ -98,6 +101,7 @@ export function setUserDisplayName(uid, name, options = {}) {
   if (!Array.isArray(user.nicknames)) user.nicknames = [];
   if (!user.nicknames.includes(clean.value)) user.nicknames.push(clean.value);
   if (user.nicknames.length > 20) user.nicknames = user.nicknames.slice(-20);
+  invalidateUserMemoryGeneration(uid, { privacy: false });
   if (!options.skipSave) saveUsers();
   return { ok: true, text: "记住了，以后我会优先叫你：" + clean.value };
 }

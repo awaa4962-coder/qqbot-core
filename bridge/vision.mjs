@@ -2,6 +2,7 @@
 import { log, logE } from './logger.mjs';
 import { fetchSafeBuffer } from './safe-url.mjs';
 import { callVisionText } from './vision-provider.mjs';
+import { assertChatRunCurrent } from './cognition/chat-run.mjs';
 import {
   findCachedImageDescription,
   perceptualImageHash,
@@ -14,6 +15,7 @@ async function _downloadImages(imageUrls, label) {
   const contents = [];
   const fingerprints = [];
   for (const url of imageUrls.slice(0, 3)) {
+    assertChatRunCurrent();
     try {
       const data = await fetchSafeBuffer(url, { timeoutMs: 10000, maxBytes: MAX_IMAGE_BYTES });
       if (!data) { logE(label + ': image blocked or download failed ' + String(url).slice(0,60)); continue; }
@@ -34,6 +36,7 @@ export async function tryMiMoVision(imageUrls, options = {}) {
   if (!imageUrls?.length) return null;
   try {
     const downloaded = await _downloadImages(imageUrls, 'tryMiMoVision');
+    assertChatRunCurrent();
     if (!downloaded.contents.length) { logE('tryMiMoVision: no images could be downloaded'); return null; }
     const cached = readSingleImageCache(downloaded.fingerprints);
     if (cached) return cached;
@@ -45,6 +48,7 @@ export async function tryMiMoVision(imageUrls, options = {}) {
       usageContext: options.usageContext,
     };
     const result = await callVisionText(request);
+    assertChatRunCurrent();
     if (!result.ok) {
       log('tryMiMoVision: no usable provider output');
       return null;

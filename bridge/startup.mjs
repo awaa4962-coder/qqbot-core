@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { WebSocketServer } from "ws";
 import { CFG } from "./config.mjs";
 import { log, logE, cleanupLogger, getStormStatus } from "./logger.mjs";
+import { stopChatRuns } from "./cognition/chat-run.mjs";
 import { users, groupChats, flushSavesSync } from "./storage.mjs";
 import { sendMsg, getImages, getFiles, getReplyData } from "./napcat.mjs";
 import { processEvent } from "./reply.mjs";
@@ -252,6 +253,7 @@ let shuttingDown = false;
 async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
+  stopChatRuns();
   log('shutdown requested:', signal);
   await oneBotLink.stop({ drainMs: 10000 });
   await new Promise(resolve => server.close(resolve));

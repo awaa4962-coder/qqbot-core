@@ -12,6 +12,7 @@ import { maybeSendStickerAfterReply } from "./features/stickers/index.mjs";
 import { traceStage } from "./diagnostics/message-trace.mjs";
 import { canUsePrivateChat } from "./commands/permissions.mjs";
 import { MODEL_FAILURE_NOTICE } from "./chat-outcome.mjs";
+import { assertChatRunCurrent, chatRunStopReason, withChatRun } from "./cognition/chat-run.mjs";
 
 export async function handlePrivateMessage(ctx) {
   if (await handlePrivateJmTransferCommand(ctx)) {
@@ -28,14 +29,18 @@ export async function handlePrivateMessage(ctx) {
 
   if (await trySendPrivateCommand(ctx)) return;
   if (ctx.files.length) {
-    await handlePrivateFileMessage(ctx);
+    await withChatRun({ surface: "private", userId: ctx.user_id }, () => handlePrivateFileMessage(ctx));
     return;
   }
 
-  if (ctx.text || ctx.images.length) await handlePrivateChatMessage(ctx);
+  if (ctx.text || ctx.images.length) await withChatRun({ surface: "private", userId: ctx.user_id }, () => handlePrivateChatMessage(ctx));
 }
 
 export async function privateReply(userId, text) {
+  return await withChatRun({ surface: "private", userId }, () => runPrivateReply(userId, text));
+}
+
+async function runPrivateReply(userId, text) {
   const uid = Number(userId);
   if (!canUsePrivateChat(uid)) {
     log("privateReply: user not in whitelist:", uid);
@@ -82,6 +87,7 @@ async function handlePrivateFileMessage(ctx) {
   const fileDesc = describeFiles(ctx.files);
   let fileContent = "";
   for (const f of ctx.files) {
+    assertChatRunCurrent();
     const content = await fetchFileContent(f);
     if (content) fileContent += content + "\n";
   }
@@ -154,6 +160,7 @@ function buildPrivateReplyContext(ctx, userMsg) {
 }
 
 function recordPrivateTurn(ctx, userText, assistantText) {
+  if (chatRunStopReason()) return;
   recordConversationTurn({
     uid: ctx.user_id,
     groupId: "private",

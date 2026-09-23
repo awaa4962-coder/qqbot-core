@@ -7,6 +7,7 @@ import { applyReasoningPolicy } from "./reasoning-policy.mjs";
 import { normalizeProviderUsage, recordApiUsage } from "./usage-metrics.mjs";
 import { traceStage } from "../diagnostics/message-trace.mjs";
 import { withBotSelfContext } from "../capabilities/self-context.mjs";
+import { chatRunPrivacyChanged, chatRunStopReason } from "../cognition/chat-run.mjs";
 import {
   getProvider,
   getTaskRoute,
@@ -36,6 +37,7 @@ export async function callApiProvider(providerId, request = {}, options = {}) {
 
 async function invokeApiProvider(providerId, request = {}, options = {}) {
   try {
+    if (chatRunStopReason()) return { ...failed(providerId, chatRunStopReason()), cancelled: true };
     const provider = options.provider || getProvider(providerId, options);
     if (!provider || provider.enabled === false) return failed(providerId, "API 实例不存在或已停用");
     const adapter = ADAPTERS[provider.protocol];
@@ -108,7 +110,8 @@ function recordSuccessfulUsage(provider, request, result, options) {
     provider: provider.id,
     task: options.usageTask || request.usageContext?.task || "direct",
     position: options.usagePosition || request.usageContext?.position || "direct",
-    userId: request.usageContext?.userId,
+    // Keep actual cost without restoring the forgotten user's usage association.
+    userId: chatRunPrivacyChanged() ? undefined : request.usageContext?.userId,
     usage: result.raw?.usage || result.data?.usage || result.usage,
     durationMs: result.durationMs,
   }, {

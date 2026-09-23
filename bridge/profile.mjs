@@ -4,6 +4,7 @@ import { callTaskApi } from "./api-providers/gateway.mjs";
 import { buildOutputPacket } from "./output-pipeline.mjs";
 import { redactSensitiveText } from "./privacy.mjs";
 import { getUserMemoryGeneration } from "./memory-profile/generation.mjs";
+import { chatRunStopReason } from "./cognition/chat-run.mjs";
 
 async function generateProfileVia(prompt, position) {
   const result = await callTaskApi("profile", position, {
@@ -24,7 +25,7 @@ export async function generateProfile(uid, options = {}) {
   const u = users[uid];
   if (!u) return '';
   const generation = getUserMemoryGeneration(uid);
-  const isCurrent = () => users[uid] === u && generation === getUserMemoryGeneration(uid);
+  const isCurrent = () => users[uid] === u && generation === getUserMemoryGeneration(uid) && !chatRunStopReason();
   const recent = u.chats.slice(-20);
   if (!recent.length) return '';
 

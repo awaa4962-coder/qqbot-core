@@ -11,11 +11,12 @@ const REASONS = new Set([
   "private_not_whitelisted", "duplicate_text", "preview_sent", "mentioned", "empty",
   "short", "no_probability", "cooldown", "random", "triggered", "empty_reply",
   "empty_content", "empty_content_with_reasoning", "reasoning_leak", "secret_leak",
-  "sanitized_empty", "unsafe_output", "unsafe_reasoning", "model_unavailable", "send_failed", "exception",
+  "sanitized_empty", "unsafe_output", "unsafe_reasoning", "model_unavailable", "send_failed", "send_unknown", "exception",
   "intentional_silence", "invalid_interjection", "request_failed", "tools_unavailable",
+  "privacy_changed", "permission_changed", "preferences_changed", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping",
 ]);
 const ROUTES = new Set(["group_at", "interjection", "private_chat", "private_file", "command", "jm", "resource-transfer", "link-preview", "wordcloud", "preview", "file"]);
-const NUMBERS = ["chars", "messages", "pruned", "truncated", "images", "mentions", "httpStatus", "attempt", "reasoningLength", "promptTokens", "cachedTokens", "completionTokens", "probability", "selfFactsVersion", "capabilityCount"];
+const NUMBERS = ["chars", "messages", "pruned", "truncated", "images", "mentions", "httpStatus", "attempt", "reasoningLength", "promptTokens", "cachedTokens", "completionTokens", "probability", "selfFactsVersion", "capabilityCount", "turnRevision", "privacyRevision"];
 
 // Records accept metadata only. No caller can attach message bodies or raw errors.
 function safeDetails(details) {
@@ -70,6 +71,7 @@ export function createTraceRecorder(options = {}) {
       stages: [],
       sends: 0,
       sendFailures: 0,
+      unknownSends: 0,
       closed: false,
     };
     records.set(record.id, record);
@@ -85,6 +87,7 @@ export function createTraceRecorder(options = {}) {
     if (safe.reason) record.reason = safe.reason;
     if (stage === "send" && safe.status === "ok") record.sends++;
     if (stage === "send" && safe.status === "failed") record.sendFailures++;
+    if (stage === "send" && safe.reason === "send_unknown") record.unknownSends++;
     if (record.stages.length < 63) record.stages.push({ stage, elapsedMs: elapsed(record), ...safe });
   }
 
@@ -121,14 +124,22 @@ export function createTraceRecorder(options = {}) {
 }
 
 function finalStatus(record, failed) {
+  if (record.unknownSends) return "unknown";
+  const output = record.stages.findLast(item => item.stage === "output");
+  const cancelled = cancellationStatus(record.reason, record.sends);
+  if (cancelled) return cancelled;
   if (record.sends && (failed || record.sendFailures)) return "partial";
   if (failed || record.sendFailures) return "failed";
-  const output = record.stages.findLast(item => item.stage === "output");
   if (output?.status === "failed") return "failed";
   if (record.sends) return "sent";
   if (output?.reason === "intentional_silence") return "silent";
   if (record.stages.some(item => item.status === "skipped")) return "ignored";
   return record.route ? "no_reply" : "processed";
+}
+
+function cancellationStatus(reason, sends) {
+  const reasons = ["privacy_changed", "permission_changed", "preferences_changed", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping"];
+  return reasons.includes(reason) ? (sends ? "partial" : "cancelled") : "";
 }
 
 function matchesQuery(record, query) {

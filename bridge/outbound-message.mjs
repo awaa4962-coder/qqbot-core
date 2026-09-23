@@ -3,6 +3,7 @@ import { log, logE } from "./logger.mjs";
 import { buildNapCatHeaders } from "./napcat-auth.mjs";
 import { markOutboundAttempt, markOutboundSuccess } from "./pipeline-state.mjs";
 import { traceStage } from "./diagnostics/message-trace.mjs";
+import { chatRunStopReason } from "./cognition/chat-run.mjs";
 
 const DEFAULT_MAX_LEN = 900;
 const HARD_MAX_LEN = 1200;
@@ -145,6 +146,11 @@ async function sendPayloadWithRetry({ url, payload, label, options }) {
   let lastError = "";
   let usedAttempts = 0;
   for (let attempt = 1; attempt <= attempts; attempt++) {
+    const reason = chatRunStopReason();
+    if (reason) {
+      traceStage("send", { status: "skipped", reason });
+      return { status: "cancelled", reason };
+    }
     usedAttempts = attempt;
     markOutboundAttempt();
     traceStage("send", { status: "started", attempt });
@@ -165,7 +171,8 @@ async function sendPayloadWithRetry({ url, payload, label, options }) {
     }
   }
   logE(label + " failed:", lastError || "unknown error");
-  traceStage("send", { status: "failed", reason: "send_failed", attempt: usedAttempts });
+  const reason = lastResult?.delivery === "unconfirmed" ? "send_unknown" : "send_failed";
+  traceStage("send", { status: "failed", reason, attempt: usedAttempts });
   return lastResult;
 }
 

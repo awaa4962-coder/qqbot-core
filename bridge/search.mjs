@@ -5,6 +5,7 @@ import { callTaskApi } from './api-providers/gateway.mjs';
 import { buildOutputPacket } from './output-pipeline.mjs';
 import { CORE_IDENTITY, CONTEXT_SAFETY } from './system-prompts/identity.mjs';
 import { redactSensitiveText } from './privacy.mjs';
+import { assertChatRunCurrent } from './cognition/chat-run.mjs';
 
 // Tool definition
 export const MIMO_TOOLS = [
@@ -29,6 +30,7 @@ export function needsSearch(text) {
 }
 
 export async function webSearch(query) {
+  assertChatRunCurrent();
   query = redactSensitiveText(query);
   if (!CFG.tavilyKey) return bingSearch(query);
   try {
@@ -53,6 +55,7 @@ export async function webSearch(query) {
 }
 
 export async function bingSearch(query) {
+  assertChatRunCurrent();
   query = redactSensitiveText(query);
   try {
     const r = await fetch('https://cn.bing.com/search?q=' + encodeURIComponent(query) + '&form=QBLH&mkt=zh-CN', {

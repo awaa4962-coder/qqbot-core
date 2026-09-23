@@ -2,8 +2,24 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { callVisionText } from "../bridge/vision-provider.mjs";
+import { CFG } from "../bridge/config.mjs";
+import { withChatRun } from "../bridge/cognition/chat-run.mjs";
+import { invalidateMemoryPrivacyGeneration } from "../bridge/memory-profile/generation.mjs";
 
 describe("vision provider fallback", () => {
+  it("discards late visual text and does not try another provider after privacy changes", async () => {
+    let calls = 0;
+    const result = await withChatRun({ surface: "private", userId: 601 }, () => callVisionText({}, {
+      callSlot: async () => {
+        calls++;
+        invalidateMemoryPrivacyGeneration();
+        return { ok: true, raw: { choices: [{ message: { content: "stale description" } }] } };
+      },
+    }), { cfg: { ...CFG, friendWhitelist: [601], botBlacklist: [] } });
+    assert.equal(calls, 1);
+    assert.equal(result.kind, "cancelled");
+    assert.equal(result.text, null);
+  });
   it("uses fallback when primary returns reasoning without usable content", async () => {
     const calls = [];
     const result = await callVisionText({}, {

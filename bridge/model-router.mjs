@@ -6,6 +6,7 @@ import { buildOutputPacket } from "./output-pipeline.mjs";
 import { appendImageContext } from "./system-prompts/image-context.mjs";
 import { callChatSlot, chatError } from "./chat-outcome.mjs";
 import { traceStage } from "./diagnostics/message-trace.mjs";
+import { assertChatRunCurrent } from "./cognition/chat-run.mjs";
 
 export const MODEL_PROVIDERS = Object.freeze({
   PRIMARY: "mimo",
@@ -59,6 +60,7 @@ export async function callFallbackChat(request = {}) {
 }
 
 export async function executePrivateChatTask(request = {}, runtime = {}) {
+  assertChatRunCurrent();
   const task = request.task === MODEL_TASKS.FILE_CHAT ? MODEL_TASKS.FILE_CHAT : MODEL_TASKS.PRIVATE_CHAT;
   const imageUrls = request.imageUrls || [];
   let visionContext = request.options?.visionContext;
@@ -115,7 +117,7 @@ export async function executeChatTask(request = {}, runtime = {}) {
 }
 
 function finishChatResult(result, position) {
-  traceStage("output", { status: result.kind === "reply" ? "ok" : result.kind === "silence" ? "skipped" : "failed",
+  traceStage("output", { status: result.kind === "reply" ? "ok" : result.kind === "error" ? "failed" : "skipped",
     reason: result.kind === "reply" ? undefined : result.reason, position });
   return { ...result, position };
 }

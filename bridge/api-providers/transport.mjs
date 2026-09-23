@@ -4,6 +4,7 @@ import { monotonicNow } from "../runtime-clock.mjs";
 import { setTimeout as delay } from "node:timers/promises";
 import { redactProviderPayload } from "./request-privacy.mjs";
 import { redactSensitiveText } from "../privacy.mjs";
+import { chatRunSignal, chatRunStopReason } from "../cognition/chat-run.mjs";
 
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
@@ -15,6 +16,8 @@ export async function postProviderJson(provider, key, body, options = {}) {
   const safeBody = redactProviderPayload(body);
   let outcome = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const reason = chatRunStopReason();
+    if (reason) return { ok: false, cancelled: true, error: reason, status: 0, durationMs: Math.max(0, monotonicNow() - startedAt) };
     outcome = await postProviderJsonOnce(endpoint, headers, safeBody, provider, options);
     if (outcome.ok || !shouldRetry(outcome, attempt, maxAttempts)) break;
     await delay(Math.max(0, Number(options.retryDelayMs ?? 400)) * attempt);
@@ -30,7 +33,7 @@ async function postProviderJsonOnce(endpoint, headers, body, provider, options) 
       headers,
       body: JSON.stringify(body),
       redirect: "error",
-      signal: AbortSignal.timeout(options.timeoutMs || 30000),
+      signal: requestSignal(options.timeoutMs || 30000),
     });
     status = Number(response.status || 0);
     const data = await readResponseJson(response);
@@ -57,6 +60,12 @@ async function postProviderJsonOnce(endpoint, headers, body, provider, options) 
       durationMs: 0,
     };
   }
+}
+
+function requestSignal(timeoutMs) {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const chatSignal = chatRunSignal();
+  return chatSignal ? AbortSignal.any([timeout, chatSignal]) : timeout;
 }
 
 function shouldRetry(outcome, attempt, maxAttempts) {
