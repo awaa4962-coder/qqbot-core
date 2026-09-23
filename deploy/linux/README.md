@@ -13,13 +13,15 @@ pinned baselines and fixed-choice reviews live under
 `npm run replay:check` is offline. Generating a selected candidate explicitly
 calls the configured group model (with fallback), but never sends to QQ.
 
-### Chat Delivery Metadata (1.4.18 Candidate)
+### Chat Delivery Metadata (1.4.18)
 
 Numbered ordinary chat events use `$QQBOT_DATA_DIR/.qqfriend/chat-delivery.json`
 for atomic, fsynced metadata. It stores salted event keys and counters, not message
 bodies or plaintext account IDs. Run a single Bridge writer against this file.
 Missing event IDs retain the legacy nonpersistent behavior; they are not covered
 by restart deduplication. This is not a business-command outbox or exactly-once QQ delivery.
+Coverage starts when the upgraded runtime claims an event; it does not backfill
+delivery acknowledgements for replies sent by older versions.
 
 The Diagnostics page can filter and mark an unknown, partial or interrupted reply
 as manually checked. This never resends a message, removes its duplicate fence or

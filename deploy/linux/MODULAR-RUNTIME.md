@@ -226,6 +226,8 @@ Linux 诊断可核实未知/部分/中断，核实不发送、不写成功聊天
 
 上游 [NapCat v4.18.13 UploadFileStream](https://github.com/NapNeko/NapCatQQ/blob/v4.18.13/packages/napcat-onebot/action/stream/UploadFileStream.ts) 最终按 filename 写入公共临时目录，同名文件存在覆盖和旧清理计时器影响新文件的风险。本批对远端临时名加随机编号，保留 QQ 展示名；回执提供的流编号、大小和校验和需匹配。[上游测试](https://github.com/NapNeko/NapCatQQ/blob/v4.18.13/packages/napcat-onebot/action/stream/test_upload_stream.py) 确认成功外层为 OneBot 响应，内部完成态为 file_complete。Linux 候选已进行两份同名微型合成文件的真实流式传输验证，远端路径各自独立；仅写 NapCat 临时目录约 60 秒，不发 QQ 消息、不下载漫画，不重启 NapCat。
 
+上线记录（2026-09-23）：代码提交 `5481c8a` 已通过 GitHub CI 并部署 `1.4.18-delivery-state`，受限备份目录 0700、归档 0600；Bridge 重建后健康/就绪 200、QQ 登录与 JM 检查通过，新诊断可读、发送目录可写。私有配置和旧归档校验和不变，日报计划一份，NapCat 未重启、Windows 未更新。当前规则只覆盖新版实际接纳的事件，不回填旧版发送确认。隔离目录与生产数据同盘的 Linux 合成近满容量测试（9995 条、约 4.23 MB）四次持久化耗时 89–136ms；未读写真实聊天，不等同端到端或长期并发性能保证。
+
 ### F. P3 记忆、工具与图片
 
 入口：`bridge/memory-profile/`、`context-retriever.mjs`、`context/`、`vision.mjs`、`vision-provider.mjs`、`system-prompts/image-context.mjs`、`model-mimo.mjs`、`api-providers/request-privacy.mjs`。
