@@ -2,16 +2,15 @@
 import { LONG_GROUPS } from "./config.mjs";
 import { log, logE } from "./logger.mjs";
 import { callApiProvider, callTaskApi } from "./api-providers/gateway.mjs";
-import { webSearch, buildSearchFallback, MIMO_TOOLS } from "./search.mjs";
+import { MIMO_TOOLS } from "./search.mjs";
 import { tryMiMoVision } from "./vision.mjs";
-import { isLeakedReasoning } from "./thinking.mjs";
 import { buildCurrentInput } from "./context/messages.mjs";
-import { chatError, normalizeChatOutcome, parseChatOutcome } from "./chat-outcome.mjs";
+import { chatError, parseChatOutcome } from "./chat-outcome.mjs";
 import { buildModelPrompt } from "./system-prompts/compose.mjs";
 import { buildImageContextMessage } from "./system-prompts/image-context.mjs";
 import { buildInterjectionPrompt } from "./interjection-policy.mjs";
 import { selectPersonaCue } from "./persona-style.mjs";
-import { assertChatRunCurrent } from "./cognition/chat-run.mjs";
+import { runScopedChat } from "./chat-tools/runner.mjs";
 
 export function buildSystem(_userName, groupId, mood, options = {}) {
   return buildModelPrompt({ ...options, groupId, mood }).system;
@@ -84,22 +83,6 @@ async function buildMiMoMessages(history, imageUrls, userMsg, userName, options)
   return msgs;
 }
 
-async function parseInitialMiMoResult(system, msgs, response, maxTok, userMsg, userName, options) {
-  const choice = response?.choices?.[0];
-  if (!choice) return chatError();
-
-  const msg = choice.message;
-  if (msg?.tool_calls?.length) {
-    if (options.allowTools === false) {
-      log('MiMo tool_calls ignored because tools are disabled');
-      return chatError("tools_unavailable");
-    }
-    return normalizeChatOutcome(await handleToolCalls(system, msgs, msg, maxTok, userMsg, userName, options));
-  }
-
-  return parseChatOutcome(response, options);
-}
-
 export async function tryMiMo(userMsg, userName, history, imageUrls, groupId, isAtMe, mood, options = {}) {
   return (await tryMiMoResult(userMsg, userName, history, imageUrls, groupId, isAtMe, mood, options)).text;
 }
@@ -112,6 +95,7 @@ export async function tryMiMoResult(userMsg, userName, history, imageUrls, group
     replyMode: options.replyMode || 'chat',
     currentUserId: options.currentUserId,
     currentInput: options.currentInput,
+    toolSession: options.toolSession,
     thinking: options.replyMode === 'interjection' ? { type: 'disabled' } : undefined,
     personaCue: options.personaCue || selectPersonaCue(userMsg, {
       replyMode: options.replyMode || 'chat',
@@ -132,18 +116,13 @@ export async function tryMiMoResult(userMsg, userName, history, imageUrls, group
     mimoOptions.promptMetadata = prompt.metadata;
     const msgs = [prompt.dynamicMessage, ...await buildMiMoMessages(history, imageUrls, userMsg, userName, mimoOptions)];
     const system = prompt.system;
-    const response = await callMiMoApi(system, msgs, maxTok, {
-      allowTools: mimoOptions.allowTools,
-      thinking: mimoOptions.thinking,
-      providerId: mimoOptions.providerId,
-      task: mimoOptions.task,
-      position: mimoOptions.position,
-      reasoningSignals: mimoOptions.reasoningSignals,
-      usageContext: mimoOptions.usageContext,
-      selfContext: mimoOptions.selfContext,
+    return await runScopedChat({
+      messages: [{ role: 'system', content: system }, ...msgs],
+      maxTokens: maxTok, temperature: 0.7, timeoutMs: 60000,
+      thinking: mimoOptions.thinking, reasoningSignals: mimoOptions.reasoningSignals,
+      usageContext: mimoOptions.usageContext, selfContext: mimoOptions.selfContext,
       promptMetadata: prompt.metadata,
-    });
-    return await parseInitialMiMoResult(system, msgs, response, maxTok, userMsg, userName, mimoOptions);
+    }, { ...mimoOptions, userMessage: userMsg });
   } catch (e) {
     logE('tryMiMo error:', e.message);
     return chatError("request_failed");
@@ -156,105 +135,4 @@ function buildMiMoUsageContext(options) {
     task: options.task || (options.replyMode === "interjection" ? "interjection" : "group_chat"),
     position: options.position || "primary",
   };
-}
-
-// ── tool_call 多轮编排 ──
-
-function parseToolCallPayload(tc) {
-  try {
-    return JSON.parse(tc.function.arguments);
-  } catch (e) {
-    logE('MiMo tool_call args parse error:', e.message);
-    return null;
-  }
-}
-
-async function executeKnownTool(tc, roundLabel) {
-  assertChatRunCurrent();
-  if (tc.function?.name !== 'web_search') return null;
-  const args = parseToolCallPayload(tc);
-  if (!args?.query) return null;
-
-  log('MiMo web_search' + roundLabel + ' query chars:', String(args.query).length);
-  const result = await webSearch(args.query);
-  assertChatRunCurrent();
-  log('MiMo web_search' + roundLabel + ' result chars:', result.length);
-  return { role: 'tool', tool_call_id: tc.id, content: result };
-}
-
-async function collectToolResults(toolCalls, roundLabel = '') {
-  const toolResults = [];
-  for (const tc of toolCalls || []) {
-    const result = await executeKnownTool(tc, roundLabel);
-    if (result) toolResults.push(result);
-  }
-  return toolResults;
-}
-
-function getChoiceMessage(response) {
-  return response?.choices?.[0]?.message || null;
-}
-
-function usableReply(response, roundLabel) {
-  const reply = parseMiMoResponse(response);
-  if (reply && !isLeakedReasoning(reply)) return reply;
-  if (reply) log('MiMo ' + roundLabel + ' reply is leaked reasoning, using search fallback');
-  return null;
-}
-
-async function fallbackFromSearch(toolResults, toolResults2, userMsg, userName, roundLabel, modelOptions) {
-  log('MiMo ' + roundLabel + ' think-only, using search data as fallback');
-  return await buildSearchFallback(toolResults, toolResults2, userMsg, userName, modelOptions.selfContext);
-}
-
-async function handleSecondRoundTools(
-  system,
-  msgs,
-  msg,
-  toolResults,
-  choice2Message,
-  maxTok,
-  userMsg,
-  userName,
-  modelOptions
-) {
-  const toolCalls2 = choice2Message?.tool_calls || [];
-  if (!toolCalls2.length) return null;
-
-  log('MiMo tool_calls round 2:', toolCalls2.length, 'calls');
-  const toolResults2 = await collectToolResults(toolCalls2, ' r2');
-  if (!toolResults2.length) return null;
-
-  const d3 = await callMiMoApi(
-    system,
-    [...msgs, msg, ...toolResults, choice2Message, ...toolResults2],
-    maxTok,
-    modelOptions
-  );
-  return usableReply(d3, 'r3') || await fallbackFromSearch(toolResults, toolResults2, userMsg, userName, 'r3', modelOptions);
-}
-
-async function handleToolCalls(system, msgs, msg, maxTok, userMsg, userName, modelOptions = {}) {
-  log('MiMo tool_calls:', msg.tool_calls.length, 'calls');
-  const toolResults = await collectToolResults(msg.tool_calls);
-  if (!toolResults.length) return null;
-
-  const d2 = await callMiMoApi(system, [...msgs, msg, ...toolResults], maxTok, modelOptions);
-  const choice2Message = getChoiceMessage(d2);
-  if (!choice2Message) return null;
-
-  const r3Reply = await handleSecondRoundTools(
-    system,
-    msgs,
-    msg,
-    toolResults,
-    choice2Message,
-    maxTok,
-    userMsg,
-    userName,
-    modelOptions
-  );
-  if (r3Reply) return r3Reply;
-
-  return usableReply(d2, 'r2') || await fallbackFromSearch(toolResults, [], userMsg, userName, 'r2', modelOptions);
 }

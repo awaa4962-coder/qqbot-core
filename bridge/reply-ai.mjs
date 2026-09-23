@@ -97,7 +97,7 @@ async function runAiReply(group_id, userId, userMsg, userName, imageUrls, replyT
       userText: userMsg,
       assistantText: reply,
       outcome: "sent",
-      memorySources: contextPacket.retrieval.sources.filter(source => source.kind === "note"),
+      memorySources: replyMemorySources(contextPacket, outcome),
     });
   }
   log("aiReply done for", preferredUserName, "in", gid);
@@ -118,6 +118,10 @@ async function runAiReply(group_id, userId, userMsg, userName, imageUrls, replyT
 
 async function notifyGroupFailure(outcome, passive, groupId, replyTo) {
   if (outcome.kind === "error" && !passive) await sendMsg(groupId, MODEL_FAILURE_NOTICE, replyTo);
+}
+
+function replyMemorySources(packet, outcome) {
+  return [...packet.retrieval.sources.filter(source => source.kind === "note"), ...(outcome.memorySources || [])];
 }
 
 export function shouldGenerateProfile(uid, now = Date.now()) {

@@ -4,21 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.20-memory-evidence";
-export const VERSION_NAME = "memory-evidence";
+export const VERSION = "1.4.21-scoped-tools";
+export const VERSION_NAME = "scoped-tools";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "新增我的记忆、记住、纠正记忆和删除记忆；按群/私聊与本人隔离，明确条目带来源、有效期和修订，不自动保存私聊历史。",
-  "Linux 控制台可按范围与 QQ 查询、编辑记忆；管理员备注不冒充用户自述，冲突或保存失败不会显示成功。",
-  "聊天按需使用明确条目和带来源的话题线索，不再把旧规则画像当事实；纠正、遗忘和过期会影响下一次上下文，诊断只记元数据。",
+  "聊天可按需查询本人当前会话的明确记忆、历史原话和权限内功能状态；只读工具不能改资料、执行管理员命令或读取服务器文件。",
+  "主模型和 DeepSeek 备用共用有界工具流程；查询有来源、空结果不跨群，遗忘和撤销权限后停止旧结果。插话不调用工具。",
+  "公开搜索不再从文件或记忆拼接关键词；诊断显示工具名称、结果状态和请求预算，不公开参数、正文或思考。",
   "JM 群聊/私聊下载、大写 FS 与延迟清理保留；模型主备、思考档位、白名单和关系评分不变，Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Adds scoped self-memory commands for listing, saving, correcting and removing explicit notes with source, expiry and revision. Private history is not captured automatically.",
-  "The Linux console edits one user and scope at a time. Operator notes are not user statements; conflicts and failed writes are reported honestly.",
-  "Chat selects explicit notes and sourced topic hints instead of treating legacy heuristic profiles as facts. Corrections, expiry and erasure affect context; diagnostics retain metadata only.",
+  "Chat can query the current speaker's scoped notes, historical statements and permitted feature status. Read-only tools cannot edit data, run admin commands or read server files.",
+  "Primary and DeepSeek fallback share bounded tool orchestration. Empty results never widen scope; erasure or revoked permissions stop stale work. Interjections use no tools.",
+  "Public search cannot derive queries from files or memory. Diagnostics expose tool names, outcomes and request budgets, never arguments, bodies or private reasoning.",
   "Keeps group/private JM downloads, FS and delayed cleanup. Model routes, reasoning modes, allowlists and relationship scoring stay unchanged. Windows stays frozen.",
 ]);
 

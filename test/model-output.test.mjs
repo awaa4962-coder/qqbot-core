@@ -29,6 +29,8 @@ describe("MiMo output sizing", () => {
   it("keeps one dynamic layer and the same fixed prefix across search tool rounds", async () => {
     const oldFetch = globalThis.fetch;
     const oldSearchKey = CFG.tavilyKey;
+    const oldGroups = CFG.groupWhitelist;
+    CFG.groupWhitelist = [...oldGroups, NORMAL_GROUP_ID];
     const bodies = [];
     CFG.tavilyKey = "";
     globalThis.fetch = async (url, options) => {
@@ -42,7 +44,7 @@ describe("MiMo output sizing", () => {
       return { ok: true, status: 200, json: async () => ({ choices: [{ message }] }) };
     };
     try {
-      const result = await tryMiMo("synthetic question", "user", [], [], NORMAL_GROUP_ID, true, "正常", { currentUserId: "42", personaCue: "hiss" });
+      const result = await tryMiMo("搜索 synthetic subject", "user", [], [], NORMAL_GROUP_ID, true, "正常", { currentUserId: "42", personaCue: "hiss" });
       assert.equal(result, "synthetic final answer");
       assert.equal(bodies.length, 2);
       assert.equal(bodies[0].messages[0].content, bodies[1].messages[0].content);
@@ -52,7 +54,7 @@ describe("MiMo output sizing", () => {
         assert.equal(Object.hasOwn(body, "promptMetadata"), false);
       }
       assert.equal(bodies[1].messages.find(item => item.tool_calls)?.reasoning_content, "synthetic internal tool protocol");
-    } finally { globalThis.fetch = oldFetch; CFG.tavilyKey = oldSearchKey; }
+    } finally { globalThis.fetch = oldFetch; CFG.tavilyKey = oldSearchKey; CFG.groupWhitelist = oldGroups; }
   });
 
   it("keeps random interjection bounded and disables thinking", async () => {

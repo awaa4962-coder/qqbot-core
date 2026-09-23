@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { monotonicNow } from "../runtime-clock.mjs";
 
 const storage = new AsyncLocalStorage();
-const STAGES = new Set(["received", "admission", "route", "context", "model", "output", "send", "complete"]);
+const STAGES = new Set(["received", "admission", "route", "context", "model", "tool", "output", "send", "complete"]);
 const STATES = new Set(["started", "ok", "failed", "skipped"]);
 const REASONS = new Set([
   "accepted", "ingress_rate_limited", "scope_rate_limited", "priority_rate_limited",
@@ -16,9 +16,11 @@ const REASONS = new Set([
   "privacy_changed", "permission_changed", "preferences_changed", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping",
   "reply_duplicate", "delivery_state_unavailable", "forgotten_event", "stale_event",
   "quote_source_unknown", "quote_scope_mismatch", "quote_message_mismatch", "quote_privacy_unavailable", "quote_forgotten", "quote_content_empty",
+  "tool_model_round", "tool_completed", "tool_empty", "tool_denied", "tool_arguments", "tool_unavailable", "tool_reused", "tool_budget", "output_budget",
 ]);
 const ROUTES = new Set(["group_at", "interjection", "private_chat", "private_file", "command", "jm", "resource-transfer", "link-preview", "wordcloud", "preview", "file"]);
-const NUMBERS = ["chars", "messages", "pruned", "truncated", "images", "mentions", "httpStatus", "attempt", "reasoningLength", "promptTokens", "cachedTokens", "completionTokens", "probability", "selfFactsVersion", "capabilityCount", "turnRevision", "privacyRevision", "staticChars", "dynamicChars", "inputTextChars"];
+const NUMBERS = ["chars", "messages", "pruned", "truncated", "images", "mentions", "httpStatus", "attempt", "reasoningLength", "promptTokens", "cachedTokens", "completionTokens", "probability", "selfFactsVersion", "capabilityCount", "turnRevision", "privacyRevision", "staticChars", "dynamicChars", "inputTextChars",
+  "modelRounds", "transportAttempts", "toolCalls", "toolOutputChars", "requestedCompletionTokens", "toolResultChars", "modelRoundLimit", "toolLimit"];
 
 // Records accept metadata only. No caller can attach message bodies or raw errors.
 function safeDetails(details) {
@@ -39,6 +41,7 @@ function safeDetails(details) {
 
 function safePromptIdentity(details) {
   const safe = {};
+  if (["recall_memory", "read_bot_status", "web_search"].includes(details.toolName)) safe.toolName = details.toolName;
   if (/^[a-f0-9]{16}$/.test(details.promptFingerprint || "")) safe.promptFingerprint = details.promptFingerprint;
   if (/^(?:chat|interjection)-v\d{1,3}$/.test(details.promptVersion || "")) safe.promptVersion = details.promptVersion;
   return safe;

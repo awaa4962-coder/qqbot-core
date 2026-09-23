@@ -21,6 +21,7 @@ function redactMessage(message) {
   for (const field of ["content", "parts", "reasoning_content"]) {
     if (message[field] !== undefined) result[field] = redactContent(message[field]);
   }
+  if (message.type === "reasoning" && Array.isArray(message.summary)) result.summary = redactContent(message.summary);
   if (message.type === "function_call") result.arguments = redactArguments(message.arguments);
   if (message.type === "function_call_output") result.output = redactToolData(message.output);
   if (Array.isArray(message.tool_calls)) {
@@ -40,6 +41,7 @@ function redactContent(content) {
     if (!part || typeof part !== "object") return part;
     const result = { ...part };
     if (typeof part.text === "string") result.text = redactSensitiveText(part.text);
+    if (part.type === "refusal" && typeof part.refusal === "string") result.refusal = redactSensitiveText(part.refusal);
     if (part.type === "tool_result") result.content = redactContent(part.content);
     if (part.type === "tool_use") result.input = redactToolData(part.input);
     if (part.functionCall) {

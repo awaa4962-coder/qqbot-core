@@ -5,7 +5,7 @@ import { callTaskApi } from './api-providers/gateway.mjs';
 import { buildOutputPacket } from './output-pipeline.mjs';
 import { CORE_IDENTITY, CONTEXT_SAFETY } from './system-prompts/identity.mjs';
 import { redactSensitiveText } from './privacy.mjs';
-import { assertChatRunCurrent } from './cognition/chat-run.mjs';
+import { assertChatRunCurrent, chatRunSignal } from './cognition/chat-run.mjs';
 
 // Tool definition
 export const MIMO_TOOLS = [
@@ -29,15 +29,15 @@ export function needsSearch(text) {
   return false;
 }
 
-export async function webSearch(query) {
-  assertChatRunCurrent();
+export async function webSearch(query, options = {}) {
+  assertSearchCurrent(options);
   query = redactSensitiveText(query);
-  if (!CFG.tavilyKey) return bingSearch(query);
+  if (!CFG.tavilyKey) return bingSearch(query, options);
   try {
     const r = await fetch('https://api.tavily.com/search', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ api_key: CFG.tavilyKey, query: query, max_results: 5, include_answer: true }),
-      signal: AbortSignal.timeout(12000),
+      signal: searchSignal(12000, options.signal), redirect: 'error',
     });
     if (!r.ok) throw new Error('Tavily HTTP ' + r.status);
     const d = await r.json();
@@ -48,19 +48,19 @@ export async function webSearch(query) {
       return out;
     }
     return '未找到相关结果';
-  } catch (e) {
-    logE('webSearch (Tavily) error:', e.message, '-> falling back to Bing');
-    return await bingSearch(query);
+  } catch {
+    logE('webSearch (Tavily) failed; trying public fallback');
+    return await bingSearch(query, options);
   }
 }
 
-export async function bingSearch(query) {
-  assertChatRunCurrent();
+export async function bingSearch(query, options = {}) {
+  assertSearchCurrent(options);
   query = redactSensitiveText(query);
   try {
     const r = await fetch('https://cn.bing.com/search?q=' + encodeURIComponent(query) + '&form=QBLH&mkt=zh-CN', {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      signal: AbortSignal.timeout(10000),
+      signal: searchSignal(10000, options.signal), redirect: 'error',
     });
     if (!r.ok) throw new Error('Bing HTTP ' + r.status);
     const html = await r.text();
@@ -81,8 +81,14 @@ export async function bingSearch(query) {
     }
     if (results.length) { log('bingSearch: got', results.length, 'results'); return '搜索结果 (Bing):\n' + results.join('\n'); }
     return '未找到相关结果';
-  } catch (e) { logE('bingSearch error:', e.message); return '搜索暂时不可用: ' + e.message; }
+  } catch { logE('bingSearch failed'); return '搜索暂时不可用'; }
 }
+
+function searchSignal(timeoutMs, external) {
+  return AbortSignal.any([AbortSignal.timeout(timeoutMs), chatRunSignal(), external].filter(Boolean));
+}
+
+function assertSearchCurrent(options) { assertChatRunCurrent(); options.signal?.throwIfAborted(); }
 
 export async function buildSearchFallback(toolResults, toolResults2, userMsg, userName, selfContext) {
   const allResults = (toolResults || []).concat(toolResults2 || []);

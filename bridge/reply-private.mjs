@@ -68,7 +68,7 @@ async function runPrivateReply(userId, text) {
   if (reply) {
     const result = await sendPrivateMsg(uid, reply);
     if (isSuccessfulOutbound(result)) {
-      recordPrivateTurn({ user_id: uid, message_id: null, memorySources: context.memorySources }, text, reply);
+      recordPrivateTurn({ user_id: uid, message_id: null, memorySources: context.memorySources }, text, reply, outcome);
       log("privateReply sent to", uid);
       await maybeSendPrivateSticker(uid, text, reply, context.history);
     }
@@ -117,7 +117,7 @@ async function handlePrivateFileMessage(ctx) {
   if (reply) {
     const result = await sendPrivateMsg(ctx.user_id, reply);
     if (isSuccessfulOutbound(result)) {
-      recordPrivateTurn(ctx, fullMsg, reply);
+      recordPrivateTurn(ctx, fullMsg, reply, outcome);
       log("private file reply sent to", ctx.user_id);
     }
   }
@@ -141,7 +141,7 @@ async function handlePrivateChatMessage(ctx) {
   if (reply) {
     const result = await sendPrivateMsg(ctx.user_id, reply);
     if (isSuccessfulOutbound(result)) {
-      recordPrivateTurn(ctx, fullMsg, reply);
+      recordPrivateTurn(ctx, fullMsg, reply, outcome);
       log("private reply sent to", ctx.user_id);
       await maybeSendPrivateSticker(ctx.user_id, fullMsg, reply, history);
     }
@@ -169,7 +169,7 @@ function buildPrivateReplyContext(ctx, userMsg) {
   return { history: contextPacket.messages, userName, currentInput: contextPacket.currentInput, memorySources: ctx.memorySources };
 }
 
-function recordPrivateTurn(ctx, userText, assistantText) {
+function recordPrivateTurn(ctx, userText, assistantText, outcome = {}) {
   if (chatRunStopReason()) return;
   recordConversationTurn({
     uid: ctx.user_id,
@@ -178,7 +178,7 @@ function recordPrivateTurn(ctx, userText, assistantText) {
     userText,
     assistantText,
     outcome: "sent",
-    memorySources: ctx.memorySources || [],
+    memorySources: [...(ctx.memorySources || []), ...(outcome.memorySources || [])],
   });
 }
 

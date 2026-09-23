@@ -191,7 +191,7 @@ function buildTurn(event, userSummary, assistantSummary, now) {
     outcome: String(event.outcome || "sent"),
     createdAt: now,
     ...(Array.isArray(event.memorySources) ? { memorySources: event.memorySources.filter(source => /^[a-f0-9]{12}$/.test(source.noteId || "") && Number.isSafeInteger(source.revision))
-      .slice(0, 4).map(source => ({ noteId: source.noteId, revision: source.revision })) } : {}),
+      .slice(0, 32).map(source => ({ noteId: source.noteId, revision: source.revision })) } : {}),
   };
 }
 

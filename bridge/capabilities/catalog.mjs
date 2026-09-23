@@ -23,11 +23,11 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
     id: "chat.reply",
     category: "chat",
     name: "聊天回复",
-    summary: "结合最近对话和安全画像进行群聊或私聊回复。",
+    summary: "结合最近对话、明确记忆与来源资料回复；接口支持工具时可按需查询本人当前会话记录和权限内状态，只读不代替管理命令。",
     interaction: "automatic",
     scopes: ["group", "private"],
     examples: ["@夜星 这件事你怎么看"],
-    keywords: ["聊天", "对话", "回复", "自动回复"],
+    keywords: ["聊天", "对话", "回复", "自动回复", "回忆", "只读查询"],
   }),
   capability({
     id: "vision.context",

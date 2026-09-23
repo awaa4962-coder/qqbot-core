@@ -46,6 +46,7 @@ async function invokeApiProvider(providerId, request = {}, options = {}) {
     validateProviderEndpoint(provider);
     const key = options.key !== undefined ? String(options.key || "").trim() : readProviderSecret(provider, options);
     const prepared = withBotSelfContext(request, provider, options);
+    request.validatePrepared?.(prepared.request);
     if (request.promptMetadata) traceStage("context", { status: "ok", ...request.promptMetadata,
       inputTextChars: measurePromptText(prepared.request.messages) });
     if (prepared.snapshot) traceStage("model", { provider: provider.id, task: options.usageTask,

@@ -1,6 +1,6 @@
 {
   "name": "qqfriend",
-  "version": "1.4.20-memory-evidence",
+  "version": "1.4.21-scoped-tools",
   "description": "夜星 QQ 机器人桥接器",
   "type": "module",
   "main": "napcat_bridge.mjs",

@@ -16,7 +16,7 @@ export async function postProviderJson(provider, key, body, options = {}) {
   const safeBody = redactProviderPayload(body);
   let outcome = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const reason = chatRunStopReason();
+    const reason = chatRunStopReason() || requestStopReason(options);
     if (reason) return { ok: false, cancelled: true, error: reason, status: 0, durationMs: Math.max(0, monotonicNow() - startedAt) };
     outcome = await postProviderJsonOnce(endpoint, headers, safeBody, provider, options);
     if (outcome.ok || !shouldRetry(outcome, attempt, maxAttempts)) break;
@@ -33,10 +33,10 @@ async function postProviderJsonOnce(endpoint, headers, body, provider, options) 
       headers,
       body: JSON.stringify(body),
       redirect: "error",
-      signal: requestSignal(options.timeoutMs || 30000),
+      signal: requestSignal(options.timeoutMs || 30000, options.signal),
     });
     status = Number(response.status || 0);
-    const data = await readResponseJson(response);
+    const data = await readResponseJson(response, options.maxResponseBytes);
     if (response.ok === false) {
       return {
         ok: false,
@@ -57,18 +57,25 @@ async function postProviderJsonOnce(endpoint, headers, body, provider, options) 
       status,
       error: safeTransportError(error),
       invalidResponse: error?.code === "INVALID_PROVIDER_JSON",
+      responseTooLarge: error?.code === "PROVIDER_RESPONSE_LIMIT",
       durationMs: 0,
     };
   }
 }
 
-function requestSignal(timeoutMs) {
+function requestSignal(timeoutMs, external) {
   const timeout = AbortSignal.timeout(timeoutMs);
   const chatSignal = chatRunSignal();
-  return chatSignal ? AbortSignal.any([timeout, chatSignal]) : timeout;
+  return AbortSignal.any([timeout, chatSignal, external].filter(Boolean));
+}
+
+function requestStopReason(options) {
+  try { return options.beforeAttempt?.() || ""; }
+  catch { return "tool_budget"; }
 }
 
 function shouldRetry(outcome, attempt, maxAttempts) {
+  if (outcome.responseTooLarge) return false;
   if (attempt >= maxAttempts) return false;
   const status = Number(outcome?.status || 0);
   return status === 0 || RETRYABLE_STATUS.has(status) ||
@@ -89,19 +96,52 @@ export function buildProviderHeaders(provider, key) {
   return headers;
 }
 
-async function readResponseJson(response) {
+async function readResponseJson(response, maxBytes) {
   try {
-    const data = typeof response.text !== "function" && typeof response.json === "function"
-      ? await response.json()
-      : JSON.parse(await response.text());
+    const limit = Number.isSafeInteger(maxBytes) && maxBytes > 0 ? maxBytes : 0;
+    const data = await readResponseData(response, limit);
     if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("invalid response shape");
     return data;
-  } catch {
+  } catch (cause) {
+    if (cause?.code === "PROVIDER_RESPONSE_LIMIT") throw cause;
     const error = new Error("接口未返回有效 JSON 对象");
     error.code = "INVALID_PROVIDER_JSON";
     throw error;
   }
 }
+
+async function readResponseData(response, limit) {
+  if (limit && response.body?.getReader) return JSON.parse(await readBoundedStream(response.body, limit));
+  if (typeof response.text === "function") {
+    const text = await response.text();
+    if (limit && Buffer.byteLength(text) > limit) throw responseLimit();
+    return JSON.parse(text);
+  }
+  const data = await response.json();
+  if (limit && Buffer.byteLength(JSON.stringify(data)) > limit) throw responseLimit();
+  return data;
+}
+
+async function readBoundedStream(body, limit) {
+  const reader = body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > limit) {
+        Promise.resolve(reader.cancel()).catch(() => {});
+        throw responseLimit();
+      }
+      chunks.push(Buffer.from(value));
+    }
+    return Buffer.concat(chunks, total).toString("utf8");
+  } finally { reader.releaseLock(); }
+}
+
+function responseLimit() { return Object.assign(new Error("模型接口响应超过接收大小上限"), { code: "PROVIDER_RESPONSE_LIMIT" }); }
 
 function formatErrorSuffix(data) {
   const message = data?.error?.message || data?.message || "";

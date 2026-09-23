@@ -7,6 +7,7 @@ import { appendImageContext } from "./system-prompts/image-context.mjs";
 import { callChatSlot, chatError } from "./chat-outcome.mjs";
 import { traceStage } from "./diagnostics/message-trace.mjs";
 import { assertChatRunCurrent, noteChatOutcome } from "./cognition/chat-run.mjs";
+import { createChatToolSession } from "./chat-tools/session.mjs";
 
 export const MODEL_PROVIDERS = Object.freeze({
   PRIMARY: "mimo",
@@ -76,6 +77,7 @@ export async function executePrivateChatTask(request = {}, runtime = {}) {
     groupId: null,
     history: buildModelFallbackHistory(request.history, imageUrls, visionContext),
   };
+  prepared.options = withToolSession(prepared, task);
   const callSlot = runtime.callSlot || callFallbackChat;
   for (const position of ["primary", "fallback"]) {
     const result = await callChatSlot(callSlot, { ...prepared, position });
@@ -102,6 +104,7 @@ export async function callInterjectionFallback(request = {}) {
 }
 
 export async function executeChatTask(request = {}, runtime = {}) {
+  request = { ...request, options: withToolSession(request, request.options?.replyMode === "interjection" ? "interjection" : "group_chat") };
   const primaryChat = runtime.primaryChat || callPrimaryChat;
   const primary = await callChatSlot(primaryChat, request);
   if (primary.kind !== "error") return finishChatResult(primary, "primary");
@@ -138,9 +141,20 @@ function buildFallbackChatRequest(request) {
     options: {
       currentUserId: request.options?.currentUserId,
       currentInput: request.options?.currentInput,
+      toolSession: request.options?.toolSession,
+      allowTools: request.options?.allowTools,
       personaCue: request.options?.personaCue,
     },
   };
+}
+
+function withToolSession(request, task) {
+  const options = request.options || {};
+  const surface = request.groupId === null || request.groupId === undefined ? "private" : "group";
+  return { ...options, toolSession: options.toolSession || createChatToolSession({
+    scope: { surface, groupId: request.groupId, userId: options.currentUserId }, task,
+    userMessage: request.userMsg, allowTools: task === "interjection" ? false : options.allowTools,
+  }) };
 }
 
 export function buildModelFallbackHistory(history, imageUrls, visionContext) {

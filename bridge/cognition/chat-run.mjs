@@ -34,6 +34,11 @@ export function chatRunSignal() {
   return storage.getStore()?.signal;
 }
 
+export function currentChatScope() {
+  const scope = storage.getStore()?.scope;
+  return scope ? { ...scope } : null;
+}
+
 export function chatRunPrivacyChanged() {
   const run = storage.getStore();
   return Boolean(run && run.privacyGeneration !== getMemoryPrivacyGeneration());
@@ -124,7 +129,8 @@ function createRun(scope, options) {
   const now = options.now || monotonicNow;
   const cfg = options.cfg || CFG;
   const expiresAt = now() + Math.max(1000, Math.min(300000, Number(options.maxDurationMs || 180000)));
-  const run = { revision: ++revision, privacyGeneration: getMemoryPrivacyGeneration(), reason: "" };
+  const run = { revision: ++revision, privacyGeneration: getMemoryPrivacyGeneration(), reason: "",
+    scope: { surface: scope.surface, groupId: scope.groupId, userId: scope.userId, currentMessageId: scope.messageId } };
   const controller = new globalThis.AbortController();
   run.signal = controller.signal;
   run.cancel = reason => { run.reason ||= reason; controller.abort(); };

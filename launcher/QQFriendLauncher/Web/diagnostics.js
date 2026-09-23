@@ -16,16 +16,22 @@ import { initializeDeliveries } from "./deliveries.js";
   let replay = null;
   let loaded = false;
   const busy = new Set();
+  const toolNames = { recall_memory: "记忆检索", read_bot_status: "机器人状态", web_search: "公开搜索" };
+  const toolReasons = {
+    tool_model_round: "模型轮次", tool_completed: "工具完成", tool_empty: "无结果", tool_denied: "权限拒绝",
+    tool_arguments: "参数无效", tool_unavailable: "工具不可用", tool_reused: "复用结果", tool_budget: "达到预算上限",
+  };
   const labels = {
+    ...toolReasons,
     processing: "处理中", sent: "已发送", partial: "部分成功", failed: "失败", silent: "主动不回复", ignored: "未触发", no_reply: "未产生回复", processed: "处理结束",
-    received: "接收", admission: "准入", route: "路由", context: "上下文", model: "模型", output: "正文检查", send: "发送", complete: "结束",
+    received: "接收", admission: "准入", route: "路由", context: "上下文", model: "模型", tool: "工具", output: "正文检查", send: "发送", complete: "结束",
     started: "开始", ok: "成功", skipped: "跳过", primary: "主模型", fallback: "备用模型", local: "本地恢复", unavailable: "模型不可用", model_unavailable: "模型未产生可用正文",
     group_at: "群聊 @", interjection: "自动插话", private_chat: "私聊", private_file: "私聊文件", command: "命令", preview: "链接预览", file: "文件", jm: "JM", "resource-transfer": "资源转发", "link-preview": "链接预览", wordcloud: "词云", "conversation-summary": "成员聊天总结",
     group_not_whitelisted: "群不在白名单", blacklisted_user: "发送人被屏蔽", self_message: "机器人自身消息", duplicate_event: "重复投递", duplicate_text: "复读消息", private_not_whitelisted: "私聊不在白名单",
     ingress_rate_limited: "入口限流", scope_rate_limited: "当前会话限流", priority_rate_limited: "优先通道限流",
     accepted: "已接纳", preview_sent: "链接预览抑制插话", mentioned: "已进入 @ 回复", short: "消息太短", empty: "内容为空", no_probability: "该场景不自动插话", cooldown: "插话冷却中", random: "本次未命中插话概率", triggered: "触发插话",
     empty_content: "模型正文为空", empty_content_with_reasoning: "只有推理，没有正文", unsafe_reasoning: "正文含推理内容", secret_leak: "正文安全检查未通过", send_failed: "发送重试后失败", exception: "处理异常",
-    intentional_silence: "模型决定不插话", invalid_interjection: "插话输出格式无效", request_failed: "模型请求失败", tools_unavailable: "本轮工具未开放",
+    intentional_silence: "模型决定不插话", invalid_interjection: "插话输出格式无效", request_failed: "模型请求失败", tools_unavailable: "本轮工具未开放", output_budget: "模型正文超过输出上限",
     cancelled: "已停止", privacy_changed: "记忆已清理，旧回复作废", permission_changed: "会话权限已变化", preferences_changed: "称呼或偏好已更新", reply_superseded: "已有更新的回复请求", reply_expired: "回复处理超时", reply_capacity: "进行中的回复过多", bridge_stopping: "服务正在停止",
     unknown: "回执未知", send_unknown: "发送结果未知，请先核实",
     reply_duplicate: "这条消息已处理，不再重发", delivery_state_unavailable: "发送状态无法保存，已停止回复", forgotten_event: "已清理的旧事件", stale_event: "超过保留期的旧事件",
@@ -108,12 +114,13 @@ import { initializeDeliveries } from "./deliveries.js";
     let previous = 0;
     for (const step of item.stages) {
       const li = document.createElement("li");
-      li.textContent = `${label(step.stage)} · ${label(step.status)} · +${duration(step.elapsedMs - previous)}`;
+      const status = step.stage === "tool" && !["started", "ok", "failed", "skipped"].includes(step.status) ? "待判断" : label(step.status);
+      li.textContent = `${label(step.stage)} · ${status} · +${duration(step.elapsedMs - previous)}`;
       previous = step.elapsedMs;
       const detail = document.createElement("span");
       detail.textContent = stepDetails(step);
       li.append(detail); list.append(li);
-      if (step.sources?.length) {
+      if (step.stage !== "tool" && step.sources?.length) {
         const sources = document.createElement("span");
         sources.className = "trace-sources";
         sources.textContent = step.sources.map(sourceLabel).join("；");
@@ -133,6 +140,11 @@ import { initializeDeliveries } from "./deliveries.js";
   }
 
   function stepDetails(step) {
+    const tools = toolDetails(step);
+    if (step.stage === "tool") {
+      const reason = typeof step.reason === "string" && Object.hasOwn(toolReasons, step.reason) ? toolReasons[step.reason] : "";
+      return [reason, ...tools].filter(Boolean).join(" · ");
+    }
     return [step.reason && label(step.reason), step.provider, step.position && label(step.position), step.route && label(step.route), step.model,
       step.selfFactsVersion && `运行事实 v${step.selfFactsVersion} · ${step.capabilityCount || 0} 项能力`,
       step.turnRevision && `回复修订 ${step.turnRevision}`, step.privacyRevision !== undefined && `隐私代次 ${step.privacyRevision}`,
@@ -143,7 +155,28 @@ import { initializeDeliveries } from "./deliveries.js";
       step.pruned > 0 && `裁剪 ${step.pruned} 层`, step.httpStatus > 0 && `HTTP ${step.httpStatus}`,
       step.attempt && `第 ${step.attempt} 次`, step.probability !== undefined && `概率 ${Math.round(step.probability * 100)}%`,
       step.promptTokens > 0 && `输入 ${step.promptTokens} / 缓存 ${step.cachedTokens || 0} token`,
+      ...tools,
     ].filter(Boolean).join(" · ");
+  }
+
+  function toolDetails(step) {
+    const count = key => {
+      const value = step[key];
+      return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1e9 ? String(value) : "";
+    };
+    const budget = (title, countKey, limitKey) => {
+      const used = count(countKey); const limit = count(limitKey);
+      if (used) return `${title} ${used}${limit ? " / " + limit : ""}`;
+      return limit ? `${title}上限 ${limit}` : "";
+    };
+    return [
+      typeof step.toolName === "string" && Object.hasOwn(toolNames, step.toolName) && toolNames[step.toolName],
+      budget("模型轮次", "modelRounds", "modelRoundLimit"), budget("工具调用", "toolCalls", "toolLimit"),
+      count("transportAttempts") && `传输尝试 ${count("transportAttempts")} 次`,
+      count("toolResultChars") && `本次结果 ${count("toolResultChars")} 字符`,
+      count("toolOutputChars") && `工具累计输出 ${count("toolOutputChars")} 字符`,
+      count("requestedCompletionTokens") && `累计请求额度 ${count("requestedCompletionTokens")} token（非实际用量）`,
+    ];
   }
 
   function duration(ms) { return ms >= 1000 ? `${(ms / 1000).toFixed(1)} 秒` : `${Math.max(0, Math.round(ms))} ms`; }

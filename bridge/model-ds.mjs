@@ -1,31 +1,15 @@
 // Private/file chat and group fallback; task routes select the actual provider.
 import { LONG_GROUPS } from "./config.mjs";
-import { log, logE } from "./logger.mjs";
-import { webSearch, needsSearch } from "./search.mjs";
+import { logE } from "./logger.mjs";
 import { buildModelPrompt } from "./system-prompts/compose.mjs";
-import { callApiProvider, callTaskApi } from "./api-providers/gateway.mjs";
+import { runScopedChat } from "./chat-tools/runner.mjs";
 import { buildCurrentInput } from "./context/messages.mjs";
-import { chatError, parseChatOutcome } from "./chat-outcome.mjs";
+import { chatError } from "./chat-outcome.mjs";
 import { selectPersonaCue } from "./persona-style.mjs";
 
-async function buildSearchContext(userMsg, options) {
-  // Attachment contents are model input, not permission to publish a search query.
-  if (options.task === 'file_chat') return '';
-  if (needsSearch(userMsg)) {
-    log('DS pre-search input chars:', userMsg.length);
-    const searchResult = await webSearch(userMsg);
-    if (searchResult && searchResult !== '未找到相关结果' && searchResult !== '搜索功能未配置') {
-      log('DS pre-search result chars:', searchResult.length);
-      return '[联网搜索结果]\n' + searchResult + '\n\n请基于以上搜索结果回答用户问题。如果搜索结果不相关，请诚实说明。\n\n';
-    }
-  }
-  return '';
-}
-
-function buildDeepSeekMessages(userMsg, userName, history, searchCtx, options) {
+function buildDeepSeekMessages(userMsg, userName, history, options) {
   const msgs = [];
   if (history?.length) msgs.push.apply(msgs, history);
-  if (searchCtx) msgs.push({ role: 'user', content: searchCtx });
   const currentInput = typeof options.currentInput === 'string' ? options.currentInput : buildCurrentInput(userName, userMsg, options.currentUserId);
   msgs.push({ role: 'user', content: currentInput });
   return msgs;
@@ -44,8 +28,7 @@ export async function tryDeepSeek(userMsg, userName, history, groupId, isAtMe, m
 export async function tryDeepSeekResult(userMsg, userName, history, groupId, isAtMe, mood, options = {}) {
   if (isAtMe === undefined) isAtMe = true;
   const maxTok = resolveDeepSeekMaxTokens(groupId, isAtMe);
-  const searchCtx = await buildSearchContext(userMsg, options);
-  const msgs = buildDeepSeekMessages(userMsg, userName, history, searchCtx, options);
+  const msgs = buildDeepSeekMessages(userMsg, userName, history, options);
 
   const personaCue = options.personaCue || selectPersonaCue(userMsg, {
     replyMode: options.replyMode || "chat",
@@ -67,15 +50,8 @@ export async function tryDeepSeekResult(userMsg, userName, history, groupId, isA
       selfContext: { surface: privateRequest ? "private" : "group", groupId, userId: options.currentUserId },
       promptMetadata: prompt.metadata,
     };
-    const result = options.providerId
-      ? await callApiProvider(options.providerId, request)
-      : await callTaskApi(task, options.position || (privateRequest ? "primary" : "fallback"), request);
-    if (!result.ok) return chatError();
-    return parseChatOutcome(result.raw, {
-      provider: result.provider || "deepseek",
-      finishReason: result.finishReason,
-      usage: result.usage,
-    });
+    return await runScopedChat(request, { ...options, task, userMessage: userMsg,
+      position: options.position || (privateRequest ? "primary" : "fallback") });
   } catch (e) {
     logE('tryDeepSeek error:', e.message);
     return chatError("request_failed");
