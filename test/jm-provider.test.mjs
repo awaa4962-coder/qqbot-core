@@ -104,6 +104,34 @@ describe("jm provider", () => {
     await fsp.rm(tempRoot, { recursive: true, force: true });
   });
 
+  it("keeps FS archives and reports unconfirmed uploads without another upload", async () => {
+    let tempRoot = "";
+    let zipPathSeen = "";
+    let uploads = 0;
+    const sent = [];
+    try {
+      const result = await transferJmToPrivate({
+        jmId: "123457", userId: 300, zipPassword: "FS",
+        sender: async (_id, text) => sent.push(text),
+        runner: async (_jmId, outputDir) => {
+          tempRoot = path.dirname(outputDir);
+          await fsp.writeFile(path.join(outputDir, "001.jpg"), "synthetic");
+          return { ok: true };
+        },
+        zipper: async (_sourceDir, zipPath, options) => {
+          assert.equal(options.password, "FS"); zipPathSeen = zipPath;
+          await fsp.writeFile(zipPath, "synthetic zip");
+        },
+        uploader: async () => { uploads++; return { status: "async", retcode: 1 }; },
+      });
+      assert.equal(result.reason, "upload_unconfirmed");
+      assert.equal(uploads, 1);
+      assert.equal(fs.existsSync(zipPathSeen), true);
+      assert.ok(sent.some(text => text.includes("结果未确认") && text.includes("1 天")));
+      assert.ok(!sent.some(text => text.includes("已转发")));
+    } finally { if (tempRoot) await fsp.rm(tempRoot, { recursive: true, force: true }); }
+  });
+
   it("allows private jm only for jm user whitelist", async () => {
     let runnerCalled = false;
     const sent = [];

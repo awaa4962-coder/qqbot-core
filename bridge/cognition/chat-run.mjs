@@ -5,13 +5,14 @@ import { messageRouteRejection } from "../event-admission.mjs";
 import { getMemoryPrivacyGeneration, getUserMemoryGeneration } from "../memory-profile/generation.mjs";
 import { monotonicNow } from "../runtime-clock.mjs";
 import { traceStage } from "../diagnostics/message-trace.mjs";
+import { chatDeliveryLedger } from "./delivery-ledger.mjs";
 
 const storage = new AsyncLocalStorage();
 const active = new Map();
 const MAX_ACTIVE_RUNS = 1000;
 let revision = 0;
 let stopping = false;
-export const CHAT_CANCEL_REASONS = new Set(["privacy_changed", "permission_changed", "preferences_changed", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping"]);
+export const CHAT_CANCEL_REASONS = new Set(["privacy_changed", "permission_changed", "preferences_changed", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping", "reply_duplicate", "delivery_state_unavailable"]);
 
 function permitted(scope, cfg) {
   if (!/^\d{1,20}$/.test(String(scope.userId || ""))) return false;
@@ -48,6 +49,22 @@ export function assertChatRunCurrent() {
   if (reason) throw Object.assign(new Error(reason), { code: "CHAT_CANCELLED" });
 }
 
+export function noteChatOutcome(outcome) {
+  const run = storage.getStore();
+  if (run) run.outcome = outcome.kind;
+}
+
+export function recordChatSendAttempt() { return recordDelivery("attempt"); }
+export function recordChatSendReceipt(kind) { return recordDelivery("receipt", kind); }
+export function recordChatSendRejection() { return recordDelivery("reject"); }
+
+function recordDelivery(method, value) {
+  const run = storage.getStore();
+  if (!run?.deliveryKey) return true;
+  try { run.ledger[method](run.deliveryKey, value); return true; }
+  catch { run.cancel("delivery_state_unavailable"); return false; }
+}
+
 // One scope owns one active generation; transports inherit this boundary across awaits.
 export async function withChatRun(scope, handler, options = {}) {
   if (stopping) {
@@ -60,8 +77,13 @@ export async function withChatRun(scope, handler, options = {}) {
     traceStage("output", { status: "skipped", reason: "reply_capacity" });
     return chatCancellation("reply_capacity");
   }
-  if (previous) previous.cancel("reply_superseded");
   const run = createRun(scope, options);
+  const stopped = prepareRunDelivery(run, scope, options);
+  if (stopped) {
+    traceStage("output", { status: "skipped", reason: stopped });
+    return chatCancellation(stopped);
+  }
+  if (previous) previous.cancel("reply_superseded");
   active.set(key, run);
   return await storage.run(run, async () => {
     traceStage("context", { status: "started", turnRevision: run.revision, privacyRevision: run.privacyGeneration });
@@ -71,12 +93,31 @@ export async function withChatRun(scope, handler, options = {}) {
       return run.check() ? chatCancellation(run.reason) : result;
     } catch (error) {
       if (run.check()) return chatCancellation(run.reason);
+      run.outcome ||= "error";
       throw error;
     } finally {
+      finishRunDelivery(run);
       if (run.check()) traceStage("output", { status: "skipped", reason: run.reason, turnRevision: run.revision });
       if (active.get(key) === run) active.delete(key);
     }
   });
+}
+
+function prepareRunDelivery(run, scope, options) {
+  if (run.check()) return run.reason;
+  if (scope.messageId === undefined || scope.messageId === null || scope.messageId === "") return "";
+  try {
+    run.ledger = options.ledger || chatDeliveryLedger();
+    const ticket = run.ledger.claim(scope);
+    run.deliveryKey = ticket.key;
+    return ticket.ok ? "" : ticket.reason;
+  } catch { return "delivery_state_unavailable"; }
+}
+
+function finishRunDelivery(run) {
+  if (!run.deliveryKey) return;
+  try { run.ledger.finish(run.deliveryKey, run.outcome, Boolean(run.check())); }
+  catch { run.cancel("delivery_state_unavailable"); }
 }
 
 function createRun(scope, options) {

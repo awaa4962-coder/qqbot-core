@@ -26,6 +26,7 @@ import { replayService } from "../diagnostics/replay.mjs";
 import { summaryManager } from "./summary-manager.mjs";
 import { adminTaskManager } from "./task-manager.mjs";
 import { conversationSummaryService } from "../features/conversation-summary/service.mjs";
+import { buildChatDeliverySnapshot, resolveChatDelivery } from "../cognition/delivery-ledger.mjs";
 
 const GET_ROUTES = new Map([
   ["/admin/status", handleStatusRoute],
@@ -43,6 +44,7 @@ const GET_ROUTES = new Map([
   ["/admin/memes", handleMemesReadRoute],
   ["/admin/stickers", handleStickersReadRoute],
   ["/admin/diagnose/traces", handleTracesRoute],
+  ["/admin/diagnose/deliveries", handleDeliveriesReadRoute],
   ["/admin/diagnose/replay", handleReplayReadRoute],
   ["/admin/summaries", handleSummariesReadRoute],
   ["/admin/tasks", handleTasksReadRoute],
@@ -55,6 +57,7 @@ const POST_ROUTES = new Map([
   ["/admin/memes", handleMemesSaveRoute],
   ["/admin/stickers", handleStickersSaveRoute],
   ["/admin/diagnose/reply", handleReplyDiagnoseRoute],
+  ["/admin/diagnose/deliveries", handleDeliveriesPostRoute],
   ["/admin/diagnose/replay", handleReplayPostRoute],
   ["/admin/summaries", handleSummariesPostRoute],
   ["/admin/tasks", handleTasksPostRoute],
@@ -246,6 +249,15 @@ async function handleReplyDiagnoseRoute(req, res, context) {
 function handleTracesRoute(_req, res, context) {
   const query = Object.fromEntries(context.url.searchParams);
   context.sendJson(res, 200, listMessageTraces(query), 2);
+}
+
+function handleDeliveriesReadRoute(_req, res, context) {
+  context.sendJson(res, 200, buildChatDeliverySnapshot(Object.fromEntries(context.url.searchParams)));
+}
+
+async function handleDeliveriesPostRoute(req, res, context) {
+  try { context.sendJson(res, 200, resolveChatDelivery(await readJsonRequestBody(req))); }
+  catch { context.sendJson(res, 400, { error: "核实未保存：操作无效、记录仍在处理或状态不可用。请刷新后检查。" }); }
 }
 
 function handleSummariesReadRoute(_req, res, context) {

@@ -5,6 +5,7 @@ import { normalizeMsg, cleanText } from './context/messages.mjs';
 import { fetchSafeText, validateSafeUrl } from './safe-url.mjs';
 import { buildNapCatHeaders } from './napcat-auth.mjs';
 import { uploadFileToNapCat } from './napcat-stream.mjs';
+import { isOneBotResponseSuccessful } from './onebot-receipt.mjs';
 import {
   normalizeOutboundText,
   isOutboundPayloadSuccessful,
@@ -150,14 +151,14 @@ export function getReplyData(msg) {
 export async function fetchReplyData(replyData, { timeoutMs = 8000 } = {}) {
   if (!replyData) return { text: '', images: [] };
   const msgId = replyData.id;
-  if (!msgId) return { text: '', images: [] };
+  if (msgId === undefined || msgId === null || msgId === '') return { text: '', images: [] };
   try {
     const r = await fetch(CFG.napcatApi + '/get_msg?message_id=' + encodeURIComponent(msgId), {
       headers: buildNapCatHeaders(),
       signal: AbortSignal.timeout(timeoutMs),
     });
     const d = await r.json();
-    if (d?.status === 'ok' || d?.retcode === 0) {
+    if (r.ok !== false && isOneBotResponseSuccessful(d)) {
       const msg = d.data;
       const text = cleanText(msg.message);
       const images = getImages(msg.message);
@@ -222,7 +223,7 @@ export async function uploadGroupFile(groupId, filePath, name, options = {}) {
       signal: AbortSignal.timeout(60000),
     });
     const d = await r.json();
-    return d;
+    return r.ok === false ? { status: 'unknown', delivery: 'unconfirmed' } : d;
   } catch (e) {
     logE('uploadGroupFile error:', e.message);
     return null;
@@ -247,7 +248,7 @@ export async function uploadPrivateFile(userId, filePath, name, options = {}) {
       signal: AbortSignal.timeout(60000),
     });
     const d = await r.json();
-    return d;
+    return r.ok === false ? { status: 'unknown', delivery: 'unconfirmed' } : d;
   } catch (e) {
     logE('uploadPrivateFile error:', e.message);
     return null;
@@ -265,7 +266,7 @@ export async function getGroupMemberInfo(groupId, userId) {
       signal: AbortSignal.timeout(5000),
     });
     const d = await r.json();
-    if (d?.status === 'ok' || d?.retcode === 0) return d.data || null;
+    if (r.ok !== false && isOneBotResponseSuccessful(d)) return d.data || null;
   } catch (e) {
     logE('getGroupMemberInfo error:', e.message);
   }

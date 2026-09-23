@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import process from "node:process";
 import test from "node:test";
 import { createJsonSaver, readJsonFile, writeJsonFileSync } from "../bridge/persistence/json-file.mjs";
 
@@ -19,6 +20,20 @@ test("JSON IO keeps missing, corrupt and over-limit files distinguishable", t =>
   writeJsonFileSync(file, { ready: true });
   assert.deepEqual(readJsonFile(file), { ready: true });
   assert.throws(() => readJsonFile(file, null, { maxBytes: 2 }), /size limit/);
+});
+
+test("durable JSON writes sync data before rename and clean failed staging files", t => {
+  const file = fixture(t);
+  const calls = [];
+  const io = { ...fs,
+    fsyncSync(fd) { calls.push("sync"); fs.fsyncSync(fd); },
+    renameSync(...args) { calls.push("rename"); fs.renameSync(...args); },
+  };
+  writeJsonFileSync(file, { count: 1 }, { io, durable: true });
+  assert.deepEqual(calls, process.platform === "win32" ? ["sync", "rename"] : ["sync", "rename", "sync"]);
+  assert.throws(() => writeJsonFileSync(file, { count: 2 }, { durable: true, io: { ...fs, fsyncSync() { throw new Error("sync failed"); } } }), /sync failed/);
+  assert.deepEqual(readJsonFile(file), { count: 1 });
+  assert.deepEqual(fs.readdirSync(path.dirname(file)), ["state.json"]);
 });
 
 test("JSON saver batches updates and leaves no staged file after commit", async t => {

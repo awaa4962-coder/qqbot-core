@@ -7,6 +7,7 @@ import path from "node:path";
 import WebSocket from "ws";
 import { CFG } from "./config.mjs";
 import { buildNapCatWebSocketOptions } from "./napcat-auth.mjs";
+import { isOneBotResponseSuccessful } from "./onebot-receipt.mjs";
 
 const OPEN_STATE = 1;
 
@@ -15,6 +16,8 @@ export async function uploadFileToNapCat(filePath, options = {}) {
   if (!wsUrl) throw new Error("NapCat 流式上传地址未配置");
 
   const info = await inspectUploadFile(filePath, options);
+  // NapCat 4.18.13 stores completed streams by filename, outside the stream-id folder.
+  info.remoteFilename = "qqfriend-" + randomUUID() + "-" + info.filename.slice(-120);
   const streamId = String(options.streamId || randomUUID());
   const socket = await openSocket(wsUrl, options);
   try {
@@ -73,7 +76,7 @@ async function sendChunks(socket, info, streamId, options) {
       total_chunks: info.totalChunks,
       file_size: info.size,
       expected_sha256: info.sha256,
-      filename: info.filename,
+      filename: info.remoteFilename,
       file_retention: info.retentionSeconds * 1000,
     }, options);
     index += 1;
@@ -157,8 +160,7 @@ function parseMessage(raw) {
 }
 
 function assertNapCatSuccess(payload) {
-  const retcode = Number(payload?.retcode ?? 0);
-  if (payload?.status === "failed" || retcode !== 0) {
+  if (!isOneBotResponseSuccessful(payload)) {
     throw new Error(String(payload?.message || payload?.wording || "NapCat 流式上传失败"));
   }
 }
@@ -169,6 +171,7 @@ function normalizeCompletedUpload(payload, info, streamId) {
   if (data.status !== "file_complete" || !filePath) {
     throw new Error("NapCat 未返回完整文件路径");
   }
+  verifyCompletedUpload(data, info, streamId);
   return {
     ok: true,
     filePath,
@@ -177,6 +180,12 @@ function normalizeCompletedUpload(payload, info, streamId) {
     sha256: info.sha256,
     filename: info.filename,
   };
+}
+
+function verifyCompletedUpload(data, info, streamId) {
+  if (data.stream_id !== undefined && data.stream_id !== streamId) throw new Error("NapCat 上传流编号不匹配");
+  if (data.file_size !== undefined && data.file_size !== info.size) throw new Error("NapCat 上传文件大小不匹配");
+  if (data.sha256 !== undefined && data.sha256 !== info.sha256) throw new Error("NapCat 上传文件校验和不匹配");
 }
 
 function safeFilename(value) {

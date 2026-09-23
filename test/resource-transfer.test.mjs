@@ -103,4 +103,23 @@ describe("resource transfer", () => {
     assert.equal(fs.existsSync(uploadedPath), false);
     assert.equal(fs.existsSync(path.dirname(uploadedPath)), false);
   });
+
+  it("does not report resource upload success for contradictory or unknown receipts", async () => {
+    for (const receipt of [null, { status: "failed", retcode: 0 }, { status: "ok", retcode: 100 }, { status: "async", retcode: 1 }, { data: { message_id: 7 } }]) {
+      let filePath = "";
+      let uploads = 0;
+      const sent = [];
+      const result = await withMockFetch(async () => new globalThis.Response("synthetic file"), () => transferResourceToGroup({
+        groupId: 123, url: "https://example.com/synthetic.txt",
+        sender: async (_id, text) => sent.push(text),
+        uploader: async (_id, file) => { filePath = file; uploads++; return receipt; },
+      }));
+      assert.equal(result.ok, false);
+      assert.equal(result.reason, "upload_unconfirmed");
+      assert.equal(uploads, 1);
+      assert.ok(!sent.some(text => text.includes("资源已转发")));
+      assert.ok(sent.some(text => text.includes("结果未确认")));
+      assert.equal(fs.existsSync(filePath), false);
+    }
+  });
 });

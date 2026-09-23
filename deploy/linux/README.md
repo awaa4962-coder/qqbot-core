@@ -13,6 +13,33 @@ pinned baselines and fixed-choice reviews live under
 `npm run replay:check` is offline. Generating a selected candidate explicitly
 calls the configured group model (with fallback), but never sends to QQ.
 
+### Chat Delivery Metadata (1.4.18 Candidate)
+
+Numbered ordinary chat events use `$QQBOT_DATA_DIR/.qqfriend/chat-delivery.json`
+for atomic, fsynced metadata. It stores salted event keys and counters, not message
+bodies or plaintext account IDs. Run a single Bridge writer against this file.
+Missing event IDs retain the legacy nonpersistent behavior; they are not covered
+by restart deduplication. This is not a business-command outbox or exactly-once QQ delivery.
+
+The Diagnostics page can filter and mark an unknown, partial or interrupted reply
+as manually checked. This never resends a message, removes its duplicate fence or
+reconstructs conversation history. Resolved/terminal rows expire after roughly
+24 hours (hourly cleanup); unresolved rows stay until checked. The 10000-row cap
+and unreadable/corrupt state stop ordinary chats rather than discarding evidence.
+Known commands retain their existing permission checks and remain independent of
+this file. Forgetting a user removes their actor/scope indexes, while retaining
+negative event keys to reject replayed messages.
+
+On the first upgrade from a version without this journal, automatic rollback to
+that older sender is safe only before the new release has accepted any journaled
+chat events. If new records exist, stop the failing Bridge and keep NapCat running;
+preserve the journal and repair forward or prepare a compatible rollback. Do not
+blindly start an older sender or restore an old data backup over new records.
+
+Receipt rules follow the [OneBot 11 HTTP response specification](https://github.com/botuniverse/onebot-11/blob/master/communication/http.md):
+async acceptance is not completed delivery. Contradictory fields and HTTP failures
+remain unknown; only a definite rejection is eligible for existing bounded retries.
+
 ## Recommended layout
 
 - `qqfriend-bridge`: Node.js bridge and browser console.

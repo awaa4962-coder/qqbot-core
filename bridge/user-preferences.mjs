@@ -6,6 +6,7 @@ import { clearMessageFeatureCache } from "./context/relevance.mjs";
 import { forgetSummaryUser } from "./group-summary/journal.mjs";
 import { containsSensitiveText, redactSensitiveText } from "./privacy.mjs";
 import { invalidateUserMemoryGeneration } from "./memory-profile/generation.mjs";
+import { chatDeliveryLedger } from "./cognition/delivery-ledger.mjs";
 
 const DEFAULT_STYLE = Object.freeze({
   length: "normal",
@@ -177,6 +178,7 @@ export function buildPrivacyText() {
     "5. API 缓存统计只保存加盐匿名键和 token 数，最多保留 30 天，不保存提示词或回复正文。",
     "6. 发送 @夜星 忘记我 可以清理你的画像、偏好、关系缓存、缓存统计和个人聊天记忆。",
     "7. 日报和聊天总结会将所选脱敏群记录交给配置的模型，管理员工作台可查看相关证据；既有备份需管理员另行处理。",
+    "8. 聊天发送状态不存正文，已结束记录保留约 24 小时，未知结果保留待核实；忘记我会解除身份关联，但保留防止旧消息重发的事件标记。",
   ].join("\n");
 }
 
@@ -214,6 +216,12 @@ export function forgetUserData(uid, options = {}) {
     saveUsers();
     saveGroupChats();
   }
+  return finishForgetDelivery(id, options);
+}
+
+function finishForgetDelivery(id, options) {
+  try { chatDeliveryLedger().forget(id, !options.skipSave); }
+  catch { return { ok: false, text: "已清理聊天记忆和偏好，但发送状态的身份关联暂时无法清理，请管理员检查状态文件后重试。" }; }
   return { ok: true, text: "已清理你的画像、回复偏好、关系缓存和个人聊天记忆。群聊历史中你的旧内容会被替换为清理占位。"};
 }
 

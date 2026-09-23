@@ -7,6 +7,8 @@ import { handleResourceTransferCommand, parseResourceTransferCommand } from "../
 import { groupChats, logGroupMsg, users } from "../storage.mjs";
 import { buildCommandReplyAsync } from "./dispatcher.mjs";
 import { prepareCommandText } from "./normalize.mjs";
+import { isKnownCommand } from "./registry.mjs";
+import { isSuccessfulOutbound } from "../cognition/outcome.mjs";
 import { traceStage } from "../diagnostics/message-trace.mjs";
 import { handleConversationSummaryCommand, parseConversationSummaryCommand } from "../features/conversation-summary/index.mjs";
 
@@ -24,6 +26,14 @@ export function matchSpecialGroupAction(commandText) {
     if (parsed) return { id: action.id, parsed, handle: action.handle };
   }
   return null;
+}
+
+// Classification only: actual dispatch retains its own permission checks.
+export function isCommandContext(ctx) {
+  if (ctx.message_type === "group" && !ctx.isAtMe) return false;
+  const text = prepareCommandText(ctx.text || ctx.rawText, { requireMention: ctx.message_type === "group" });
+  if (isKnownCommand(text)) return true;
+  return ctx.message_type === "group" ? Boolean(matchSpecialGroupAction(text)) : Boolean(parseJmCommand(text, { requireMention: false }));
 }
 
 export async function dispatchGroupCommand(ctx, options = {}) {
@@ -71,8 +81,8 @@ async function dispatchCatalogCommand(ctx, commandText, options) {
   traceStage("route", { status: "ok", route: "command" });
 
   const sender = options.sender || sendMsg;
-  await sender(ctx.group_id, reply, options.replyToId ?? ctx.message_id);
+  const receipt = await sender(ctx.group_id, reply, options.replyToId ?? ctx.message_id);
   const recordCommand = options.recordCommand || logGroupMsg;
-  recordCommand(ctx.group_id, "夜星", "[command]", CFG.selfUin, "assistant");
+  if (isSuccessfulOutbound(receipt)) recordCommand(ctx.group_id, "夜星", "[command]", CFG.selfUin, "assistant");
   return true;
 }

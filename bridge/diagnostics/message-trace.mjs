@@ -14,6 +14,7 @@ const REASONS = new Set([
   "sanitized_empty", "unsafe_output", "unsafe_reasoning", "model_unavailable", "send_failed", "send_unknown", "exception",
   "intentional_silence", "invalid_interjection", "request_failed", "tools_unavailable",
   "privacy_changed", "permission_changed", "preferences_changed", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping",
+  "reply_duplicate", "delivery_state_unavailable", "forgotten_event", "stale_event",
 ]);
 const ROUTES = new Set(["group_at", "interjection", "private_chat", "private_file", "command", "jm", "resource-transfer", "link-preview", "wordcloud", "preview", "file"]);
 const NUMBERS = ["chars", "messages", "pruned", "truncated", "images", "mentions", "httpStatus", "attempt", "reasoningLength", "promptTokens", "cachedTokens", "completionTokens", "probability", "selfFactsVersion", "capabilityCount", "turnRevision", "privacyRevision", "staticChars", "dynamicChars", "inputTextChars"];
@@ -145,7 +146,7 @@ function finalStatus(record, failed) {
 }
 
 function cancellationStatus(reason, sends) {
-  const reasons = ["privacy_changed", "permission_changed", "preferences_changed", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping"];
+  const reasons = ["privacy_changed", "permission_changed", "preferences_changed", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping", "delivery_state_unavailable"];
   return reasons.includes(reason) ? (sends ? "partial" : "cancelled") : "";
 }
 

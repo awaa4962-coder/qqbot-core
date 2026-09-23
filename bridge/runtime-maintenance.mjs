@@ -7,6 +7,7 @@ import { cleanupExpiredWordcloudFiles } from "./features/wordcloud/index.mjs";
 import { cleanupExpiredJmTempDirs } from "./jm-provider.mjs";
 import { cleanupExpiredResourceTempDirs } from "./resource-transfer.mjs";
 import { cleanupSummaryFiles } from "./group-summary/journal.mjs";
+import { cleanupChatDeliveries } from "./cognition/delivery-ledger.mjs";
 
 const DEFAULT_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -53,6 +54,7 @@ export function createRuntimeMaintenance(options = {}) {
 
 function defaultTasks() {
   return [
+    { name: "chat-delivery", run: cleanupChatDeliveries },
     { name: "summary", run: () => cleanupSummaryFiles() },
     { name: "jm", run: () => cleanupExpiredJmTempDirs() },
     { name: "resource", run: () => cleanupExpiredResourceTempDirs() },

@@ -203,7 +203,7 @@ test("all sends share a group/date guard and do not publish a second revision tw
 
 test("confirmed partial failure resumes only remaining chunks of the identical revision", async t => {
   const sent = [];
-  const options = sandbox(t, { sendGroupMessage: async (_group, text) => { sent.push(text); return sent.length === 2 ? { status: "failed", retcode: 1 } : { status: "ok" }; } });
+  const options = sandbox(t, { sendGroupMessage: async (_group, text) => { sent.push(text); return sent.length === 2 ? { status: "failed", retcode: 100 } : { status: "ok" }; } });
   const report = prepared(options, "甲".repeat(900) + "乙".repeat(900) + "丙".repeat(100));
   const first = await publishSummary(report, options);
   assert.equal(first.delivery.status, "partial"); assert.equal(first.delivery.completed, 1);
@@ -225,6 +225,20 @@ test("ambiguous network failure requires explicit verification before any retry"
   resolveSummaryDelivery(report, false, options);
   const sent = await publishSummary(report, { ...options, resume: true, sendGroupMessage: async () => ({ status: "ok" }) });
   assert.equal(sent.sent, true);
+});
+
+test("async and contradictory summary receipts cannot unlock failed-segment recovery", async t => {
+  for (const receipt of [{ status: "async", retcode: 1 }, { status: "failed", retcode: 0 }, { status: "failed", retcode: 100, data: { message_id: 9 } }]) {
+    let calls = 0;
+    const options = sandbox(t, { sendGroupMessage: async () => { calls++; return receipt; } });
+    const report = prepared(options);
+    const result = await publishSummary(report, options);
+    assert.equal(result.delivery.status, "unconfirmed");
+    assert.equal(result.delivery.completed, 0);
+    assert.equal((await publishSummary(report, options)).skipped, true);
+    await assert.rejects(publishSummary(report, { ...options, resume: true }), /已确认失败/);
+    assert.equal(calls, 1);
+  }
 });
 
 test("manual confirmation of delivery marks success without resending", async t => {

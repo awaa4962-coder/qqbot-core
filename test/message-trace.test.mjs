@@ -77,7 +77,7 @@ test("outbound retry success is sent, an unconfirmed delivery remains unknown", 
   const recorder = createTraceRecorder();
   let calls = 0;
   try {
-    globalThis.fetch = async () => ({ json: async () => (++calls === 1 ? { status: "failed", retcode: 1 } : { status: "ok", retcode: 0 }) });
+    globalThis.fetch = async () => ({ json: async () => (++calls === 1 ? { status: "failed", retcode: 100 } : { status: "ok", retcode: 0 }) });
     await withMessageTrace(ctx, () => sendTextToGroup({ groupId: 22, text: "synthetic reply", maxAttempts: 2, retryDelayMs: 0 }), recorder);
     assert.equal(calls, 2);
     assert.equal(recorder.list().items[0].status, "sent");

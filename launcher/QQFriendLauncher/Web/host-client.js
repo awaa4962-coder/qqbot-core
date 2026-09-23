@@ -68,6 +68,8 @@
       return apiRequest("/admin/diagnose/traces?" + query);
     }
     if (action === "getReplay") return apiRequest("/admin/diagnose/replay");
+    if (action === "getDeliveries") return apiRequest("/admin/diagnose/deliveries?" + new window.URLSearchParams(payload));
+    if (action === "resolveDelivery") return apiPost("/admin/diagnose/deliveries", payload);
     if (action === "getSummaries") {
       const query = Object.entries(payload).map(([key, value]) => encodeURIComponent(key) + "=" + encodeURIComponent(value)).join("&");
       return apiRequest("/admin/summaries?" + query);

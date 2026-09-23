@@ -348,6 +348,16 @@
               <aside id="traceDetail" class="trace-detail" aria-label="消息处理详情">选择一条记录</aside>
             </div>
           </section>
+          <section class="surface workspace-surface linux-diagnostics" id="deliveryPanel" hidden>
+            <div class="section-head"><div><p class="eyebrow">跨重启状态</p><h2>聊天发送核实</h2></div><button type="button" id="refreshDeliveries">刷新</button></div>
+            <div class="trace-filters">
+              <label>结果<select id="deliveryStatus"><option value="needs-review">待核实</option><option value="all">全部</option><option value="sent">已确认发送</option><option value="failed">失败</option><option value="silent">主动不回复</option><option value="cancelled">已停止</option><option value="resolved">已人工核实</option></select></label>
+              <label>群号<input id="deliveryGroup" inputmode="numeric" placeholder="全部群与私聊"></label>
+              <label>QQ 号<input id="deliveryUser" inputmode="numeric" placeholder="全部发送人"></label>
+            </div>
+            <p id="deliveryNotice" class="diagnostic-notice" role="status" aria-live="polite">尚未读取</p>
+            <div class="trace-table-wrap"><table class="trace-table delivery-table"><thead><tr><th>时间 / 范围</th><th>状态</th><th>确认 / 未知段数</th><th>核实结果</th></tr></thead><tbody id="deliveryRows"></tbody></table></div>
+          </section>
           <section class="surface workspace-surface linux-diagnostics" id="replayPanel" hidden>
             <div class="section-head"><div><p class="eyebrow">合成样例 · 不发送到 QQ</p><h2>对话回放</h2></div><button type="button" data-diagnostic-action="check">检查样例输入</button></div>
             <div class="replay-toolbar">

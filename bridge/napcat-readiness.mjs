@@ -1,6 +1,7 @@
 import { CFG } from "./config.mjs";
 import { buildNapCatHeaders } from "./napcat-auth.mjs";
 import { monotonicNow } from "./runtime-clock.mjs";
+import { isOneBotResponseSuccessful } from "./onebot-receipt.mjs";
 
 const CACHE_MS = 5000;
 let cached = initialStatus();
@@ -48,7 +49,7 @@ async function runProbe(options) {
 
 function normalizeProbe(response, payload) {
   const userId = Number(payload?.data?.user_id || 0);
-  const apiOk = response.ok !== false && (payload?.status === "ok" || Number(payload?.retcode) === 0);
+  const apiOk = response.ok !== false && isOneBotResponseSuccessful(payload);
   if (!apiOk || !Number.isSafeInteger(userId) || userId <= 0) {
     return status(false, "not_logged_in", 0, false);
   }

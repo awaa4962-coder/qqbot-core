@@ -19,8 +19,16 @@ export function writeJsonFileSync(filename, value, options = {}) {
   io.mkdirSync(path.dirname(filename), { recursive: true, mode: 0o700 });
   try {
     io.writeFileSync(temporary, JSON.stringify(value, null, options.spacing ?? 0), { mode: 0o600 });
+    if (options.durable) syncPath(io, temporary);
     io.renameSync(temporary, filename);
+    if (options.durable && process.platform !== "win32") syncPath(io, path.dirname(filename), true);
   } finally { io.rmSync(temporary, { force: true }); }
+}
+
+function syncPath(io, filename, directory = false) {
+  const descriptor = io.openSync(filename, directory ? "r" : "r+");
+  try { io.fsyncSync(descriptor); }
+  finally { io.closeSync(descriptor); }
 }
 
 function temporaryFile(filename) { return filename + ".tmp." + process.pid + "." + randomUUID(); }

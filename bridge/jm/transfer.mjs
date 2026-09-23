@@ -7,6 +7,7 @@ import { buildJmTransferSuccessText, getJmZipPassword, summarizeDirectory, zipDi
 import { logE } from "../logger.mjs";
 import { runJmDownload } from "./runtime.mjs";
 import { sendMsg, sendPrivateMsg, uploadGroupFile, uploadPrivateFile } from "../napcat.mjs";
+import { classifyOneBotReceipt, isOneBotResponseSuccessful } from "../onebot-receipt.mjs";
 
 export async function transferJmToGroup(options) {
   const sender = options.sender || sendMsg;
@@ -62,7 +63,7 @@ async function transferJm(options, destination) {
       timeoutMs: options.zipTimeoutMs,
     });
     const uploadResult = await destination.upload(zipPath, "jm-" + options.jmId + ".zip");
-    if (!uploadOk(uploadResult)) throw new Error("upload_failed");
+    if (!uploadOk(uploadResult)) throw new Error(classifyOneBotReceipt(uploadResult) === "failed" ? "upload_failed" : "upload_unconfirmed");
 
     await destination.send(buildJmTransferSuccessText(options.jmId, summary, zipPassword));
     return { ok: true, jmId: options.jmId, files: summary.files, bytes: summary.bytes };
@@ -92,6 +93,7 @@ export function jmErrorText(reason) {
   if (reason === "timeout") return "JM 下载超时，已停止任务，临时文件会在约 1 天后自动清理。";
   if (reason === "empty_result") return "JM 下载没有产出文件，临时目录会在约 1 天后自动清理。";
   if (reason === "upload_failed") return "JM 已下载但转发失败，临时文件会在约 1 天后自动清理。";
+  if (reason === "upload_unconfirmed") return "JM 转发结果未确认，请先在 QQ 核实，不会自动重发；临时文件仍保留约 1 天。";
   if (reason === "zip_tool_missing") return "JM 已下载但缺少 7-Zip，无法生成带密码压缩包。";
   if (reason === "zip_failed") return "JM 已下载但打包失败，临时文件会在约 1 天后自动清理。";
   if (reason === "zip_timeout") return "JM 打包超时，已停止打包，临时文件会在约 1 天后自动清理。";
@@ -99,5 +101,5 @@ export function jmErrorText(reason) {
 }
 
 export function uploadOk(result) {
-  return result?.status === "ok" || result?.retcode === 0;
+  return isOneBotResponseSuccessful(result);
 }

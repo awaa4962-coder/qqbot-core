@@ -29,6 +29,7 @@ test("release default-denies Linux runtime, private files and nested state", t =
     "deploy/linux/state/qqfriend/data/.qqfriend/diagnostics/replay.json",
     "deploy/linux/private/settings.json", "deploy/linux/new-runtime.json",
     "bridge/.env.production", "bridge/custom.env", "bridge/.qqfriend/tasks/admin.json",
+    "bridge/chat-delivery.json",
   ];
   for (const name of privatePaths) { write(root, name); assert.equal(isForbiddenPath(name), true, name); }
   const publicPaths = ["deploy/linux/.env.example", "deploy/linux/qqfriend.env.example", "deploy/linux/compose.yaml", "deploy/linux/systemd/qqfriend.service", ".qqfriend/index.json", "bridge/help.mjs"];

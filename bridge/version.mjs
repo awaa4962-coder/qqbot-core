@@ -4,21 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.17-prompt-layers";
-export const VERSION_NAME = "prompt-layers";
+export const VERSION = "1.4.18-delivery-state";
+export const VERSION_NAME = "delivery-state";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "固定聊天规则与动态表达设置分层，保留猫娘风格；诊断显示提示词版本、固定前缀指纹和文本长度。",
-  "历史按完整轮次优先保留最近反馈，长摘录保留首尾；明确建议过不等于用户执行过或问题已解决。",
-  "提示词要求承接失败反馈、采用当前纠正、缺关键证据只追问必要项；不靠增加每轮意图模型实现。",
+  "普通聊天按原始消息编号保存不含正文的发送状态；重启后未知、部分发送和中断不会自动重发。",
+  "统一检查 OneBot 回执：冲突字段、异步受理和 HTTP 异常不算发送成功，JM 上传也不再误报完成。",
+  "诊断页可筛选并人工核实发送结果；遗忘解除身份关联，保留防重复标记，不补发也不补写聊天记忆。",
   "JM 群聊/私聊下载、大写 FS 与延迟清理保留；模型主备、思考档位、白名单和关系评分不变，Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Separates stable task rules from dynamic expression settings while retaining persona. Diagnostics show prompt versions, prefix fingerprints and text lengths.",
-  "Keeps recent complete turn pairs and both ends of long excerpts. Advice is not evidence that a user acted or a problem was solved.",
-  "Prompts prioritize current corrections and failed-step feedback, asking only for necessary missing evidence without an extra intent-model call on every turn.",
+  "Persists content-free delivery metadata for numbered chat events. Unknown, partial and interrupted replies are not automatically replayed after restart.",
+  "Checks OneBot receipts consistently: contradictory fields, async acceptance and HTTP failures are not delivery success, including JM uploads.",
+  "Diagnostics support filtering and manual verification without resending or rebuilding chat memory. Forgetting unlinks identity while retaining replay fences.",
   "Keeps group/private JM downloads, FS and delayed cleanup. Model routes, reasoning modes, allowlists and relationship scoring stay unchanged. Windows stays frozen.",
 ]);
 

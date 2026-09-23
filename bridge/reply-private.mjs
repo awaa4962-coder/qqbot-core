@@ -29,11 +29,15 @@ export async function handlePrivateMessage(ctx) {
 
   if (await trySendPrivateCommand(ctx)) return;
   if (ctx.files.length) {
-    await withChatRun({ surface: "private", userId: ctx.user_id }, () => handlePrivateFileMessage(ctx));
+    await withChatRun(privateRunScope(ctx), () => handlePrivateFileMessage(ctx));
     return;
   }
 
-  if (ctx.text || ctx.images.length) await withChatRun({ surface: "private", userId: ctx.user_id }, () => handlePrivateChatMessage(ctx));
+  if (ctx.text || ctx.images.length) await withChatRun(privateRunScope(ctx), () => handlePrivateChatMessage(ctx));
+}
+
+function privateRunScope(ctx) {
+  return { surface: "private", userId: ctx.user_id, messageId: ctx.message_id, eventTime: ctx.eventTime };
 }
 
 export async function privateReply(userId, text) {

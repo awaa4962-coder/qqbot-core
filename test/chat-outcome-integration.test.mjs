@@ -40,13 +40,15 @@ afterEach(() => {
 });
 const response = message => ({ ok: true, status: 200, text: async () => JSON.stringify(message), json: async () => message });
 const apiReply = content => response({ choices: [{ message: content }] });
+let nextMessageId = 88003;
 
 async function groupReply(passive) {
+  const messageId = nextMessageId++;
   const trace = createTraceRecorder();
   const before = JSON.stringify(groupChats[88001] || []);
-  await withMessageTrace({ message_type: "group", group_id: 88001, user_id: 88002, message_id: 88003 }, async () => {
+  await withMessageTrace({ message_type: "group", group_id: 88001, user_id: 88002, message_id: messageId }, async () => {
     traceStage("route", { route: passive ? "interjection" : "group_at", status: "ok" });
-    await aiReply(88001, 88002, "synthetic greeting", "synthetic user", [], 88003, "", !passive, [], { messageId: 88003 });
+    await aiReply(88001, 88002, "synthetic greeting", "synthetic user", [], messageId, "", !passive, [], { messageId });
   }, trace);
   assert.equal(JSON.stringify(groupChats[88001] || []), before);
   assert.equal(getConversationThread(88002, 88001), null);

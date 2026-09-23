@@ -40,7 +40,7 @@ describe("unified group command actions", () => {
       mentionedUsers: [],
     }, {
       botNames: ["QQFriend"],
-      sender: async (...args) => sent.push(args),
+      sender: async (...args) => { sent.push(args); return { status: "ok", retcode: 0 }; },
       recordCommand: (...args) => recorded.push(args),
     });
 
@@ -54,5 +54,17 @@ describe("unified group command actions", () => {
       user_id: 42,
       group_id: 100,
     }), false);
+  });
+
+  it("never records an unconfirmed command reply as an assistant message", async () => {
+    for (const receipt of [null, { status: "failed", retcode: 100 }, { status: "failed", retcode: 0 }, { status: "async", retcode: 1 }]) {
+      let sends = 0;
+      const handled = await dispatchGroupCommand({ isAtMe: true, text: "ping", user_id: 42, group_id: 100 }, {
+        sender: async () => { sends++; return receipt; },
+        recordCommand: () => assert.fail("unconfirmed reply must not affect assistant history"),
+      });
+      assert.equal(handled, true);
+      assert.equal(sends, 1);
+    }
   });
 });

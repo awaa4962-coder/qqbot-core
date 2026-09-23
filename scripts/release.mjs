@@ -53,6 +53,7 @@ const FORBIDDEN_NAMES = new Set([
   ".ds_key",
   "group_chats.json",
   "user_memory.json",
+  "chat-delivery.json",
   "napcat_inbox.json",
   "ddg_search.json",
   "image-memes.json",

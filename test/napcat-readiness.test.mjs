@@ -41,6 +41,20 @@ test("NapCat readiness fails closed when the API is unavailable", async () => {
   assert.equal(result.reason, "api_unreachable");
 });
 
+test("login-shaped data cannot override failed, async, malformed or HTTP error responses", async () => {
+  try {
+    for (const [ok, receipt] of [[true, { status: "failed", retcode: 0 }], [true, { status: "ok", retcode: 100 }],
+      [true, { status: "async", retcode: 1 }], [true, { status: "ok", retcode: null }], [false, { status: "ok", retcode: 0 }]]) {
+      const result = await refreshNapCatReadiness({ force: true,
+        fetcher: async () => ({ ok, json: async () => ({ ...receipt, data: { user_id: CFG.selfUin || 12345 } }) }),
+      });
+      assert.equal(result.ready, false);
+      assert.equal(result.loggedIn, false);
+      assert.equal(result.reason, "not_logged_in");
+    }
+  } finally { resetNapCatReadinessForTest(); }
+});
+
 function response(userId) {
   return {
     ok: true,

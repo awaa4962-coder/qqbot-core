@@ -6,6 +6,8 @@ import { parseIncomingEvent } from "./reply-handlers.mjs";
 import { handleGroupMessage } from "./reply-group.mjs";
 import { handlePrivateMessage } from "./reply-private.mjs";
 import { traceStage, withMessageTrace } from "./diagnostics/message-trace.mjs";
+import { inspectChatEvent } from "./cognition/delivery-ledger.mjs";
+import { isCommandContext } from "./commands/action-dispatcher.mjs";
 
 export {
   aiReply,
@@ -32,6 +34,12 @@ async function processMessageContext(ctx, ev) {
   const admission = admitMessageContext(ctx);
   traceStage("admission", { status: admission.ok ? "ok" : "skipped", reason: admission.reason });
   if (!admission.ok) return admission;
+  const stopped = durableReplyRejection(ctx);
+  if (stopped) {
+    traceStage("route", { status: "skipped", reason: stopped });
+    markEventProcessed();
+    return { ...admission, skipped: true, reason: stopped };
+  }
 
   incProcessingCount();
   try {
@@ -55,6 +63,11 @@ async function processMessageContext(ctx, ev) {
     decProcessingCount();
   }
   return { ok: false, reason: "unsupported_message_type" };
+}
+
+function durableReplyRejection(ctx) {
+  try { return inspectChatEvent(ctx, { checkDelivery: !isCommandContext(ctx) }); }
+  catch { return "delivery_state_unavailable"; }
 }
 
 // ── 私聊处理 ──

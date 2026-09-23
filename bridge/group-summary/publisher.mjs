@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { CFG } from "../config.mjs";
 import { isSuccessfulOutbound } from "../cognition/outcome.mjs";
+import { isDefiniteOneBotRejection } from "../onebot-receipt.mjs";
 import { normalizeOutboundText, sendTextToGroup, splitLongText } from "../outbound-message.mjs";
 import { createDailySummaryGuard, summarySkipResult } from "./guard.mjs";
 import { assertSummaryEpoch, readSummaryJson, summaryKey, writeSummaryJson } from "./state.mjs";
@@ -103,7 +104,7 @@ function initialDelivery(result, options, total) {
 }
 
 function rejectedStatus(receipt, completed) {
-  const rejected = receipt && (receipt.status === "failed" || Number(receipt.retcode) > 0);
+  const rejected = isDefiniteOneBotRejection(receipt);
   return rejected ? (completed ? "partial" : "failed") : "unconfirmed";
 }
 

@@ -7,6 +7,7 @@ import { prepareCommandText } from "./commands/normalize.mjs";
 import { fetchSafeResponse, validateSafeUrl } from "./safe-url.mjs";
 import { sendMsg, uploadGroupFile } from "./napcat.mjs";
 import { log, logE } from "./logger.mjs";
+import { isDefiniteOneBotRejection, isOneBotResponseSuccessful } from "./onebot-receipt.mjs";
 
 const COMMAND_RE = /^(download|dl|fetch|下载)\s*(.*)$/i;
 const DEFAULT_TIMEOUT_MS = 120000;
@@ -73,7 +74,7 @@ export async function transferResourceToGroup(options) {
       timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS,
     });
     const uploadResult = await uploader(options.groupId, downloaded.filePath, downloaded.fileName);
-    if (!uploadOk(uploadResult)) throw new Error("upload_failed");
+    if (!isOneBotResponseSuccessful(uploadResult)) throw new Error(isDefiniteOneBotRejection(uploadResult) ? "upload_failed" : "upload_unconfirmed");
     await sender(
       options.groupId,
       "资源已转发，大小 " + formatBytes(downloaded.bytes) + "。临时文件已清理。",
@@ -179,6 +180,7 @@ export function resourceErrorText(reason) {
   if (reason === "private_address" || reason === "blocked_url") return "这个链接被安全策略拦截。";
   if (reason === "size_limit") return "资源超过 500MB 上限，已取消转发。";
   if (reason === "upload_failed") return "资源已下载但转发失败，临时文件已删除。";
+  if (reason === "upload_unconfirmed") return "资源转发结果未确认，请先在 QQ 核实，不会自动重发。本机临时文件已清理。";
   if (reason === "download_failed" || reason === "empty_body") return "资源下载失败，未保存文件。";
   return "资源转发失败，临时文件已删除。";
 }
@@ -219,10 +221,6 @@ function decodePath(value) {
   } catch {
     return value;
   }
-}
-
-function uploadOk(result) {
-  return result?.status === "ok" || result?.retcode === 0;
 }
 
 function formatBytes(bytes) {

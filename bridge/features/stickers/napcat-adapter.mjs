@@ -2,6 +2,7 @@
 
 import { CFG } from "../../config.mjs";
 import { buildNapCatHeaders } from "../../napcat-auth.mjs";
+import { isOneBotResponseSuccessful } from "../../onebot-receipt.mjs";
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const RKEY_REFRESH_MARGIN_MS = 30 * 1000;
@@ -138,12 +139,11 @@ export async function postNapCat(action, params = {}, options = {}) {
 }
 
 function normalizeNapCatResponse(action, response, payload) {
-  const apiFailed = Boolean(payload?.status && payload.status !== "ok");
   const retcode = Number(payload?.retcode || 0);
-  const ok = response.ok && !apiFailed && retcode === 0;
+  const ok = response.ok && isOneBotResponseSuccessful(payload);
   return {
     ok,
-    data: payload?.data,
+    data: ok ? payload?.data : null,
     error: ok ? "" : firstText(payload?.message, payload?.wording, "NapCat " + action + " 接口失败"),
     status: response.status,
     retcode,

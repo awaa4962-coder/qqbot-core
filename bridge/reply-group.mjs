@@ -197,7 +197,7 @@ function createPendingReplyState(ctx) {
 }
 
 function replyRuntime(ctx) {
-  return { messageId: ctx.message_id, replyToMessageId: ctx.replyData?.id, replySpeaker: ctx.replySpeaker, replyUserId: ctx.replyUserId };
+  return { messageId: ctx.message_id, eventTime: ctx.eventTime, replyToMessageId: ctx.replyData?.id, replySpeaker: ctx.replySpeaker, replyUserId: ctx.replyUserId };
 }
 
 async function ensureReplyState(ctx, state) {

@@ -1,9 +1,11 @@
 import { callManagedAction, taskPhaseLabel } from "./ui/tasks.js";
+import { initializeDeliveries } from "./deliveries.js";
 
 (function () {
   "use strict";
   const host = window.QQFriendHost;
   if (host.mode !== "browser") return;
+  initializeDeliveries(host);
   const $ = (id) => document.getElementById(id);
   const tracePanel = $("messageTracePanel");
   const replayPanel = $("replayPanel");
@@ -26,6 +28,7 @@ import { callManagedAction, taskPhaseLabel } from "./ui/tasks.js";
     intentional_silence: "模型决定不插话", invalid_interjection: "插话输出格式无效", request_failed: "模型请求失败", tools_unavailable: "本轮工具未开放",
     cancelled: "已停止", privacy_changed: "记忆已清理，旧回复作废", permission_changed: "会话权限已变化", preferences_changed: "称呼或偏好已更新", reply_superseded: "已有更新的回复请求", reply_expired: "回复处理超时", reply_capacity: "进行中的回复过多", bridge_stopping: "服务正在停止",
     unknown: "回执未知", send_unknown: "发送结果未知，请先核实",
+    reply_duplicate: "这条消息已处理，不再重发", delivery_state_unavailable: "发送状态无法保存，已停止回复", forgotten_event: "已清理的旧事件", stale_event: "超过保留期的旧事件",
   };
   const label = (value) => labels[value] || value || "待判断";
 

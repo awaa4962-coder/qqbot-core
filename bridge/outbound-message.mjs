@@ -3,7 +3,8 @@ import { log, logE } from "./logger.mjs";
 import { buildNapCatHeaders } from "./napcat-auth.mjs";
 import { markOutboundAttempt, markOutboundSuccess } from "./pipeline-state.mjs";
 import { traceStage } from "./diagnostics/message-trace.mjs";
-import { chatRunStopReason } from "./cognition/chat-run.mjs";
+import { chatRunStopReason, recordChatSendAttempt, recordChatSendReceipt, recordChatSendRejection } from "./cognition/chat-run.mjs";
+import { classifyOneBotReceipt } from "./onebot-receipt.mjs";
 
 const DEFAULT_MAX_LEN = 900;
 const HARD_MAX_LEN = 1200;
@@ -132,11 +133,7 @@ export async function sendPrivateMessagePayload(payload, label, options = {}) {
 }
 
 export function isOutboundPayloadSuccessful(result) {
-  if (!result || typeof result !== "object") return false;
-  if (result.status === "ok") return true;
-  const retcode = result.retcode;
-  if (retcode !== null && retcode !== undefined && retcode !== "" && Number(retcode) === 0) return true;
-  return Boolean(result.data?.message_id || result.message_id);
+  return classifyOneBotReceipt(result) === "sent";
 }
 
 async function sendPayloadWithRetry({ url, payload, label, options }) {
@@ -146,11 +143,8 @@ async function sendPayloadWithRetry({ url, payload, label, options }) {
   let lastError = "";
   let usedAttempts = 0;
   for (let attempt = 1; attempt <= attempts; attempt++) {
-    const reason = chatRunStopReason();
-    if (reason) {
-      traceStage("send", { status: "skipped", reason });
-      return { status: "cancelled", reason };
-    }
+    const blocked = checkSendStart();
+    if (blocked) return blocked;
     usedAttempts = attempt;
     markOutboundAttempt();
     traceStage("send", { status: "started", attempt });
@@ -171,9 +165,21 @@ async function sendPayloadWithRetry({ url, payload, label, options }) {
     }
   }
   logE(label + " failed:", lastError || "unknown error");
+  recordFinalRejection(lastResult);
   const reason = lastResult?.delivery === "unconfirmed" ? "send_unknown" : "send_failed";
   traceStage("send", { status: "failed", reason, attempt: usedAttempts });
   return lastResult;
+}
+
+function recordFinalRejection(result) {
+  if (classifyOneBotReceipt(result) === "failed") recordChatSendRejection();
+}
+
+function checkSendStart() {
+  const reason = chatRunStopReason() || (!recordChatSendAttempt() ? "delivery_state_unavailable" : "");
+  if (!reason) return null;
+  traceStage("send", { status: "skipped", reason });
+  return { status: "cancelled", reason };
 }
 
 async function sendPayloadOnce(url, payload) {
@@ -186,13 +192,20 @@ async function sendPayloadOnce(url, payload) {
     });
     const result = await response.json();
     const httpOk = response.ok !== false;
+    const state = httpOk ? classifyOneBotReceipt(result) : "unknown";
+    if (!recordChatSendReceipt(state)) return unconfirmedSend("delivery_state_unavailable");
     return {
-      ok: httpOk && isOutboundPayloadSuccessful(result),
-      retryable: httpOk && result?.status === "failed" && Number(result.retcode) > 0,
-      result: httpOk ? result : { status: "unknown", delivery: "unconfirmed" },
+      ok: state === "sent",
+      retryable: state === "failed" && result?.status === "failed" && Number(result.retcode) > 1,
+      result: state === "unknown" ? { status: "unknown", delivery: "unconfirmed" } : result,
       error: String(result?.message || result?.wording || "NapCat 返回失败"),
     };
   } catch (error) {
-    return { ok: false, result: { status: "unknown", delivery: "unconfirmed" }, retryable: false, error: error.name || "transport_failed" };
+    recordChatSendReceipt("unknown");
+    return unconfirmedSend(error.name || "transport_failed");
   }
+}
+
+function unconfirmedSend(error) {
+  return { ok: false, result: { status: "unknown", delivery: "unconfirmed" }, retryable: false, error };
 }

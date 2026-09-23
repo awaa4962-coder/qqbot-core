@@ -25,6 +25,7 @@ launcher/**/*.WebView2
 *.key
 group_chats.json
 user_memory.json
+**/chat-delivery.json
 napcat_inbox.json
 launcher-config.json
 launcher-background.json

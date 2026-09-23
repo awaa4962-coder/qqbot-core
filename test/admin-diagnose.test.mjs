@@ -150,7 +150,7 @@ test("admin diagnose route returns dry-run payload", async () => {
 });
 
 test("message traces and replay endpoints share the admin token guard", async () => {
-  for (const pathname of ["/admin/diagnose/traces", "/admin/diagnose/replay"]) {
+  for (const pathname of ["/admin/diagnose/traces", "/admin/diagnose/replay", "/admin/diagnose/deliveries"]) {
     for (const authorized of [false, true]) {
       const writes = [];
       const req = {
@@ -164,6 +164,7 @@ test("message traces and replay endpoints share the admin token guard", async ()
       assert.equal(writes[0].code, authorized ? 200 : 403);
       if (authorized && pathname.endsWith("replay")) assert.equal(writes[0].payload.synthetic, true);
       if (authorized && pathname.endsWith("traces")) assert.equal(writes[0].payload.persistent, false);
+      if (authorized && pathname.endsWith("deliveries")) assert.equal(writes[0].payload.persistent, true);
     }
   }
 });

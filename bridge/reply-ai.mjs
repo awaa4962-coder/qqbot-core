@@ -25,7 +25,7 @@ const PROFILE_MIN_MESSAGES = 10;
 const profileRefreshInFlight = new Map();
 
 export async function aiReply(group_id, userId, userMsg, userName, imageUrls, replyTo, replyText, isAtMe, mentions = [], runtime = {}) {
-  return await withChatRun({ surface: "group", groupId: group_id, userId }, () =>
+  return await withChatRun({ surface: "group", groupId: group_id, userId, messageId: runtime.messageId, eventTime: runtime.eventTime }, () =>
     runAiReply(group_id, userId, userMsg, userName, imageUrls, replyTo, replyText, isAtMe, mentions, runtime));
 }
 
