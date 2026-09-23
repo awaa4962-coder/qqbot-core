@@ -74,7 +74,7 @@ test("expired notes are not renewed by profile updates and cannot enter prompts"
   assert.equal(f.service.snapshot(scope).items[0].state, "expired");
   const packet = memoryEvidenceLayers(scope.userId, scope.groupId, { query: "我的项目", snapshot: f.service.snapshot, users: {}, readPrivacy: () => ({ users: {} }) });
   assert.ok(packet.layers.every(layer => layer.contextSources.length === 0));
-  assert.match(packet.layers[0].content, /入选 0 条/);
+  assert.match(packet.layers[0].content, /相关候选 0 条/);
   assert.equal(f.service.prune(time + 8 * DAY + 1), true);
   assert.equal(f.service.snapshot(scope).items.length, 0);
 });

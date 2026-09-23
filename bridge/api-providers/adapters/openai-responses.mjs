@@ -2,11 +2,20 @@ import { normalizedRaw, normalizeUsage, splitSystemMessages } from "../message-c
 import { postProviderJson } from "../transport.mjs";
 import { redactProviderPayload } from "../request-privacy.mjs";
 import { redactSensitiveText } from "../../privacy.mjs";
+import { prepareProviderRequest } from "../prepared-request.mjs";
 
 const PROTOCOL = "openai-responses";
 const MAX_CONTINUATION_BYTES = 1024 * 1024;
 
 export async function callOpenAiResponses(provider, key, request) {
+  const prepared = prepareProviderRequest(provider, request, buildBody);
+  const { body } = prepared;
+  const result = await postProviderJson(provider, key, body, prepared.request);
+  if (!result.ok) return result;
+  return { ...result, raw: normalizeResponse(provider.id, result.data, Boolean(body.tools?.length) && body.tool_choice !== "none") };
+}
+
+function buildBody(provider, request) {
   const { system, conversation } = splitSystemMessages(request.messages);
   const body = {
     model: provider.model,
@@ -27,9 +36,7 @@ export async function callOpenAiResponses(provider, key, request) {
   if (toolsEnabled || conversation.some(message => message.providerContinuation?.protocol === PROTOCOL)) {
     configureStatelessReplay(body);
   }
-  const result = await postProviderJson(provider, key, body, request);
-  if (!result.ok) return result;
-  return { ...result, raw: normalizeResponse(provider.id, result.data, toolsEnabled && body.tool_choice !== "none") };
+  return body;
 }
 
 function configureStatelessReplay(body) {

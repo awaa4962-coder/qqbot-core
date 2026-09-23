@@ -19,7 +19,7 @@ export function buildModelPrompt(options = {}) {
     system,
     dynamicMessage: { role: "user", content },
     metadata: {
-      promptVersion: passive ? "interjection-v5" : "chat-v10",
+      promptVersion: passive ? "interjection-v6" : "chat-v11",
       promptFingerprint: createHash("sha256").update(system).digest("hex").slice(0, 16),
       staticChars: system.length,
       dynamicChars: content.length,

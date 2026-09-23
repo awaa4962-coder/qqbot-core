@@ -82,6 +82,8 @@ export function logGroupMsg(group_id, nickname, text, uid, role, imageUrls, meta
     uid: String(uid),
     nickname: nickname || 'unknown',
     text: cleanText.slice(0, 500),
+    textTruncated: cleanText.length > 500,
+    textChars: cleanText.length,
     role: role || 'member',
     ts: Date.now(),
   };
@@ -98,6 +100,8 @@ export function logGroupMsg(group_id, nickname, text, uid, role, imageUrls, meta
     group: gid,
     nickname: nickname || 'unknown',
     text: cleanText.slice(0, 300),
+    textTruncated: cleanText.length > 300,
+    textChars: cleanText.length,
     ts: Date.now(),
   };
   if (mentions.length) userChat.mentions = mentions;

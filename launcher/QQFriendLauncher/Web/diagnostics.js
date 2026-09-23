@@ -40,6 +40,7 @@ import { initializeDeliveries } from "./deliveries.js";
     quote_source_unknown: "引用来源资料不完整", quote_scope_mismatch: "引用不属于当前群", quote_message_mismatch: "引用消息编号不匹配",
     quote_privacy_unavailable: "无法核对引用的隐私边界", quote_forgotten: "引用内容已被清理", quote_content_empty: "引用没有可用正文或图片",
     quote_superseded: "引用来源已被纠正或删除", quote_memory_unavailable: "无法核对引用的记忆修订",
+    context_history_pruned: "续接时舍弃完整旧历史组", context_wire_selected: "发送前实际上下文",
   };
   const label = (value) => labels[value] || value || "待判断";
 
@@ -123,10 +124,14 @@ import { initializeDeliveries } from "./deliveries.js";
       const detail = document.createElement("span");
       detail.textContent = stepDetails(step);
       li.append(detail); list.append(li);
-      if (step.stage !== "tool" && step.sources?.length) {
+      if (step.stage !== "tool" && (step.sources?.length || contextCount(step, "sourceDisplayOmitted") > 0)) {
         const sources = document.createElement("span");
         sources.className = "trace-sources";
-        sources.textContent = step.sources.map(sourceLabel).join("；");
+        const shown = (step.sources || []).map(sourceLabel);
+        const omitted = contextCount(step, "sourceDisplayOmitted");
+        if (omitted > 0) shown.push(`另 ${omitted} 条来源未展示`);
+        const heading = step.stage === "context" ? step.reason === "context_wire_selected" ? "发送前来源：" : "初选来源：" : "";
+        sources.textContent = heading + shown.join("；");
         li.append(sources);
       }
     }
@@ -134,12 +139,38 @@ import { initializeDeliveries } from "./deliveries.js";
   }
 
   function sourceLabel(source) {
+    const completenessLabels = { complete: "存档文字完整", truncated: "存档文字已截短", unknown: "存档完整性未知" };
+    const completeness = Object.hasOwn(completenessLabels, source.completeness) ? ` · ${completenessLabels[source.completeness]}` : "";
+    if (source.kind === "file") return Number.isInteger(source.fileIndex) && source.fileIndex >= 1 && source.fileIndex <= 3
+      ? `第 ${source.fileIndex} 份附件${completeness}` : `附件${completeness}`;
     const kinds = { quote: "引用", thread: "对话线程", memory: "个人历史", group: "群聊", image: "图片", note: "明确记忆" };
     const reasons = { reply_chain: "引用链", continuation: "承接", keywords: "关键词", synonyms: "同义表达", mention: "被提及者", recent: "最近背景", image_reference: "明确看图指向", explicit_note: "本人记忆命令", operator_note: "管理员备注", inferred_topic: "原话话题线索" };
     const verified = source.verified ? ` · 同群来源已核验${source.at ? " · " + new Date(source.at).toLocaleString("zh-CN", { hour12: false }) : ""}` : "";
     const actor = source.kind === "quote" && source.userId ? " · 发言人 " + source.userId : "";
     const note = source.kind === "note" ? ` · 条目 ${source.noteId || "未知"} · 修订 ${source.revision || 0}` : "";
-    return `${kinds[source.kind] || "上下文"} ${source.messageId || "旧记录"}${actor} · ${reasons[source.reason] || "相关"}${verified}${note}${source.clipped ? " · 摘录或所在层已裁剪" : ""}`;
+    return `${kinds[source.kind] || "上下文"} ${source.messageId || "旧记录"}${actor} · ${reasons[source.reason] || "相关"}${verified}${note}${source.clipped ? " · 原话摘录或旧记录裁剪" : ""}${completeness}`;
+  }
+
+  function contextCount(step, key) {
+    const value = step[key];
+    return Number.isSafeInteger(value) && value >= 0 && value <= 1e9 ? value : null;
+  }
+
+  function contextDetails(step) {
+    if (step.stage !== "context") return [];
+    const details = [];
+    const groupKeys = [["候选组", "contextGroups"], ["入选组", "selectedGroups"], ["舍弃组", "prunedGroups"]];
+    const sourceTitle = step.reason === "context_wire_selected" ? "发送前来源" : "初选来源";
+    const entries = [...groupKeys, [sourceTitle, "selectedSourceCount"], ["来源上限拒绝组", "rejectedSourceGroups"],
+      ["依赖不满足组", "rejectedDependencyGroups"], ["续接累计舍弃组", "continuationPrunedGroups"]];
+    for (const [title, key] of entries) {
+      const value = contextCount(step, key);
+      if (value !== null) details.push(`${title} ${value}`);
+    }
+    const files = [["附件", "filesTotal"], ["已提供", "filesIncluded"], ["读取失败或不支持", "filesUnreadable"], ["未提供", "filesOmitted"]]
+      .map(([title, key]) => [title, contextCount(step, key)]).filter(([, value]) => value !== null);
+    if (files.length) details.push(files.map(([title, value]) => `${title} ${value}`).join(" / "));
+    return details;
   }
 
   function stepDetails(step) {
@@ -158,6 +189,7 @@ import { initializeDeliveries } from "./deliveries.js";
       step.imageFirstFrames > 0 && `${step.imageFirstFrames} 张动态图仅读首帧`,
       step.chars !== undefined && `${step.chars} 字符`, step.messages !== undefined && `${step.messages} 层上下文`,
       step.pruned > 0 && `裁剪 ${step.pruned} 层`, step.httpStatus > 0 && `HTTP ${step.httpStatus}`,
+      ...contextDetails(step),
       step.attempt && `第 ${step.attempt} 次`, step.probability !== undefined && `概率 ${Math.round(step.probability * 100)}%`,
       ...usageDetails(step),
       ...modeDetails(step),

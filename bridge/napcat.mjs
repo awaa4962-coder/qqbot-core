@@ -113,34 +113,44 @@ function detectFileType(name) {
   return ext;
 }
 
-async function fetchWithTimeout(url, timeoutMs) {
-  const text = await fetchSafeText(url, { timeoutMs, maxBytes: 10000 });
-  if (text === null) throw new Error('URL blocked or download failed');
-  return text;
+export async function fetchFileEvidence(fileData, options = {}) {
+  options.signal?.throwIfAborted();
+  if (!fileData) return { status: 'unavailable', reason: 'missing_file' };
+  const name = stringFileField(fileData.name);
+  const url = stringFileField(fileData.url) || stringFileField(fileData.file);
+
+  if (!detectFileType(name)) return { status: 'unsupported', reason: 'unsupported_type' };
+  if (!url) return { status: 'unavailable', reason: 'missing_url' };
+
+  const urlErr = validateFileUrl(url);
+  if (urlErr) return { status: 'unavailable', reason: urlErr };
+
+  return await readFileEvidence(url, options.signal);
 }
 
-function trimFileContent(txt, maxBytes) {
-  if (txt.length <= maxBytes) return txt;
-  return txt.slice(0, maxBytes) + '\n... [截断 ' + txt.length + '字符]';
+async function readFileEvidence(url, signal) {
+  try {
+    const text = await fetchSafeText(url, { timeoutMs: 8000, maxBytes: 10000, requireFullResponse: true, signal });
+    signal?.throwIfAborted();
+    return text?.trim() ? { status: 'ok', text } : { status: 'unavailable', reason: text === null ? 'read_failed' : 'empty' };
+  } catch (error) {
+    if (error?.code === 'CHAT_CANCELLED' || error?.code === 'CHAT_TOOL_STOPPED') throw error;
+    signal?.throwIfAborted();
+    return { status: 'unavailable', reason: 'read_failed' };
+  }
 }
+
+function stringFileField(value) { return typeof value === 'string' ? value : ''; }
 
 export async function fetchFileContent(fileData) {
   if (!fileData) return '';
-  const name = fileData.name || '';
-  const url = fileData.url || fileData.file || '';
-
-  if (!detectFileType(name)) return '[文件: ' + name + ' (二进制)]';
-  if (!url) return '';
-
-  const urlErr = validateFileUrl(url);
-  if (urlErr) return '[文件: ' + name + ' (' + urlErr + ')]';
-
-  try {
-    const txt = await fetchWithTimeout(url, 8000);
-    return trimFileContent(txt, 10000);
-  } catch (e) {
-    return '[文件: ' + name + ' (读取失败: ' + e.message + ')]';
-  }
+  const result = await fetchFileEvidence(fileData);
+  if (result.status === 'ok') return result.text;
+  if (result.reason === 'missing_url') return '';
+  const name = stringFileField(fileData.name);
+  if (result.status === 'unsupported') return '[文件: ' + name + ' (二进制)]';
+  const reason = ['无效URL', '不支持协议', '内网地址已拒绝'].includes(result.reason) ? result.reason : '读取失败';
+  return '[文件: ' + name + ' (' + reason + ')]';
 }
 
 export function getReplyData(msg) {

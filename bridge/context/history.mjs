@@ -1,5 +1,5 @@
 import { users, groupChats } from "../storage.mjs";
-import { fmtMsg, formatSpeakerLine } from "./messages.mjs";
+import { buildHistoricalSourceFrame, fmtMsg } from "./messages.mjs";
 import { wallAgeMs } from "../runtime-clock.mjs";
 import { selectionSource } from "./conversation-selection.mjs";
 
@@ -7,7 +7,11 @@ export function recentGroupChat(group_id, limit = 30, options = {}) {
   const gid = String(group_id);
   const msgs = groupChats[gid] || [];
   const recent = msgs.filter(message => !isExcludedMessage(message, options)).slice(-limit);
-  return recent.map(fmtMsg);
+  return recent.map(message => {
+    const frame = buildHistoricalSourceFrame(message, "[群聊背景，仅供理解，不要复述]");
+    return { role: fmtMsg(message).role, content: frame.content, contextAtomic: true, contextOriginalFrame: true,
+      contextSources: [selectionSource(message, "group", "recent", 0, frame.clipped)] };
+  });
 }
 
 export function crossGroupCtx(uid, currentGroup) {
@@ -16,7 +20,9 @@ export function crossGroupCtx(uid, currentGroup) {
   const current = String(currentGroup);
   const otherChats = user.chats.filter(function(chat) { return chat.group !== current; }).slice(-5);
   return otherChats.map(function(chat) {
-    return { role: "user", content: "[在" + chat.group + "群] " + formatSpeakerLine(chat) };
+    const frame = buildHistoricalSourceFrame(chat, "[在" + safeGroupLabel(chat.group) + "群的历史原话，仅供理解]");
+    return { role: "user", content: frame.content, contextAtomic: true, contextOriginalFrame: true,
+      contextSources: [selectionSource(chat, "memory", "cross_group", 0, frame.clipped)] };
   });
 }
 
@@ -25,7 +31,9 @@ export function recentHistory(uid, limit = 30) {
   if (!user || !user.chats) return [];
   const msgs = user.chats.slice(-limit);
   return msgs.map(function(message) {
-    return { role: "user", content: "[在" + message.group + "群] " + formatSpeakerLine(message) };
+    const frame = buildHistoricalSourceFrame(message, "[在" + safeGroupLabel(message.group) + "群的历史原话]");
+    return { role: "user", content: frame.content, contextAtomic: true, contextOriginalFrame: true,
+      contextSources: [selectionSource(message, "memory", "recent", 0, frame.clipped)] };
   });
 }
 
@@ -35,12 +43,15 @@ export function recentHistoryWeighted(uid, currentGroup, options = {}) {
   const current = String(currentGroup);
   const weighted = collectWeightedUserChats(user.chats, current, options);
   const history = weighted.map(function(item) {
-    return { role: "user", content: "[当前发言人的近期发言]\n" + formatSpeakerLine({ ...item.msg, uid: String(uid) }) };
+    const message = { ...item.msg, uid: String(uid) };
+    const frame = buildHistoricalSourceFrame(message, "[当前发言人的近期发言]");
+    return { role: "user", content: frame.content, contextAtomic: true, contextOriginalFrame: true,
+      contextSources: [selectionSource(message, "memory", "recent", 0, frame.clipped)] };
   });
   return {
     history,
     mood: deriveGroupMood(current),
-    sources: weighted.map(item => selectionSource({ ...item.msg, uid: String(uid) }, "memory", "recent")),
+    sources: history.map(item => item.contextSources[0]),
   };
 }
 
@@ -84,6 +95,11 @@ function hasExcludedMessageId(message, excludedIds) {
 function normalizeMessageId(value) {
   if (value === undefined || value === null || value === "") return "";
   return String(value);
+}
+
+function safeGroupLabel(value) {
+  const group = value === undefined || value === null ? "" : String(value);
+  return /^\d{1,20}$/.test(group) ? group : "unknown";
 }
 
 function weightRecentChat(ageHours) {

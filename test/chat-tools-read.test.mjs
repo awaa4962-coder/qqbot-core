@@ -71,6 +71,26 @@ test("operator notes have note provenance but never fabricate a user message sou
   assert.equal(output.items[0].source.noteId, "abcdef123456");
 });
 
+test("raw recall distinguishes archive completeness from a fresh bounded excerpt", () => {
+  const short = "Project   source";
+  const long = "Project " + "x".repeat(350);
+  const cases = [
+    [chat({ text: short, textTruncated: false, textChars: short.length }), "complete", false],
+    [chat({ text: short, textTruncated: true, textChars: 500 }), "truncated", false],
+    [chat({ text: short }), "unknown", false],
+    [chat({ text: short, textTruncated: false, textChars: 500 }), "unknown", false],
+    [chat({ text: long, textTruncated: false, textChars: long.length }), "complete", true],
+  ];
+  for (const [entry, completeness, excerptTruncated] of cases) {
+    const output = recall(options([], [entry]), { query: "Project", kind: "history" });
+    assert.equal(output.items.length, 1);
+    assert.equal(output.items[0].archiveCompleteness, completeness);
+    assert.equal(output.items[0].excerptTruncated, excerptTruncated);
+    assert.ok(output.items[0].text.length <= 300);
+    assert.doesNotMatch(JSON.stringify(output), /textChars|textTruncated/);
+  }
+});
+
 test("strict argument schemas reject identity, scope, filename, command and task injection", () => {
   const forbidden = [null, [], "Project", { query: "" }, { query: " " }, { query: 2 }, { query: "x".repeat(161) },
     ...["userId", "groupId", "scope", "filename", "task", "command", "provider", "currentMessageId", "__proto__"].map(key => ({ query: "Project", [key]: "other" })),

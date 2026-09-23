@@ -226,8 +226,11 @@ export async function readBoundedResponseBuffer(response, maxBytes) {
 export async function fetchSafeText(url, options = {}) {
   const maxBytes = options.maxBytes || 2 * 1024 * 1024;
   const result = await fetchSafeResponse(url, options);
-  if (!result.ok || !result.response?.ok) { await cancelResponse(result.response || {}); return null; }
-  const buffer = await readBoundedResponseBuffer(result.response, maxBytes);
+  const response = result.response;
+  const invalidFullResponse = options.requireFullResponse === true &&
+    (response?.status !== 200 || response.headers?.has("content-range"));
+  if (!result.ok || !response?.ok || invalidFullResponse) { await cancelResponse(response || {}); return null; }
+  const buffer = await readBoundedResponseBuffer(response, maxBytes);
   return buffer === null ? null : buffer.toString("utf8");
 }
 

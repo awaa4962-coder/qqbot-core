@@ -4,21 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.24-memory-state";
-export const VERSION_NAME = "memory-state";
+export const VERSION = "1.4.25-context-groups";
+export const VERSION_NAME = "context-groups";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "明确记忆新增事实、事件、待办和状态分类；事件时间与来源时间分开，旧条目不猜类型。",
-  "可显式记录和变更事项状态；控制台分类、事件时间与状态分开编辑，状态更新不改正文或期限。",
-  "保留旧记忆命令与管理员备注来源；已完成表示操作者声明，不代表机器人执行。",
+  "上下文按完整来源组取舍，引用与回复不再被预算拆开；存档完整性明确区分完整、截短和未知。",
+  "私聊文本附件单独提供正文，保留当前问题；超出数量或篇幅时明确提示，未读文件不冒充已读。",
+  "工具续问只移除可舍弃的旧背景，保留原生工具配对；诊断区分初选和发送前选择，不额外调用模型压缩。",
   "JM、模型主备、思考档位与关系评分保持不变；Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Explicit memories add fact, event, todo and state types; event time stays separate from source time, and legacy entries are not guessed.",
-  "Items support explicit status changes; the console edits type, event time and status separately. Status changes leave text and expiry unchanged.",
-  "Legacy memory commands and administrator-note provenance remain. Done records an operator's statement, not bot execution.",
+  "Context budgets select whole source groups. Reply links stay together, and archive completeness is complete, truncated or unknown.",
+  "Private text attachments retain their own evidence and the current question; unread and omitted files are reported explicitly.",
+  "Tool continuations preserve native call/result pairs while evicting optional history. Diagnostics separate initial and pre-send selection without paid compression.",
   "JM, model routes, reasoning modes and relationship scoring remain unchanged. Windows stays frozen.",
 ]);
 

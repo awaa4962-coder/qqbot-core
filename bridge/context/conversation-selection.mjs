@@ -1,5 +1,7 @@
 import { compareRelevance, currentTopicText, isContinuation, messageFeatures, normalizeConversationText, retrievalFeatures } from "./relevance.mjs";
 import { wallAgeMs } from "../runtime-clock.mjs";
+import { replyWindow } from "./source-groups.mjs";
+import { archivedTextCompleteness } from "./messages.mjs";
 
 const MAX_SCAN = 120;
 const GROUP_MAX_AGE_MS = 30 * 60 * 1000;
@@ -55,34 +57,67 @@ function continuesTopic(text, previousText) {
 
 export function selectGroupConversation(messages = [], options = {}) {
   const candidates = messages.slice(-MAX_SCAN).filter(message => usableMessage(message, options));
-  const selected = new Map();
   const topic = currentTopicText(options.userMsg);
   const query = topic.switched ? topic.text : options.replyText || topic.text;
   const features = retrievalFeatures(query);
   const limit = Math.min(12, options.limit || 8);
-  const add = (message, reason, score = 0) => {
-    if (message && !selected.has(message)) selected.set(message, { message, reason, score });
-  };
-  const quote = topic.switched ? null : candidates.find(item => options.replyToMessageId && String(item.messageId) === String(options.replyToMessageId));
-  appendReplyChain(quote, candidates, add);
   const targets = new Set((options.mentions || []).filter(item => !item.isBot && !item.isAll).map(item => String(item.qq)));
-  const ranked = candidates.map(message => ({ message, ...compareRelevance(features, messageFeatures(message)) }))
-    .filter(item => item.score > 0 && (!targets.size || targets.has(String(item.message.uid))))
+  const { selected, quote } = selectComponents(candidates, { options, topic, features, targets, limit });
+  const result = [...selected.values()].sort((a, b) => Number(a.message.ts || 0) - Number(b.message.ts || 0));
+  return { items: dedupeSelection(result).filter(item => !options.replyText || item.message !== quote),
+    strategy: selectionStrategy(quote, targets, selected.size > 0) };
+}
+
+function selectComponents(candidates, context) {
+  const selected = new Map();
+  const quote = context.topic.switched ? null : candidates.find(item => context.options.replyToMessageId &&
+    String(item.messageId) === String(context.options.replyToMessageId));
+  addSeedWindow(quote, "reply_chain", candidates, selected, context.limit);
+  const ranked = candidates.map(message => ({ message, ...compareRelevance(context.features, messageFeatures(message)) }))
+    .filter(item => item.score > 0 && (!context.targets.size || context.targets.has(String(item.message.uid))))
     .sort((a, b) => b.score - a.score || Number(b.message.ts || 0) - Number(a.message.ts || 0));
-  for (const item of ranked.slice(0, limit)) {
-    add(item.message, item.reason, item.score);
-    if (targets.size) appendReplyChain(item.message, candidates, add);
+  for (const item of ranked) {
+    addSeedWindow(item.message, context.targets.size ? "mention" : item.reason,
+      candidates, selected, context.limit, item.score);
   }
-  if (!ranked.length && targets.size) {
-    candidates.filter(item => targets.has(String(item.uid))).slice(-3).forEach(item => add(item, "mention"));
+  addMentionFallback(candidates, ranked, context, selected);
+  addRecentFallback(candidates, context, selected);
+  return { selected, quote };
+}
+
+function addSeedWindow(seed, reason, candidates, selected, limit, score = 0) {
+  if (!seed) return;
+  const window = replyWindow(seed, candidates);
+  const additions = window.filter(message => !selected.has(message));
+  if (!additions.length || selected.size + additions.length > limit) return;
+  const linked = window.length > 1;
+  for (const message of window) {
+    const existing = selected.get(message);
+    if (existing) {
+      if (linked && message !== seed) existing.reason = "reply_chain";
+      continue;
+    }
+    selected.set(message, {
+      message,
+      reason: linked ? "reply_chain" : reason,
+      score: message === seed ? score : 0,
+    });
   }
-  appendLinkedReplies(candidates, selected, add);
-  const focused = selected.size > 0;
-  // An explicit quote or mention must not fall back to unrelated nearby chatter.
-  if (canUseRecentFallback(focused, targets, options)) candidates.slice(-4).forEach(item => add(item, "recent"));
-  const result = [...selected.values()].sort((a, b) => Number(b.reason === "reply_chain") - Number(a.reason === "reply_chain") || b.score - a.score || Number(b.message.ts || 0) - Number(a.message.ts || 0))
-    .slice(0, limit).sort((a, b) => Number(a.message.ts || 0) - Number(b.message.ts || 0));
-  return { items: dedupeSelection(result).filter(item => !options.replyText || item.message !== quote), strategy: selectionStrategy(quote, targets, focused) };
+}
+
+function addMentionFallback(candidates, ranked, context, selected) {
+  if (ranked.length || !context.targets.size) return;
+  const mentions = candidates.filter(item => context.targets.has(String(item.uid))).slice(-3).reverse();
+  for (const message of mentions) {
+    addSeedWindow(message, "mention", candidates, selected, context.limit);
+  }
+}
+
+function addRecentFallback(candidates, context, selected) {
+  if (!canUseRecentFallback(selected.size > 0, context.targets, context.options)) return;
+  for (const message of candidates.slice(-4).reverse()) {
+    addSeedWindow(message, "recent", candidates, selected, context.limit);
+  }
 }
 
 function selectionStrategy(quote, targets, focused) {
@@ -114,32 +149,30 @@ function excludedMessage(message, options) {
   return message.role === "assistant" || Boolean(options.selfUin && String(message.uid) === String(options.selfUin));
 }
 
-function appendReplyChain(message, candidates, add) {
-  const seen = new Set();
-  for (let depth = 0; message && depth < 4 && !seen.has(message); depth++) {
-    seen.add(message); add(message, "reply_chain");
-    message = candidates.find(item => message.replyToMessageId && String(item.messageId) === String(message.replyToMessageId));
-  }
-}
-
-function appendLinkedReplies(candidates, selected, add) {
-  const ids = new Set([...selected.keys()].map(item => String(item.messageId || "")).filter(Boolean));
-  for (const item of candidates) {
-    if (item.replyToMessageId && ids.has(String(item.replyToMessageId))) add(item, "reply_chain");
-  }
-}
-
 function dedupeSelection(items) {
   const seen = new Set();
   return items.filter(item => {
+    if (item.reason === "reply_chain") return true;
     const key = String(item.message.uid) + ":" + normalizeConversationText(item.message.text);
     if (seen.has(key)) return false;
     seen.add(key); return true;
   });
 }
 
-export function selectionSource(message, kind, reason, score = 0) {
-  return { kind, messageId: String(message.messageId ?? ""), userId: String(message.uid ?? ""), reason, score };
+export function selectionSource(message, kind, reason, score = 0, clipped = false) {
+  const completeness = archivedTextCompleteness(message);
+  return {
+    kind,
+    messageId: String(message.messageId ?? ""),
+    userId: String(message.uid ?? ""),
+    turnId: String(message.turnId ?? ""),
+    replyToMessageId: String(message.replyToMessageId ?? ""),
+    at: message.ts,
+    reason,
+    score,
+    clipped: clipped === true || completeness === "truncated",
+    completeness,
+  };
 }
 
 export function selectRecentImageMessage(messages = [], options = {}) {

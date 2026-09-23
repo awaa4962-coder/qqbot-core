@@ -134,7 +134,7 @@ test("selected turn dependencies stay complete beyond diagnostic source limits a
   const layer = { role: "user", content: "accepted complete turn", contextAtomic: true, contextMemorySources: dependencies,
     contextSources: dependencies.map(source => ({ kind: "note", ...source })) };
   const result = enforceContextBudget([layer], "current");
-  assert.equal(result.memorySources.length, 32); assert.ok(result.sources.length < 32);
+  assert.equal(result.memorySources.length, 32); assert.equal(result.sources.length, 32);
   assert.deepEqual(enforceContextBudget([layer], "current", { maxChars: 10 }).memorySources, []);
   assert.deepEqual(normalizeMemoryDependencies([...dependencies, ...dependencies]), dependencies);
   assert.equal(normalizeMemoryDependencies([...dependencies, { noteId: dependencies[0].noteId, revision: 2 }]), null);

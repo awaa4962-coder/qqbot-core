@@ -1,7 +1,15 @@
 import { normalizedRaw, normalizeUsage, parseDataImage, splitSystemMessages } from "../message-convert.mjs";
 import { postProviderJson } from "../transport.mjs";
+import { prepareProviderRequest } from "../prepared-request.mjs";
 
 export async function callGeminiNative(provider, key, request) {
+  const prepared = prepareProviderRequest(provider, request, buildBody);
+  const result = await postProviderJson(provider, key, prepared.body, prepared.request);
+  if (!result.ok) return result;
+  return { ...result, raw: normalizeResponse(provider.id, result.data) };
+}
+
+function buildBody(provider, request) {
   const { system, conversation } = splitSystemMessages(request.messages);
   const body = {
     contents: conversation.map(convertMessage),
@@ -12,9 +20,7 @@ export async function callGeminiNative(provider, key, request) {
   };
   if (system) body.systemInstruction = { parts: [{ text: system }] };
   if (request.extra && typeof request.extra === "object") Object.assign(body, request.extra);
-  const result = await postProviderJson(provider, key, body, request);
-  if (!result.ok) return result;
-  return { ...result, raw: normalizeResponse(provider.id, result.data) };
+  return body;
 }
 
 function convertMessage(message) {

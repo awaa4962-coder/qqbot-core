@@ -18,11 +18,14 @@ const REASONS = new Set([
   "quote_source_unknown", "quote_scope_mismatch", "quote_message_mismatch", "quote_privacy_unavailable", "quote_forgotten", "quote_content_empty", "quote_superseded", "quote_memory_unavailable",
   "tool_model_round", "tool_completed", "tool_empty", "tool_denied", "tool_arguments", "tool_unavailable", "tool_reused", "tool_budget", "output_budget",
   "image_direct", "image_description", "image_cache", "image_unavailable", "image_payload",
+  "context_history_pruned", "context_wire_selected",
 ]);
 const ROUTES = new Set(["group_at", "interjection", "private_chat", "private_file", "command", "jm", "resource-transfer", "link-preview", "wordcloud", "preview", "file"]);
 const NUMBERS = ["chars", "messages", "pruned", "truncated", "images", "mentions", "httpStatus", "attempt", "reasoningLength", "promptTokens", "cachedTokens", "completionTokens", "probability", "selfFactsVersion", "capabilityCount", "turnRevision", "privacyRevision", "staticChars", "dynamicChars", "inputTextChars",
   "modelRounds", "transportAttempts", "toolCalls", "toolOutputChars", "requestedCompletionTokens", "toolResultChars", "modelRoundLimit", "toolLimit",
-  "imageFailed", "imageOmitted", "imageFirstFrames", "reasoningTokens", "totalTokens"];
+  "imageFailed", "imageOmitted", "imageFirstFrames", "reasoningTokens", "totalTokens",
+  "contextGroups", "selectedGroups", "prunedGroups", "selectedSourceCount", "continuationPrunedGroups",
+  "rejectedSourceGroups", "rejectedDependencyGroups", "filesTotal", "filesIncluded", "filesUnreadable", "filesOmitted"];
 
 // Records accept metadata only. No caller can attach message bodies or raw errors.
 function safeDetails(details) {
@@ -37,7 +40,10 @@ function safeDetails(details) {
   for (const key of NUMBERS) {
     if (typeof details[key] === "number" && Number.isFinite(details[key])) safe[key] = Math.max(0, Math.min(1e9, details[key]));
   }
-  if (Array.isArray(details.sources)) safe.sources = safeSources(details.sources);
+  if (Array.isArray(details.sources)) {
+    safe.sources = safeSources(details.sources);
+    safe.sourceDisplayOmitted = details.sources.length - safe.sources.length;
+  }
   return safe;
 }
 
@@ -61,13 +67,15 @@ function safePromptIdentity(details) {
 }
 
 function safeSources(sources) {
-  const kinds = new Set(["quote", "thread", "memory", "group", "image", "note"]);
-  const reasons = new Set(["reply_chain", "continuation", "keywords", "synonyms", "mention", "recent", "image_reference", "explicit_note", "operator_note", "inferred_topic"]);
+  const kinds = new Set(["quote", "thread", "memory", "group", "image", "note", "file"]);
+  const reasons = new Set(["reply_chain", "continuation", "keywords", "synonyms", "mention", "recent", "image_reference", "explicit_note", "operator_note", "inferred_topic", "attachment"]);
   return sources.filter(item => kinds.has(item?.kind) && reasons.has(item.reason)).slice(0, 24).map(item => ({
     kind: item.kind, reason: item.reason, messageId: numericId(item.messageId), userId: numericId(item.userId),
     score: Number.isFinite(item.score) ? Math.max(0, Math.min(12, item.score)) : 0, clipped: item.clipped === true,
+    ...(["complete", "truncated", "unknown"].includes(item.completeness) ? { completeness: item.completeness } : {}),
     ...(item.kind === "quote" && item.verified === true ? { verified: true, at: sourceTimestamp(item.at) } : {}),
     ...(item.kind === "note" ? { noteId: /^[a-f0-9]{12}$/.test(item.noteId || "") ? item.noteId : "", at: sourceTimestamp(item.at), revision: Number.isSafeInteger(item.revision) ? item.revision : 0 } : {}),
+    ...(item.kind === "file" ? { fileIndex: Number.isInteger(item.fileIndex) && item.fileIndex > 0 && item.fileIndex <= 3 ? item.fileIndex : 0 } : {}),
   }));
 }
 

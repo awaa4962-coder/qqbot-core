@@ -1,6 +1,14 @@
 import { postProviderJson } from "../transport.mjs";
+import { prepareProviderRequest } from "../prepared-request.mjs";
 
 export async function callOpenAiChat(provider, key, request) {
+  const prepared = prepareProviderRequest(provider, request, buildBody);
+  const result = await postProviderJson(provider, key, prepared.body, prepared.request);
+  if (!result.ok) return result;
+  return { ...result, raw: { ...result.data, provider: provider.id } };
+}
+
+function buildBody(provider, request) {
   const tokenField = provider.tokenField || "max_tokens";
   const body = {
     model: provider.model,
@@ -16,7 +24,5 @@ export async function callOpenAiChat(provider, key, request) {
     body.thinking = request.thinking;
   }
   if (request.extra && typeof request.extra === "object") Object.assign(body, request.extra);
-  const result = await postProviderJson(provider, key, body, request);
-  if (!result.ok) return result;
-  return { ...result, raw: { ...result.data, provider: provider.id } };
+  return body;
 }

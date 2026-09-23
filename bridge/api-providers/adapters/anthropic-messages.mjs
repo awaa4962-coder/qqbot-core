@@ -2,11 +2,24 @@ import { contentAsText, normalizedRaw, normalizeUsage, parseDataImage, splitSyst
 import { postProviderJson } from "../transport.mjs";
 import { redactProviderPayload } from "../request-privacy.mjs";
 import { containsSensitiveText } from "../../privacy.mjs";
+import { prepareProviderRequest } from "../prepared-request.mjs";
 
 const PROTOCOL = "anthropic-messages";
 const MAX_CONTINUATION_BYTES = 1024 * 1024;
 
 export async function callAnthropicMessages(provider, key, request) {
+  const prepared = prepareProviderRequest(provider, request, buildBody);
+  const { body } = prepared;
+  const result = await postProviderJson(provider, key, body, prepared.request);
+  if (!result.ok) return result;
+  if ((!body.tools?.length || body.tool_choice?.type === "none") && Array.isArray(result.data?.content) &&
+      result.data.content.some(block => block?.type === "tool_use")) {
+    throw new Error("Anthropic returned tool calls while tools are disabled");
+  }
+  return { ...result, raw: normalizeResponse(provider.id, result.data) };
+}
+
+function buildBody(provider, request) {
   const { system, conversation } = splitSystemMessages(request.messages);
   const body = {
     model: provider.model,
@@ -16,14 +29,8 @@ export async function callAnthropicMessages(provider, key, request) {
   if (system) body.system = system;
   if (request.temperature !== undefined) body.temperature = request.temperature;
   if (request.extra && typeof request.extra === "object") Object.assign(body, request.extra);
-  const toolsEnabled = configureTools(body, provider, request);
-  const result = await postProviderJson(provider, key, body, request);
-  if (!result.ok) return result;
-  if ((!toolsEnabled || body.tool_choice?.type === "none") && Array.isArray(result.data?.content) &&
-      result.data.content.some(block => block?.type === "tool_use")) {
-    throw new Error("Anthropic returned tool calls while tools are disabled");
-  }
-  return { ...result, raw: normalizeResponse(provider.id, result.data) };
+  configureTools(body, provider, request);
+  return body;
 }
 
 function configureTools(body, provider, request) {

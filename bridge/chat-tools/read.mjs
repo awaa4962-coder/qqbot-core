@@ -5,6 +5,7 @@ import { memoryNotesSnapshot, memoryCorrectionSnapshot } from "../memory-profile
 import { noteSemanticText, projectNoteSemantics, validNoteSemantics } from "../memory-profile/semantics.mjs";
 import { redactSensitiveText } from "../privacy.mjs";
 import { compareRelevance, retrievalFeatures } from "../context/relevance.mjs";
+import { archivedTextCompleteness } from "../context/messages.mjs";
 import { normalizeCommand } from "../commands/normalize.mjs";
 import { buildCapabilityCatalog } from "../capabilities/catalog.mjs";
 import { safeModelIdentity } from "../capabilities/self-context.mjs";
@@ -214,7 +215,9 @@ function readHistoryCandidates(options, excluded, context) {
     const score = relevance(text, context);
     if (!text || COMMAND.test(commandText) || !score) continue;
     candidates.push({ priority: 0, score, item: {
-      kind: "historical_message", text, source: { messageId: messageId(chat.messageId), at: chat.ts },
+      kind: "historical_message", text, archiveCompleteness: archivedTextCompleteness(chat),
+      excerptTruncated: Array.from(normalizedText(chat.text)).length > 300,
+      source: { messageId: messageId(chat.messageId), at: chat.ts },
     } });
   }
   return candidates;
@@ -228,10 +231,15 @@ function historySourceUsable(chat, context) {
 }
 
 function cleanText(value, limit) {
-  if (typeof value !== "string") return "";
-  const text = redactSensitiveText(value.normalize("NFKC")).replace(/[\p{Cc}\p{Cf}\s]+/gu, " ").trim();
+  const text = normalizedText(value);
   const chars = Array.from(text);
   return chars.length > limit ? chars.slice(0, limit - 3).join("") + "..." : text;
+}
+
+function normalizedText(value) {
+  return typeof value === "string"
+    ? redactSensitiveText(value.normalize("NFKC")).replace(/[\p{Cc}\p{Cf}\s]+/gu, " ").trim()
+    : "";
 }
 
 function relevance(text, context) {

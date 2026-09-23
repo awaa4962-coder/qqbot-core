@@ -46,8 +46,9 @@ test("message feature cache notices edited text without retaining a separate his
 });
 
 test("personal recall stays with the sender and group, excludes current messages", () => {
+  const text = "解压需要完整分卷";
   users["11"] = { chats: [
-    { group: "22", text: "解压需要完整分卷", messageId: "1", ts: 1000 },
+    { group: "22", text, textTruncated: false, textChars: text.length, messageId: "1", ts: 1000 },
     { group: "33", text: "archive other-group private", messageId: "2", ts: 2000 },
     { group: "22", text: "archive current", messageId: "3", ts: 3000 },
   ] };
@@ -55,6 +56,8 @@ test("personal recall stays with the sender and group, excludes current messages
   const found = retrieveRelevantUserMemories("11", "archive", { groupId: "22", currentMessageId: "3" });
   assert.deepEqual(found.map(item => item.messageId), ["1"]);
   assert.equal(found[0].matchReason, "synonyms");
+  assert.equal(found[0].textTruncated, false);
+  assert.equal(found[0].textChars, text.length);
 });
 
 test("explicit topic switch excludes the old subject from lexical matching and threads", () => {
@@ -102,6 +105,87 @@ test("quote chain includes ancestors and responses but not unrelated nearby disc
   const selected = selectGroupConversation(messages, { userMsg: "后来好了没？", replyText: "换条显示器线试试", replyToMessageId: "2", now });
   assert.deepEqual(selected.items.map(item => item.message.messageId), ["1", "4"]);
   assert.equal(selected.strategy, "quote");
+});
+
+test("reply components are selected whole under the message limit", () => {
+  const messages = [
+    row("8101", "12", "显卡更新后黑屏"),
+    row("8102", "13", "换线试试", { replyToMessageId: "8101" }),
+    row("8103", "12", "还是黑屏", { replyToMessageId: "8102" }),
+  ];
+  const omitted = selectGroupConversation(messages, {
+    userMsg: "后来呢", replyText: "换线试试", replyToMessageId: "8102", limit: 2, now,
+  });
+  assert.deepEqual(omitted.items, []);
+
+  const selected = selectGroupConversation(messages, {
+    userMsg: "后来呢", replyText: "换线试试", replyToMessageId: "8102", limit: 3, now,
+  });
+  assert.deepEqual(selected.items.map(item => item.message.messageId), ["8101", "8103"]);
+  assert.ok(selected.items.every(item => item.reason === "reply_chain"));
+});
+
+test("legacy missing ids and turnId alone never imply a reply edge", () => {
+  const selected = selectGroupConversation([
+    row("8201", "12", "显卡更新"),
+    row("8202", "13", "黑屏了", { turnId: "8201" }),
+    row(undefined, "14", "也黑屏了", { turnId: "8201" }),
+  ], { userMsg: "显卡黑屏", limit: 3, now });
+  assert.equal(selected.items.some(item => item.contextGroup), false);
+  assert.equal(selected.items.filter(item => item.reason === "reply_chain").length, 0);
+});
+
+test("excluded corrected parents are not recalled and leave the child unlinked", () => {
+  const selected = selectGroupConversation([
+    row("8251", "12", "显卡更新后黑屏"),
+    row("8252", "13", "显卡还是黑屏", { replyToMessageId: "8251" }),
+  ], { userMsg: "显卡还是黑屏", excludeMessageIds: new Set(["8251"]), limit: 2, now });
+  assert.deepEqual(selected.items.map(item => item.message.messageId), ["8252"]);
+  assert.notEqual(selected.items[0].reason, "reply_chain");
+});
+
+test("identical text with distinct linked message identities keeps its parent frame", () => {
+  const selected = selectGroupConversation([
+    row("8301", "12", "一样的原话"),
+    row("8302", "12", "一样的原话", { replyToMessageId: "8301" }),
+  ], { userMsg: "一样的原话", limit: 2, now });
+  assert.deepEqual(selected.items.map(item => item.message.messageId), ["8301", "8302"]);
+});
+
+test("ordinary duplicate text is deduplicated even when message ids differ", () => {
+  const selected = selectGroupConversation([
+    row("8351", "12", "同一条普通历史消息"),
+    row("8352", "12", "同一条普通历史消息"),
+  ], { userMsg: "同一条普通历史消息", limit: 4, now });
+  assert.equal(selected.items.length, 1);
+  assert.equal(selected.items[0].message.messageId, "8351");
+});
+
+test("mention fallback seeds the three most recent candidates first", () => {
+  const messages = Array.from({ length: 5 }, (_, index) => row(String(8400 + index), "12", "独立短句 " + index,
+    { ts: now - (5 - index) * 1000 }));
+  const selected = selectGroupConversation(messages, {
+    userMsg: "完全无关的问题", mentions: [{ qq: "12", isBot: false }], limit: 3, now,
+  });
+  assert.deepEqual(selected.items.map(item => item.message.messageId), ["8402", "8403", "8404"]);
+});
+
+test("reply windows cap ancestors and direct replies while overlapping windows share capacity", () => {
+  const chain = Array.from({ length: 120 }, (_, index) => row(String(9001 + index), "12", "链路节点 " + index, {
+    ...(index ? { replyToMessageId: String(9000 + index) } : {}), ts: now - (120 - index),
+  }));
+  const selected = selectGroupConversation(chain, {
+    userMsg: "zzqq unrelated", replyToMessageId: "9120", limit: 8, now,
+  });
+  assert.deepEqual(selected.items.map(item => item.message.messageId), ["9117", "9118", "9119", "9120"]);
+
+  const branch = [row("9200", "12", "根节点"), ...Array.from({ length: 8 }, (_, index) =>
+    row(String(9201 + index), String(index + 20), "回复 " + index, { replyToMessageId: "9200", ts: now - (8 - index) }))];
+  const bounded = selectGroupConversation(branch, { userMsg: "没搜到词", replyToMessageId: "9200", limit: 5, now });
+  assert.deepEqual(bounded.items.map(item => item.message.messageId), ["9200", "9205", "9206", "9207", "9208"]);
+
+  const recent = selectGroupConversation(chain, { userMsg: "完全无关的问题", limit: 8, now });
+  assert.deepEqual(recent.items.map(item => item.message.messageId), ["9114", "9115", "9116", "9117", "9118", "9119", "9120"]);
 });
 
 test("explicit mention selects the addressed participant when text alone is ambiguous", () => {

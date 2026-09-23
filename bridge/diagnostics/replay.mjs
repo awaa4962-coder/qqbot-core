@@ -5,7 +5,8 @@ import { CFG } from "../config.mjs";
 import { VERSION } from "../version.mjs";
 import { callTaskApi } from "../api-providers/gateway.mjs";
 import { enforceContextBudget } from "../context/budget.mjs";
-import { buildCurrentInput, buildGroupBackgroundBlock, buildQuotedMessageBlock, formatSpeakerLine } from "../context/messages.mjs";
+import { buildCurrentInput, buildGroupBackgroundBlock, buildQuotedMessageBlock, buildHistoricalSourceFrame } from "../context/messages.mjs";
+import { assignContextGroups } from "../context/source-groups.mjs";
 import { formatConversationThreadLayers } from "../cognition/thread-manager.mjs";
 import { buildModelPrompt } from "../system-prompts/compose.mjs";
 import { buildImageContextMessage } from "../system-prompts/image-context.mjs";
@@ -19,16 +20,22 @@ const DAILY_LIMIT = 20;
 
 export function buildReplayPacket(example) {
   const layers = [];
-  if (example.quote) layers.push({ role: "user", content: buildQuotedMessageBlock(example.quote, "示例发言人"), contextPriority: 100, contextAtomic: true });
+  if (example.quote) {
+    const quoted = example.groupRows?.find(item => item.messageId === example.replyToMessageId);
+    const source = quoted ? selectionSource(quoted, "quote", "reply_chain") : null;
+    layers.push({ role: "user", content: buildQuotedMessageBlock(example.quote, "示例发言人", {
+      messageId: quoted?.messageId, userId: quoted?.uid, at: quoted?.ts,
+    }), contextPriority: 100, contextAtomic: true, contextSources: source ? [source] : [] });
+  }
   const thread = selectConversationThread({ scope: "synthetic", turns: example.turns }, { userMsg: example.input });
   for (const { content } of formatConversationThreadLayers(thread)) {
     layers.push({ role: "user", content, contextPriority: 88, contextAtomic: true });
   }
-  if (example.background) layers.push({ role: "user", content: buildGroupBackgroundBlock(example.background), contextPriority: 40 });
+  if (example.background) layers.push({ role: "user", content: buildGroupBackgroundBlock(example.background), contextPriority: 40, contextAtomic: true });
   if (example.image !== undefined) layers.push({ ...buildImageContextMessage(example.image), contextPriority: 95 });
   appendReplayRetrieval(layers, example);
   const currentInput = buildCurrentInput("示例用户", example.input, "11", { hasQuote: Boolean(example.quote) });
-  const bounded = enforceContextBudget(layers, currentInput, { mode: "group-at" });
+  const bounded = enforceContextBudget(assignContextGroups(layers), currentInput, { mode: "group-at" });
   const prompt = buildModelPrompt({ mood: "正常" });
   const messages = [
     { role: "system", content: prompt.system },
@@ -47,19 +54,21 @@ function appendReplayRetrieval(layers, example) {
     const memories = retrieveRelevantUserMemories("11", example.input, {
       users: { "11": { chats: example.memoryRows } }, groupId: "synthetic",
     });
-    layers.push({ role: "user", contextPriority: 70,
-      content: "[当前发言人相关记忆]\n" + memories.map(formatSpeakerLine).join("\n"),
-      contextSources: memories.map(item => selectionSource(item, "memory", item.matchReason, item.score)),
-    });
+    for (const item of memories) {
+      const frame = buildHistoricalSourceFrame(item, "[当前发言人相关记忆]");
+      layers.push({ role: "user", contextPriority: 70, contextAtomic: true, content: frame.content,
+        contextSources: [selectionSource(item, "memory", item.matchReason, item.score, frame.clipped)] });
+    }
   }
   if (example.groupRows) {
     const selected = selectGroupConversation(example.groupRows, {
       userMsg: example.input, replyText: example.quote, replyToMessageId: example.replyToMessageId, now: 5000,
     });
-    layers.push({ role: "user", contextPriority: 40,
-      content: buildGroupBackgroundBlock(selected.items.map(item => formatSpeakerLine(item.message))),
-      contextSources: selected.items.map(item => selectionSource(item.message, "group", item.reason, item.score)),
-    });
+    for (const item of selected.items) {
+      const frame = buildHistoricalSourceFrame(item.message, "[群聊背景，仅供理解，不要复述]");
+      layers.push({ role: "user", contextPriority: 40, contextAtomic: true, content: frame.content,
+        contextSources: [selectionSource(item.message, "group", item.reason, item.score, frame.clipped)] });
+    }
   }
 }
 

@@ -116,7 +116,7 @@ export function memoryEvidenceLayers(uid, groupId, options = {}) {
 function memoryReadState(evidence) {
   return { role: "user", contextPriority: 85, contextAtomic: true, contextSources: [],
     content: "[本轮记忆读取状态]\n" + (evidence.available
-      ? "后端仅选择当前会话中当前发言人的明确条目，入选 " + evidence.notes.length + " 条。没有相关条目只表示此范围未提供相关资料，不是联网或跨群检索。"
+      ? "后端仅查询当前会话中当前发言人的明确条目，相关候选 " + evidence.notes.length + " 条；只有本轮实际提供的完整条目才可使用，篇幅限制可能省略候选。没有相关条目只表示此范围未提供相关资料，不是联网或跨群检索。"
       : "记忆库暂不可用，本轮未使用其中资料；不能据此说用户从未提供信息。") +
       "本轮没有记忆写入工具，也没有保存回执；补充一句话不会自动成为长期条目。" };
 }

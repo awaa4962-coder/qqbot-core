@@ -51,8 +51,7 @@ async function invokeApiProvider(providerId, request = {}, options = {}) {
     if (!adapter) return failed(provider.id, "没有可用的协议适配器");
     validateProviderEndpoint(provider);
     const key = options.key !== undefined ? String(options.key || "").trim() : readProviderSecret(provider, options);
-    const prepared = withBotSelfContext(request, provider, options);
-    request.validatePrepared?.(prepared.request);
+    const prepared = prepareContext(request, provider, options);
     if (request.promptMetadata) traceStage("context", { status: "ok", ...request.promptMetadata,
       inputTextChars: measurePromptText(prepared.request.messages) });
     if (prepared.snapshot) traceStage("model", { provider: provider.id, task: options.usageTask,
@@ -72,6 +71,14 @@ async function invokeApiProvider(providerId, request = {}, options = {}) {
     logE("api-provider", providerId, "error:", error.message);
     return failed(providerId, error.message);
   }
+}
+
+function prepareContext(request, provider, options) {
+  if (request.fitPreparedContext && provider.tokenField && Object.hasOwn(request.extra || {}, provider.tokenField)) throw new Error("tool_context_override");
+  const prepared = withBotSelfContext(request, provider, options);
+  if (request.fitPreparedContext) prepared.request = { ...prepared.request, messages: request.fitPreparedContext(prepared.request) };
+  if (!request.fitPreparedContext) request.validatePrepared?.(prepared.request);
+  return prepared;
 }
 
 export async function callTaskApi(task, position, request = {}, options = {}) {

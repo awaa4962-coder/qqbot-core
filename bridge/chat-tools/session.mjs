@@ -6,6 +6,7 @@ import { traceStage } from "../diagnostics/message-trace.mjs";
 import { webSearch } from "../search.mjs";
 import { recallMemory, readBotStatus } from "./read.mjs";
 import { measureVisionRequest } from "../vision/request-budget.mjs";
+import { fitContextMessageGroups, registeredContextSources } from "../context/pruning.mjs";
 import { CHAT_TOOL_LIMITS as LIMITS, READ_TOOLS, WEB_TOOL, authorizedSearchQuery, permitsPublicSearch, parseToolArguments, toolScopeAllowed } from "./policy.mjs";
 
 export function createChatToolSession(options = {}) {
@@ -21,6 +22,7 @@ export function createChatToolSession(options = {}) {
   const collected = [];
   const memorySources = new Map();
   const cache = new Map();
+  const prunedGroups = new Set();
 
   function assertCurrent() {
     assertChatRunCurrent();
@@ -38,18 +40,30 @@ export function createChatToolSession(options = {}) {
   function prepareModel(request) {
     assertCurrent();
     if (state.modelRounds >= LIMITS.modelRounds) throw stopped("tool_budget");
-    // Count protocol continuation too; never truncate a signed block or split tool pairs.
-    if (measureVisionRequest(request).chars > LIMITS.requestChars) throw stopped("tool_context_budget");
+    // Evict only registered historical groups; current evidence and native continuations stay intact.
+    const messages = fitPreparedContext(request);
     const maxTokens = Math.max(1, Math.min(LIMITS.maxTokens, Number(request.maxTokens) || 1024));
     state.modelRounds++;
     traceStage("tool", { status: "ok", reason: "tool_model_round", ...state, modelRoundLimit: LIMITS.modelRounds, toolLimit: LIMITS.toolCalls });
-    return { ...request, maxTokens, timeoutMs: Math.max(1, Math.min(request.timeoutMs || 30000, Math.floor(deadline - now()))),
-      signal, maxAttempts: 2, maxResponseBytes: LIMITS.responseBytes, beforeAttempt: () => beforeAttempt(maxTokens), validatePrepared };
+    return { ...request, messages, maxTokens, timeoutMs: Math.max(1, Math.min(request.timeoutMs || 30000, Math.floor(deadline - now()))),
+      signal, maxAttempts: 2, maxResponseBytes: LIMITS.responseBytes, beforeAttempt: () => beforeAttempt(maxTokens), fitPreparedContext, validatePrepared };
   }
 
-  function validatePrepared(request) {
+  function fitPreparedContext(request, measure = measureVisionRequest) {
     assertCurrent();
-    if (measureVisionRequest(request).chars > LIMITS.requestChars) throw stopped("tool_context_budget");
+    const fitted = fitContextMessageGroups(request, LIMITS.requestChars, measure);
+    for (const group of fitted.removed) prunedGroups.add(group);
+    if (fitted.removed.length) traceStage("context", { status: "ok", reason: "context_history_pruned",
+      continuationPrunedGroups: prunedGroups.size, inputTextChars: measure({ ...request, messages: fitted.messages }).chars });
+    return fitted.messages;
+  }
+
+  function validatePrepared(request, measure = measureVisionRequest) {
+    assertCurrent();
+    if (measure(request).chars > LIMITS.requestChars) throw stopped("tool_context_budget");
+    const sources = registeredContextSources(request.messages);
+    traceStage("context", { status: "ok", reason: "context_wire_selected", sources,
+      selectedSourceCount: sources.length, continuationPrunedGroups: prunedGroups.size });
   }
 
   function beforeAttempt(maxTokens) {
