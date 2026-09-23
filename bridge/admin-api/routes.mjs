@@ -28,6 +28,7 @@ import { adminTaskManager } from "./task-manager.mjs";
 import { conversationSummaryService } from "../features/conversation-summary/service.mjs";
 import { buildChatDeliverySnapshot, resolveChatDelivery } from "../cognition/delivery-ledger.mjs";
 import { buildMemoryManagerSnapshot, applyMemoryManagerAction } from "./memory-manager.mjs";
+import { getApiUsageSnapshot } from "../api-providers/usage-metrics.mjs";
 
 const GET_ROUTES = new Map([
   ["/admin/status", handleStatusRoute],
@@ -42,6 +43,7 @@ const GET_ROUTES = new Map([
   ["/admin/logs", handleLogsRoute],
   ["/admin/config", handleConfigReadRoute],
   ["/admin/api-providers", handleApiProvidersReadRoute],
+  ["/admin/api-usage", handleApiUsageRoute],
   ["/admin/memes", handleMemesReadRoute],
   ["/admin/stickers", handleStickersReadRoute],
   ["/admin/diagnose/traces", handleTracesRoute],
@@ -131,6 +133,16 @@ async function dispatchAdminRoute(req, res, context) {
 
 function handleStatusRoute(_req, res, context) {
   context.sendJson(res, 200, buildRuntimeStatus(), 2);
+}
+
+function handleApiUsageRoute(_req, res, context) {
+  try {
+    const allowed = new Set(["days", "provider", "model", "task", "position", "promptVersion", "configuredMode", "effectiveMode"]);
+    const values = Object.fromEntries(context.url.searchParams);
+    if (Object.keys(values).some(key => !allowed.has(key))) throw new Error("用量筛选参数无效");
+    if (values.days !== undefined && !["1", "7", "30"].includes(values.days)) throw new Error("统计时间范围无效");
+    context.sendJson(res, 200, getApiUsageSnapshot(values));
+  } catch { context.sendJson(res, 400, { error: "用量查询参数无效或记录暂时不可读" }); }
 }
 
 function handleCommandsRoute(_req, res, context) {

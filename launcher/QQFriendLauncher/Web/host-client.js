@@ -49,6 +49,13 @@
     if (action === "getLogs" || action === "refreshLogs") return apiRequest("/admin/logs?tail=120");
     if (action === "getConfig" || action === "refreshConfig") return apiRequest("/admin/config");
     if (action === "getApiProviders") return apiRequest("/admin/api-providers");
+    if (action === "getApiUsage") {
+      const query = new global.URLSearchParams();
+      for (const key of ["days", "model", "task", "provider", "position", "promptVersion", "effectiveMode"]) {
+        if (payload[key] !== undefined && payload[key] !== null && payload[key] !== "") query.set(key, String(payload[key]));
+      }
+      return apiRequest("/admin/api-usage?" + query);
+    }
     if (action === "getMemes") return apiRequest("/admin/memes");
     if (action === "getStickers") return apiRequest("/admin/stickers");
     if (action === "getStickerPreview") {

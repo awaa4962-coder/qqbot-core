@@ -4,22 +4,22 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.22-vision-context";
-export const VERSION_NAME = "vision-context";
+export const VERSION = "1.4.23-usage-dimensions";
+export const VERSION_NAME = "usage-dimensions";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "支持看图的聊天模型直接接收规范化图片和已选对话，文字模型按配置的视觉主备获取客观描述，不再一律只看短摘要。",
-  "图片每轮只下载一次，主备共享；明确标注未读图片和动态图首帧，描述与语境推断分开，不强认人物。",
-  "客观描述仅在同一用户/会话、相同图片字节与模型版本内短时复用；遗忘立即清理，诊断显示实际看图路径，不存图片正文或推理。",
   "JM 群聊/私聊下载、大写 FS 与延迟清理保留；模型主备、思考档位、白名单和关系评分不变，Windows 继续冻结。",
+  "管理员可在 API 页按模型、任务、主备、提示词版本和实际思考模式查看用量；旧记录缺少的资料明确显示未知。",
+  "供应商未报告的用量不当作零；缓存命中按已报告的输入量加权，重试和失败也单独计数，不冒充账单或节费金额。",
+  "成员仍可查询自己的缓存命中，最多回看30天的匿名用量，不存聊天正文或私有推理。清除统计需确认落盘，失败会明确提示。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Vision-enabled chat receives normalized image pixels with selected conversation context. Text models use the configured vision slots for objective descriptions.",
-  "Assets are prepared once per turn and shared by fallback. Unread images and first-frame-only animations are explicit; visual observations stay separate from contextual guesses.",
-  "Objective descriptions have a short-lived exact-image, user/scope/model cache, cleared on erasure. Diagnostics report the actual path, never pixels or private reasoning.",
   "Keeps group/private JM downloads, FS and delayed cleanup. Model routes, reasoning modes, allowlists and relationship scoring stay unchanged. Windows stays frozen.",
+  "Admins can inspect usage by model, task, slot, prompt version and effective reasoning mode on the API page. Missing historical metadata stays unknown.",
+  "Missing provider usage is not zero. Cache weighting uses reported input units; retries and failures are counted separately, without billing or savings claims.",
+  "Members keep their personal cache statistics with a maximum 30-day query window, without chat bodies or private reasoning. Erasure must persist before success; failures are explicit.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([
@@ -229,8 +229,8 @@ function buildStatusLines(lang) {
       "lint 0 errors / 0 warnings",
     ];
   }
-  if (lang === "en") return ["tests: all passing", "lint 0 errors / 0 warnings"];
-  return ["tests: all passing", "lint 0 errors / 0 warnings"];
+  if (lang === "en") return ["validation status: not recorded for this version"];
+  return ["本版本验证状态：未记录"];
 }
 
 function readReleaseManifest() {

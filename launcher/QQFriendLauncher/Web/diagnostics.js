@@ -158,9 +158,34 @@ import { initializeDeliveries } from "./deliveries.js";
       step.chars !== undefined && `${step.chars} 字符`, step.messages !== undefined && `${step.messages} 层上下文`,
       step.pruned > 0 && `裁剪 ${step.pruned} 层`, step.httpStatus > 0 && `HTTP ${step.httpStatus}`,
       step.attempt && `第 ${step.attempt} 次`, step.probability !== undefined && `概率 ${Math.round(step.probability * 100)}%`,
-      step.promptTokens > 0 && `输入 ${step.promptTokens} / 缓存 ${step.cachedTokens || 0} token`,
+      ...usageDetails(step),
+      ...modeDetails(step),
       ...tools,
     ].filter(Boolean).join(" · ");
+  }
+
+  function usageDetails(step) {
+    const measured = (key, flag) => step[flag] === true && typeof step[key] === "number" && Number.isFinite(step[key]) && step[key] >= 0 ? String(step[key]) : "未知";
+    const present = (key, flag) => Object.hasOwn(step, key) || Object.hasOwn(step, flag);
+    const details = [];
+    if (present("promptTokens", "promptReported") || present("cachedTokens", "cacheReported")) {
+      details.push(`输入 ${measured("promptTokens", "promptReported")} / 缓存 ${measured("cachedTokens", "cacheReported")} token`);
+    }
+    for (const [title, key, flag] of [["输出", "completionTokens", "completionReported"], ["推理", "reasoningTokens", "reasoningReported"], ["总计", "totalTokens", "totalReported"]]) {
+      if (present(key, flag)) details.push(`${title} ${measured(key, flag)} token`);
+    }
+    if (!details.length && Object.hasOwn(step, "usageReported")) details.push(step.usageReported === true ? "用量已上报，字段未知" : "用量未知");
+    return details;
+  }
+
+  function modeDetails(step) {
+    if (!["configuredMode", "effectiveMode", "reasoningControl", "reasoningApplied"].some(key => Object.hasOwn(step, key))) return [];
+    const modes = { economy: "省额度", auto: "智能", deep: "深度", provider_default: "供应商默认", not_supported: "不支持", unknown: "未知" };
+    const mode = value => Object.hasOwn(modes, value) ? modes[value] : typeof value === "string" && value ? value : "未知";
+    const applied = { yes: "已应用", no: "未应用", unknown: "未知" };
+    return [`模式 ${mode(step.configuredMode)} → ${mode(step.effectiveMode)}`,
+      `控制 ${typeof step.reasoningControl === "string" && step.reasoningControl ? step.reasoningControl : "未知"}`,
+      `应用 ${Object.hasOwn(applied, step.reasoningApplied) ? applied[step.reasoningApplied] : "未知"}`];
   }
 
   function toolDetails(step) {

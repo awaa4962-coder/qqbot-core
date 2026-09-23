@@ -19,7 +19,7 @@ const PUBLIC_LINUX_FILES = new Set([
   ".env.example", "qqfriend.env.example", "compose.yaml",
   "Dockerfile", "Dockerfile.dependencies", "Dockerfile.overlay",
   "check.sh", "prepare.sh", "install-docker-host.sh", "install-summary-schedule.sh", "install-time-order.sh",
-  "README.md", "ROADMAP.md", "MEMBER-SUMMARY.md", "MODULAR-RUNTIME.md", "SUMMARY-WORKBENCH.md", "MEMORY.md", "CHAT-TOOLS.md", "VISION.md",
+  "README.md", "ROADMAP.md", "MEMBER-SUMMARY.md", "MODULAR-RUNTIME.md", "SUMMARY-WORKBENCH.md", "MEMORY.md", "CHAT-TOOLS.md", "VISION.md", "USAGE.md",
   "systemd/docker-chrony-wait.conf", "systemd/qqfriend-summary.service",
   "systemd/qqfriend-summary.timer", "systemd/qqfriend.service",
 ].map(file => "deploy/linux/" + file));
@@ -60,6 +60,7 @@ const FORBIDDEN_NAMES = new Set([
   "memes.json",
   "api-providers.json",
   "api-providers.previous.json",
+  ".user-salt",
   "openclaw-workspace-state.json",
   "launcher-config.json",
   "launcher-background.json",
@@ -126,6 +127,7 @@ export function isForbiddenPath(filePath) {
   if (/\.tmp(?:\.|$)/i.test(base)) return true;
   if (parts.some(part => /\.WebView2$/i.test(part) || /^publish(?:-|$)/i.test(part))) return true;
   if (FORBIDDEN_NAMES.has(base)) return true;
+  if (/^usage-\d{4}-\d{2}-\d{2}\.jsonl$/i.test(base)) return true;
   if (base.startsWith(".env_")) return true;
   if (base.startsWith("~$") && base.endsWith(".docx")) return true;
   if (FORBIDDEN_EXTENSIONS.has(ext)) return true;

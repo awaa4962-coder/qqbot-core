@@ -9,6 +9,8 @@ import { traceStage } from "../diagnostics/message-trace.mjs";
 import { withBotSelfContext } from "../capabilities/self-context.mjs";
 import { chatRunPrivacyChanged, chatRunStopReason } from "../cognition/chat-run.mjs";
 import { measurePromptText } from "../system-prompts/compose.mjs";
+import { usageDimensions } from "./usage-aggregate.mjs";
+import { getMemoryPrivacyGeneration } from "../memory-profile/generation.mjs";
 import {
   getProvider,
   getTaskRoute,
@@ -32,6 +34,10 @@ export async function callApiProvider(providerId, request = {}, options = {}) {
   traceStage("model", {
     ...metadata, status: result.ok ? "ok" : "failed", httpStatus: Number(result.status || 0),
     promptTokens: usage.promptTokens, cachedTokens: usage.cachedTokens, completionTokens: usage.completionTokens,
+    reasoningTokens: usage.reasoningTokens, totalTokens: usage.totalTokens,
+    usageReported: usage.usageReported, cacheReported: usage.cacheReported, promptReported: usage.promptReported,
+    completionReported: usage.completionReported, reasoningReported: usage.reasoningReported, totalReported: usage.totalReported,
+    ...result.usageIdentity,
   });
   return result;
 }
@@ -52,14 +58,16 @@ async function invokeApiProvider(providerId, request = {}, options = {}) {
     if (prepared.snapshot) traceStage("model", { provider: provider.id, task: options.usageTask,
       position: options.usagePosition, selfFactsVersion: prepared.snapshot.version,
       capabilityCount: prepared.snapshot.capabilityCount, model: prepared.snapshot.model });
-    const result = await adapter(provider, key, prepared.request);
+    const usageIdentity = callUsageIdentity(provider, request, options);
+    const privacy = getMemoryPrivacyGeneration();
+    const result = await adapter(provider, key, { ...prepared.request,
+      onUsageAttempt: attempt => recordAttemptUsage(usageIdentity, request, attempt, options, privacy) });
     if (!result.ok) {
       logE("api-provider", provider.id, "failed:", result.error);
-      return { ...result, provider: provider.id, raw: null };
+      return { ...result, provider: provider.id, raw: null, usageIdentity };
     }
-    recordSuccessfulUsage(provider, request, result, options);
     log("api-provider", provider.id, "ok", result.durationMs + "ms");
-    return { ...result, provider: provider.id };
+    return { ...result, provider: provider.id, usageIdentity };
   } catch (error) {
     logE("api-provider", providerId, "error:", error.message);
     return failed(providerId, error.message);
@@ -89,6 +97,7 @@ export async function callTaskApi(task, position, request = {}, options = {}) {
     provider,
     usageTask: task,
     usagePosition: slot,
+    reasoningPolicy: resolved.meta,
   });
   return { ...result, reasoningPolicy: resolved.meta };
 }
@@ -109,17 +118,36 @@ function failed(provider, error) {
   };
 }
 
-function recordSuccessfulUsage(provider, request, result, options) {
+function recordAttemptUsage(identity, request, attempt, options, privacy) {
   recordApiUsage({
-    provider: provider.id,
-    task: options.usageTask || request.usageContext?.task || "direct",
-    position: options.usagePosition || request.usageContext?.position || "direct",
+    ...identity,
+    status: attempt.status,
+    transportAttempts: 1,
     // Keep actual cost without restoring the forgotten user's usage association.
-    userId: chatRunPrivacyChanged() ? undefined : request.usageContext?.userId,
-    usage: result.raw?.usage || result.data?.usage || result.usage,
-    durationMs: result.durationMs,
+    userId: chatRunPrivacyChanged() || privacy !== getMemoryPrivacyGeneration() ? undefined : request.usageContext?.userId,
+    usage: attempt.usage,
+    durationMs: attempt.durationMs,
   }, {
     dir: options.usageMetricsDir,
     salt: options.usageMetricsSalt,
   });
+}
+
+function callUsageIdentity(provider, request, options) {
+  const policy = options.reasoningPolicy || {};
+  return usageDimensions({ provider: provider.id, model: provider.model,
+    task: options.usageTask || request.usageContext?.task || "direct",
+    position: options.usagePosition || request.usageContext?.position || "direct",
+    promptVersion: request.promptMetadata?.promptVersion, promptFingerprint: request.promptMetadata?.promptFingerprint,
+    configuredMode: policy.configuredMode, reasoningControl: policy.control,
+    reasoningApplied: typeof policy.applied === "boolean" ? policy.applied ? "yes" : "no" : "unknown",
+    effectiveMode: effectiveReasoningMode(policy),
+  });
+}
+
+function effectiveReasoningMode(policy) {
+  if (policy.applied) return policy.effectiveMode;
+  if (policy.control === "provider-default") return "provider_default";
+  if (policy.control === "none") return "not_supported";
+  return "unknown";
 }

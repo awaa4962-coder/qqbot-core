@@ -89,6 +89,9 @@ export async function testApiProvider(providerId, options = {}) {
   const result = await callApiProvider(providerId, resolved.request, {
     ...options,
     provider,
+    reasoningPolicy: resolved.meta,
+    usageTask: "connection_test",
+    usagePosition: "direct",
   });
   if (!result.ok) {
     return {

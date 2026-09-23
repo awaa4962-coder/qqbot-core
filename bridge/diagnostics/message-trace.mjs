@@ -22,11 +22,11 @@ const REASONS = new Set([
 const ROUTES = new Set(["group_at", "interjection", "private_chat", "private_file", "command", "jm", "resource-transfer", "link-preview", "wordcloud", "preview", "file"]);
 const NUMBERS = ["chars", "messages", "pruned", "truncated", "images", "mentions", "httpStatus", "attempt", "reasoningLength", "promptTokens", "cachedTokens", "completionTokens", "probability", "selfFactsVersion", "capabilityCount", "turnRevision", "privacyRevision", "staticChars", "dynamicChars", "inputTextChars",
   "modelRounds", "transportAttempts", "toolCalls", "toolOutputChars", "requestedCompletionTokens", "toolResultChars", "modelRoundLimit", "toolLimit",
-  "imageFailed", "imageOmitted", "imageFirstFrames"];
+  "imageFailed", "imageOmitted", "imageFirstFrames", "reasoningTokens", "totalTokens"];
 
 // Records accept metadata only. No caller can attach message bodies or raw errors.
 function safeDetails(details) {
-  const safe = safePromptIdentity(details);
+  const safe = { ...safePromptIdentity(details), ...safeUsageDetails(details) };
   if (STATES.has(details.status)) safe.status = details.status;
   if (REASONS.has(details.reason)) safe.reason = details.reason;
   if (ROUTES.has(details.route)) safe.route = details.route;
@@ -41,11 +41,22 @@ function safeDetails(details) {
   return safe;
 }
 
+function safeUsageDetails(details) {
+  const safe = {};
+  for (const key of ["cacheReported", "usageReported", "promptReported", "completionReported", "reasoningReported", "totalReported"]) {
+    if (typeof details[key] === "boolean") safe[key] = details[key];
+  }
+  const values = { configuredMode: ["economy", "auto", "deep", "unknown"], effectiveMode: ["economy", "deep", "provider_default", "not_supported", "unknown"],
+    reasoningControl: ["unknown", "none", "provider-default", "mimo-toggle", "deepseek-toggle", "effort"], reasoningApplied: ["yes", "no", "unknown"] };
+  for (const [key, allowed] of Object.entries(values)) if (allowed.includes(details[key])) safe[key] = details[key];
+  return safe;
+}
+
 function safePromptIdentity(details) {
   const safe = {};
   if (["recall_memory", "read_bot_status", "web_search"].includes(details.toolName)) safe.toolName = details.toolName;
   if (/^[a-f0-9]{16}$/.test(details.promptFingerprint || "")) safe.promptFingerprint = details.promptFingerprint;
-  if (/^(?:chat|interjection)-v\d{1,3}$/.test(details.promptVersion || "")) safe.promptVersion = details.promptVersion;
+  if (/^[a-z][a-z0-9-]{0,47}-v\d{1,4}$/.test(details.promptVersion || "") && !/^(sk-|token|secret)/i.test(details.promptVersion)) safe.promptVersion = details.promptVersion;
   return safe;
 }
 

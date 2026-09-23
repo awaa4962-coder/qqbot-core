@@ -79,3 +79,5 @@ dist/
 deploy/linux/qqfriend.env
 deploy/linux/state/
 deploy/linux/.env.local
+**/.user-salt
+**/usage-????-??-??.jsonl

@@ -215,17 +215,19 @@ export function forgetUserData(uid, options = {}) {
   }
   clearUserMemoryProfile(id);
   clearConversationThreads(id, { userStore, save: false });
-  if (!options.skipSave) clearUserCacheUsage(id, options.cacheUsageOptions || {});
+  const usageCleared = options.skipSave || clearUserCacheUsage(id, options.cacheUsageOptions || {});
   if (!options.skipSave) {
     saveUsers();
     saveGroupChats();
   }
   const result = finishForgetDelivery(id, options);
-  return combineForgetResult(result, notesCleared);
+  return combineForgetResult(result, notesCleared, usageCleared);
 }
 
-function combineForgetResult(result, notesCleared) {
-  return notesCleared ? result : { ok: false, text: "已清理原聊天记忆，但明确记忆文件清理未能确认，请管理员检查存储后重试。" };
+function combineForgetResult(result, notesCleared, usageCleared) {
+  if (!notesCleared) return { ok: false, text: "已清理原聊天记忆，但明确记忆文件清理未能确认，请管理员检查存储后重试。" };
+  if (!usageCleared) return { ok: false, text: "已处理聊天记忆清理，但个人用量统计清除未能确认，请管理员检查存储后重试。" };
+  return result;
 }
 
 function finishForgetDelivery(id, options) {

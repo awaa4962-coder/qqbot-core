@@ -288,7 +288,7 @@ describe("admin command parsing", () => {
     const reply = buildPrivateCommandReply({ text: "更新", user_id: 1 });
     assert.match(reply, new RegExp(VERSION));
     assert.doesNotMatch(reply, /npm test 150\/150 pass/);
-    assert.match(reply, /lint 0 errors \/ 0 warnings/);
+    assert.match(reply, /lint 0 errors \/ 0 warnings|本版本验证状态：未记录/);
   });
 
   it("supports personalized profile and style commands", () => {

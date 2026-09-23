@@ -164,6 +164,39 @@
             <pre class="output compact-empty" id="apiRouteOutput">当前插槽会在这里显示</pre>
           </section>
 
+          <section class="api-usage" id="apiUsagePanel" aria-labelledby="apiUsageTitle" hidden>
+            <div class="api-usage-heading">
+              <h2 id="apiUsageTitle">API 用量</h2>
+              <div class="api-usage-actions">
+                <label>范围<select id="apiUsageDays"><option value="1">近 1 天</option><option value="7" selected>近 7 天</option><option value="30">近 30 天</option></select></label>
+                <button type="button" id="apiUsageRefresh">刷新</button>
+              </div>
+            </div>
+            <div class="api-usage-filters">
+              <label>模型<select id="apiUsageModel"><option value="">全部</option></select></label>
+              <label>任务<select id="apiUsageTask"><option value="">全部</option></select></label>
+              <label>供应商<select id="apiUsageProvider"><option value="">全部</option></select></label>
+              <label>插槽<select id="apiUsagePosition"><option value="">全部</option></select></label>
+              <label>提示词版本<select id="apiUsagePromptVersion"><option value="">全部</option></select></label>
+              <label>实际模式<select id="apiUsageEffectiveMode"><option value="">全部</option></select></label>
+            </div>
+            <p id="apiUsageNotice" class="api-usage-notice" role="status" aria-live="polite">尚未读取</p>
+            <div id="apiUsageResults" hidden>
+              <p id="apiUsageWindow" class="api-usage-meta"></p>
+              <p id="apiUsageCoverage" class="api-usage-meta"></p>
+              <dl id="apiUsageSummary" class="api-usage-summary"></dl>
+              <p class="api-usage-meta">Token 仅累计已上报值；未知不等于 0。缓存比例仅按已上报缓存的输入 Token 加权。</p>
+              <p class="api-usage-meta">旧记录仅保留成功调用，模型、提示词版本及尝试数可能未知。</p>
+              <div class="api-usage-table-wrap" role="region" aria-label="API 用量明细" tabindex="0">
+                <table class="api-usage-table">
+                  <thead><tr><th scope="col">模型 / 供应商</th><th scope="col">任务 / 插槽</th><th scope="col">提示词版本</th><th scope="col">配置 → 实际模式</th><th scope="col">调用记录 / 失败</th><th scope="col">输入 Token</th><th scope="col">输出 Token</th><th scope="col">推理 Token</th><th scope="col">缓存比例 / 实测 Token</th><th scope="col">平均耗时</th></tr></thead>
+                  <tbody id="apiUsageRows"></tbody>
+                </table>
+              </div>
+              <p id="apiUsageLocalCache" class="api-usage-meta api-usage-local"></p>
+            </div>
+          </section>
+
           <section class="surface api-guide">
             <div class="section-head"><div><p class="eyebrow">其他模型</p><h2>不知道选哪个预设？</h2></div></div>
             <div class="guide-paths">
@@ -504,6 +537,8 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite">就绪</div>
   <script src="./host-client.js?v=20260819-linux"></script>
+  <link rel="stylesheet" href="./api-usage.css?v=20260923">
+  <script type="module" src="./api-usage.js?v=20260923"></script>
   <script type="module" src="./app.js?v=20260908-modules"></script>
   <link rel="stylesheet" href="./diagnostics.css?v=20260907">
   <script type="module" src="./diagnostics.js?v=20260908-modules"></script>

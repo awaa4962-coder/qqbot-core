@@ -61,6 +61,8 @@ describe("release forbidden paths", () => {
   it("detects private config and runtime data", () => {
     assert.equal(isForbiddenPath(".env_admins"), true);
     assert.equal(isForbiddenPath(".env_ds"), true);
+    assert.equal(isForbiddenPath("bridge/.user-salt"), true);
+    assert.equal(isForbiddenPath("bridge/usage-2026-09-23.jsonl"), true);
     assert.equal(isForbiddenPath("node_modules/pkg/index.js"), true);
     assert.equal(isForbiddenPath("private/plan.docx"), true);
     assert.equal(isForbiddenPath(".qqfriend/image-memes.json"), true);

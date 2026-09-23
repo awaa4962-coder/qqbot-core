@@ -492,8 +492,8 @@ function invalidateFileCache(file) {
   SECRET_CACHE.delete(resolved);
 }
 
-function taskName(id) {
-  return ({
+export function taskName(id) {
+  const labels = {
     group_chat: "群聊主回复",
     interjection: "随机插话",
     private_chat: "私聊",
@@ -505,7 +505,11 @@ function taskName(id) {
     vision: "图片识别",
     profile: "用户画像",
     search_summary: "搜索总结",
-  })[id] || id;
+    connection_test: "连接测试",
+    direct: "直接调用",
+    unknown: "未知",
+  };
+  return Object.hasOwn(labels, id) ? labels[id] : id;
 }
 
 export const API_TASK_IDS = TASK_IDS;

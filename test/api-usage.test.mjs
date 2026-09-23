@@ -70,6 +70,10 @@ describe("API cache usage metrics", () => {
       totalTokens: 120,
       cacheReported: true,
       usageReported: true,
+      promptReported: true,
+      completionReported: true,
+      reasoningReported: false,
+      totalReported: true,
     });
 
     const mimo = normalizeProviderUsage({

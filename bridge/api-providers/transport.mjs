@@ -4,6 +4,7 @@ import { monotonicNow } from "../runtime-clock.mjs";
 import { setTimeout as delay } from "node:timers/promises";
 import { redactProviderPayload } from "./request-privacy.mjs";
 import { chatRunSignal, chatRunStopReason } from "../cognition/chat-run.mjs";
+import { normalizeUsage } from "./usage-values.mjs";
 
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
@@ -14,14 +15,23 @@ export async function postProviderJson(provider, key, body, options = {}) {
   const maxAttempts = Math.max(1, Math.min(3, Number(options.maxAttempts || 2)));
   const safeBody = redactProviderPayload(body);
   let outcome = null;
+  let transportAttempts = 0;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const reason = chatRunStopReason() || requestStopReason(options);
-    if (reason) return { ok: false, cancelled: true, error: reason, status: 0, durationMs: Math.max(0, monotonicNow() - startedAt) };
+    if (reason) return { ok: false, cancelled: true, error: reason, status: 0, transportAttempts, durationMs: Math.max(0, monotonicNow() - startedAt) };
+    const attemptStarted = monotonicNow();
     outcome = await postProviderJsonOnce(endpoint, headers, safeBody, provider, options);
+    transportAttempts++;
+    reportAttempt(options, outcome, monotonicNow() - attemptStarted);
     if (outcome.ok || !shouldRetry(outcome, attempt, maxAttempts)) break;
     await delay(Math.max(0, Number(options.retryDelayMs ?? 400)) * attempt);
   }
-  return { ...outcome, durationMs: Math.max(0, monotonicNow() - startedAt) };
+  return { ...outcome, transportAttempts, durationMs: Math.max(0, monotonicNow() - startedAt) };
+}
+
+function reportAttempt(options, outcome, durationMs) {
+  try { options.onUsageAttempt?.({ status: outcome.ok ? "ok" : "error", durationMs,
+    usage: normalizeUsage(outcome.data?.usage || outcome.data?.usageMetadata || outcome.usage) }); } catch { /* Metrics cannot break delivery. */ }
 }
 
 async function postProviderJsonOnce(endpoint, headers, body, provider, options) {
@@ -41,6 +51,7 @@ async function postProviderJsonOnce(endpoint, headers, body, provider, options) 
         ok: false,
         status: response.status,
         error: provider.name + " HTTP " + response.status + formatErrorSuffix(data),
+        usage: normalizeUsage(data?.usage || data?.usageMetadata),
         durationMs: 0,
       };
     }

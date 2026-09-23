@@ -184,6 +184,7 @@ if (!vm.SourceTextModule) {
       { stage: "context", status: "ok", elapsedMs: 5, messages: 2,
         sources: [{ kind: "note", reason: "explicit_note", noteId: "abcdef123456", revision: 2 }] },
       { stage: "model", status: "ok", elapsedMs: 20, provider: "synthetic", position: "primary", model: "synthetic-model", promptTokens: 100, cachedTokens: 40,
+        promptReported: true, cacheReported: true,
         modelRounds: 2, modelRoundLimit: 6, toolCalls: 1, toolLimit: 8 },
     ], { id: "legacy" });
     const tool = trace([{ stage: "tool", status: "ok", reason: "tool_completed", toolName: "recall_memory", elapsedMs: 1 }]);

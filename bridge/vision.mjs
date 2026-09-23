@@ -31,6 +31,7 @@ export async function describeVisionImages(prepared, options = {}) {
     messages: [{ role: "user", content: [{ type: "text", text: objectiveImagePrompt(prepared) }, ...prepared.images.map(image => image.content)] }],
     maxTokens: 512, temperature: 0.2, timeoutMs: 20000, maxAttempts: 1, maxResponseBytes: 262144,
     signal: options.signal || chatRunSignal(), usageContext: options.usageContext,
+    promptMetadata: { promptVersion: VISION_PROMPT_VERSION },
   }, { config, positions, assertCurrent: check, cache: {
     get: position => visionDescriptionCache.get(identity(position)),
     set: (position, text) => { check(); visionDescriptionCache.set(identity(position), text); },
