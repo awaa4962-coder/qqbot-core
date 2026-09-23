@@ -1,3 +1,5 @@
+import { clearVisionDescriptionCache } from "../vision/description-cache.mjs";
+
 const generations = new Map();
 let privacyGeneration = 0;
 
@@ -7,6 +9,7 @@ export function getMemoryPrivacyGeneration() {
 
 export function invalidateMemoryPrivacyGeneration() {
   privacyGeneration++;
+  clearVisionDescriptionCache();
 }
 
 export function getUserMemoryGeneration(uid) {
@@ -16,6 +19,7 @@ export function getUserMemoryGeneration(uid) {
 export function invalidateUserMemoryGeneration(uid, options = {}) {
   const id = String(uid || "");
   if (id) {
+    clearVisionDescriptionCache();
     generations.set(id, getUserMemoryGeneration(id) + 1);
     if (options.privacy !== false) invalidateMemoryPrivacyGeneration();
   }

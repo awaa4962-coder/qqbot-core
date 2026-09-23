@@ -3,7 +3,6 @@ import { validateProviderEndpoint } from "./store.mjs";
 import { monotonicNow } from "../runtime-clock.mjs";
 import { setTimeout as delay } from "node:timers/promises";
 import { redactProviderPayload } from "./request-privacy.mjs";
-import { redactSensitiveText } from "../privacy.mjs";
 import { chatRunSignal, chatRunStopReason } from "../cognition/chat-run.mjs";
 
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
@@ -144,14 +143,17 @@ async function readBoundedStream(body, limit) {
 function responseLimit() { return Object.assign(new Error("模型接口响应超过接收大小上限"), { code: "PROVIDER_RESPONSE_LIMIT" }); }
 
 function formatErrorSuffix(data) {
-  const message = data?.error?.message || data?.message || "";
-  const clean = redactSensitiveText(message).replace(/[\r\n]+/g, " ").slice(0, 180);
-  return clean ? ": " + clean : "";
+  const categories = { invalid_api_key: "认证失败", rate_limit_exceeded: "请求频率超过限制", insufficient_quota: "额度不足",
+    context_length_exceeded: "上下文超过上限", invalid_request_error: "请求参数无效", model_not_found: "模型不可用" };
+  const code = data?.error?.code || data?.error?.type;
+  return Object.hasOwn(categories, code) ? ": " + categories[code] : "";
 }
 
 function safeTransportError(error) {
   const message = String(error?.message || error || "request failed");
   if (/redirect/i.test(message)) return "API 拒绝重定向，防止 Key 被转发到其他地址";
   if (/timeout|aborted/i.test(message)) return "API 请求超时";
-  return redactSensitiveText(message).replace(/[\r\n]+/g, " ").slice(0, 180);
+  if (error?.code === "INVALID_PROVIDER_JSON") return "接口未返回有效 JSON 对象";
+  if (error?.code === "PROVIDER_RESPONSE_LIMIT") return "模型接口响应超过接收大小上限";
+  return "API 网络请求失败";
 }

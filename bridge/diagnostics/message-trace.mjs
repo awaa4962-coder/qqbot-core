@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { monotonicNow } from "../runtime-clock.mjs";
 
 const storage = new AsyncLocalStorage();
-const STAGES = new Set(["received", "admission", "route", "context", "model", "tool", "output", "send", "complete"]);
+const STAGES = new Set(["received", "admission", "route", "context", "vision", "model", "tool", "output", "send", "complete"]);
 const STATES = new Set(["started", "ok", "failed", "skipped"]);
 const REASONS = new Set([
   "accepted", "ingress_rate_limited", "scope_rate_limited", "priority_rate_limited",
@@ -17,10 +17,12 @@ const REASONS = new Set([
   "reply_duplicate", "delivery_state_unavailable", "forgotten_event", "stale_event",
   "quote_source_unknown", "quote_scope_mismatch", "quote_message_mismatch", "quote_privacy_unavailable", "quote_forgotten", "quote_content_empty",
   "tool_model_round", "tool_completed", "tool_empty", "tool_denied", "tool_arguments", "tool_unavailable", "tool_reused", "tool_budget", "output_budget",
+  "image_direct", "image_description", "image_cache", "image_unavailable", "image_payload",
 ]);
 const ROUTES = new Set(["group_at", "interjection", "private_chat", "private_file", "command", "jm", "resource-transfer", "link-preview", "wordcloud", "preview", "file"]);
 const NUMBERS = ["chars", "messages", "pruned", "truncated", "images", "mentions", "httpStatus", "attempt", "reasoningLength", "promptTokens", "cachedTokens", "completionTokens", "probability", "selfFactsVersion", "capabilityCount", "turnRevision", "privacyRevision", "staticChars", "dynamicChars", "inputTextChars",
-  "modelRounds", "transportAttempts", "toolCalls", "toolOutputChars", "requestedCompletionTokens", "toolResultChars", "modelRoundLimit", "toolLimit"];
+  "modelRounds", "transportAttempts", "toolCalls", "toolOutputChars", "requestedCompletionTokens", "toolResultChars", "modelRoundLimit", "toolLimit",
+  "imageFailed", "imageOmitted", "imageFirstFrames"];
 
 // Records accept metadata only. No caller can attach message bodies or raw errors.
 function safeDetails(details) {

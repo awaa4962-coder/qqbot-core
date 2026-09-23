@@ -63,10 +63,10 @@ async function buildMiMoMessages(history, imageUrls, userMsg, userName, options)
   const msgs = [];
   if (history?.length) msgs.push.apply(msgs, history);
 
-  const visionDesc = Object.prototype.hasOwnProperty.call(options, 'visionContext')
+  const visionDesc = options.visionSession ? null : Object.prototype.hasOwnProperty.call(options, 'visionContext')
     ? options.visionContext
     : await resolveVisionContext(imageUrls, { usageContext: options.usageContext });
-  if (imageUrls?.length) {
+  if (imageUrls?.length && !options.visionSession) {
     msgs.push(buildImageContextMessage(visionDesc, { imageCount: imageUrls.length }));
   }
 
@@ -76,6 +76,7 @@ async function buildMiMoMessages(history, imageUrls, userMsg, userName, options)
         userId: options.currentUserId,
         hasImages: Boolean(imageUrls?.length),
         visionAvailable: Boolean(visionDesc),
+        visionPending: Boolean(options.visionSession),
         currentInput: options.currentInput,
       })
     : typeof options.currentInput === 'string' ? options.currentInput : buildCurrentInput(userName, userMsg, options.currentUserId);
@@ -96,6 +97,7 @@ export async function tryMiMoResult(userMsg, userName, history, imageUrls, group
     currentUserId: options.currentUserId,
     currentInput: options.currentInput,
     toolSession: options.toolSession,
+    visionSession: options.visionSession,
     thinking: options.replyMode === 'interjection' ? { type: 'disabled' } : undefined,
     personaCue: options.personaCue || selectPersonaCue(userMsg, {
       replyMode: options.replyMode || 'chat',

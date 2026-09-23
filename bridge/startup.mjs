@@ -22,7 +22,6 @@ import { cleanText } from "./context/messages.mjs";
 import { VERSION } from "./version.mjs";
 import { refreshJmRuntimeHealth } from "./jm-provider.mjs";
 import { cleanupExpiredMemoryProfiles, flushMemoryProfilesSync } from "./memory-profile.mjs";
-import { flushImageContextCacheSync } from "./knowledge/memes/image-context.mjs";
 import { handleAdminApiRequest } from "./admin-api/index.mjs";
 import { isAuthorizedAdminRequest } from "./admin-api/auth.mjs";
 import { isAllowedBrowserOrigin, isAuthorizedOneBotRequest, readRequestJson } from "./http-ingress.mjs";
@@ -245,7 +244,6 @@ function flushRuntimeState() {
   shutdownStickerSystem();
   flushSavesSync();
   flushMemoryProfilesSync();
-  flushImageContextCacheSync();
   cleanupLogger();
 }
 

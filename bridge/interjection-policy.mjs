@@ -115,7 +115,7 @@ export function buildInterjectionPrompt(text, ctx = {}) {
     "[插话判断]",
     "trigger_type=" + kind,
     "has_images=" + Boolean(ctx.hasImages),
-    "vision_available=" + Boolean(ctx.visionAvailable),
+    "vision_available=" + (ctx.visionPending ? "以本轮图片证据的实际状态为准" : Boolean(ctx.visionAvailable)),
     typeof ctx.currentInput === "string" ? ctx.currentInput : buildCurrentInput(ctx.userName, text, ctx.userId),
     "请结合前面的被回复消息、最近对话和图片客观描述，找到具体回应点；接不上时输出空 reply。",
   ].join("\n");

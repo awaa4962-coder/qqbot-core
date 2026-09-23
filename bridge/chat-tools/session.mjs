@@ -5,6 +5,7 @@ import { assertChatRunCurrent, currentChatScope } from "../cognition/chat-run.mj
 import { traceStage } from "../diagnostics/message-trace.mjs";
 import { webSearch } from "../search.mjs";
 import { recallMemory, readBotStatus } from "./read.mjs";
+import { measureVisionRequest } from "../vision/request-budget.mjs";
 import { CHAT_TOOL_LIMITS as LIMITS, READ_TOOLS, WEB_TOOL, authorizedSearchQuery, permitsPublicSearch, parseToolArguments, toolScopeAllowed } from "./policy.mjs";
 
 export function createChatToolSession(options = {}) {
@@ -38,7 +39,7 @@ export function createChatToolSession(options = {}) {
     assertCurrent();
     if (state.modelRounds >= LIMITS.modelRounds) throw stopped("tool_budget");
     // Count protocol continuation too; never truncate a signed block or split tool pairs.
-    if (JSON.stringify(request.messages || []).length + JSON.stringify(request.tools || []).length > LIMITS.requestChars) throw stopped("tool_context_budget");
+    if (measureVisionRequest(request).chars > LIMITS.requestChars) throw stopped("tool_context_budget");
     const maxTokens = Math.max(1, Math.min(LIMITS.maxTokens, Number(request.maxTokens) || 1024));
     state.modelRounds++;
     traceStage("tool", { status: "ok", reason: "tool_model_round", ...state, modelRoundLimit: LIMITS.modelRounds, toolLimit: LIMITS.toolCalls });
@@ -48,7 +49,7 @@ export function createChatToolSession(options = {}) {
 
   function validatePrepared(request) {
     assertCurrent();
-    if (JSON.stringify(request.messages || []).length + JSON.stringify(request.tools || []).length > LIMITS.requestChars) throw stopped("tool_context_budget");
+    if (measureVisionRequest(request).chars > LIMITS.requestChars) throw stopped("tool_context_budget");
   }
 
   function beforeAttempt(maxTokens) {

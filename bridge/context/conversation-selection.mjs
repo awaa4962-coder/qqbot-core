@@ -147,7 +147,9 @@ export function selectRecentImageMessage(messages = [], options = {}) {
   if (currentTopicText(options.userMsg).switched) return null;
   const targets = new Set((options.mentions || []).filter(item => !item.isBot && !item.isAll).map(item => String(item.qq)));
   const eligible = messages.slice(-MAX_SCAN).filter(item => item.imageUrls?.length &&
-    item.role !== "assistant" && wallAgeMs(item.ts, options.now ?? Date.now()) <= 5 * 60 * 1000 &&
+    /^-?\d{1,20}$/.test(String(item.messageId || "")) && /^\d{1,20}$/.test(String(item.uid || "")) &&
+    item.role !== "assistant" && Number.isFinite(item.ts) && item.ts > 0 && item.ts <= (options.now ?? Date.now()) &&
+    wallAgeMs(item.ts, options.now ?? Date.now()) <= 5 * 60 * 1000 &&
     (!options.replyToMessageId || String(item.messageId) === String(options.replyToMessageId)));
   if (options.replyToMessageId) return eligible.at(-1) || null;
   const own = eligible.filter(item => targets.size ? targets.has(String(item.uid)) : String(item.uid) === String(options.uid));

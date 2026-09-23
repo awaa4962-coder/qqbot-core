@@ -9,7 +9,7 @@ import { linkPreviewStatus } from "../services/link-preview/index.mjs";
 import { users, groupChats } from "../storage.mjs";
 import { VERSION, VERSION_NAME } from "../version.mjs";
 import { getCognitionStatus } from "../cognition/index.mjs";
-import { getImageContextCacheStatus } from "../knowledge/memes/image-context.mjs";
+import { getVisionDescriptionCacheStatus as getImageContextCacheStatus } from "../vision/description-cache.mjs";
 import { getStickerRuntimeStatus } from "../features/stickers/index.mjs";
 import { getJmRuntimeHealth } from "../jm-provider.mjs";
 import { readApiProviderHealth } from "../api-providers/health.mjs";

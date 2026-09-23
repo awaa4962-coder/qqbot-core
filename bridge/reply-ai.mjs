@@ -7,7 +7,6 @@ import { generateProfile } from "./profile.mjs";
 import {
   buildModelFallbackHistory,
   executeChatTask,
-  resolveChatVisionContext,
 } from "./model-router.mjs";
 import { buildReplyContextPacket } from "./context/index.mjs";
 import { getPreferredDisplayName } from "./user-preferences.mjs";
@@ -57,10 +56,11 @@ async function runAiReply(group_id, userId, userMsg, userName, imageUrls, replyT
     quoteEvidence: runtime.quoteEvidence,
     hasImages: Boolean(imageUrls?.length),
     imageCount: imageUrls?.length || 0,
+    imageAnchor: runtime.imageAnchor,
   });
 
   const mimoOptions = { allowTools: !isPassiveInterjection, replyMode: isPassiveInterjection ? "interjection" : "chat",
-    currentUserId: uid, personaCue, currentInput: contextPacket.currentInput };
+    currentUserId: uid, personaCue, currentInput: contextPacket.currentInput, imageSources: runtime.imageSources };
   const outcome = await resolveAiReply({
     userMsg,
     userName: preferredUserName,
@@ -158,8 +158,8 @@ function markProfileGenerated(uid, now) {
 
 export async function resolveAiReply(ctx, runtime = {}) {
   const hasImages = Boolean(ctx.imageUrls?.length);
-  const visionContext = hasImages
-    ? await (runtime.resolveVision || resolveChatVisionContext)(ctx.imageUrls, { userId: ctx.uid })
+  const visionContext = hasImages && runtime.resolveVision
+    ? await runtime.resolveVision(ctx.imageUrls, { userId: ctx.uid })
     : undefined;
   const modelResult = await (runtime.executeChatTask || executeChatTask)({
     userMsg: ctx.userMsg,
@@ -171,7 +171,7 @@ export async function resolveAiReply(ctx, runtime = {}) {
     mood: ctx.mood,
     options: {
       ...ctx.mimoOptions,
-      ...(hasImages ? { visionContext } : {}),
+      ...(hasImages && runtime.resolveVision ? { visionContext } : {}),
     },
   });
   const outcome = normalizeChatOutcome(modelResult);

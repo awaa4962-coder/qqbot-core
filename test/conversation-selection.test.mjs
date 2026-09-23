@@ -161,6 +161,35 @@ test("image follow-up selects one recent message from the relevant author", () =
   assert.deepEqual(pullRecentImages("22", { uid: "11", userMsg: "看图", now }), ["own-image"]);
 });
 
+test("recent image selection rejects future, unknown-time and unattributed sources", () => {
+  for (const extra of [{ ts: now + 1000 }, { ts: 0 }, { ts: NaN }, { messageId: undefined }, { uid: undefined }]) {
+    assert.equal(selectRecentImageMessage([row("1", "11", "[图片]", { imageUrls: ["image"], ...extra })], { uid: "11", userMsg: "看图", now }), null);
+  }
+});
+
+test("a selected recent image contributes its exact original message to bounded context", () => {
+  groupChats["55002"] = [row("55003", "55001", "这次考试又没过", { imageUrls: ["https://example.com/image.png"] })];
+  let anchor;
+  assert.equal(pullRecentImages("55002", { uid: "55001", userMsg: "这张图啥意思", now, onSource: source => { anchor = source; } }).length, 1);
+  const packet = buildReplyContextPacket({ uid: "55001", groupId: "55002", userMsg: "这张图啥意思", imageAnchor: anchor, hasImages: true });
+  const imageLayer = packet.messages.find(item => item.content.includes("本轮所选图片的原消息"));
+  assert.match(imageLayer.content, /这次考试又没过/);
+  assert.ok(packet.retrieval.sources.some(source => source.kind === "image" && source.messageId === "55003"));
+  assert.doesNotMatch(JSON.stringify(packet.messages), /example.com\/image/);
+});
+
+test("forgotten and retracted image records cannot reenter through recent-image selection", () => {
+  const historical = row("55004", "55005", "旧图片", { imageUrls: ["https://example.com/old.png"], ts: Date.now() - 2000 });
+  groupChats["55006"] = [historical];
+  forgetUserData("55005");
+  groupChats["55006"] = [historical];
+  assert.deepEqual(pullRecentImages("55006", { uid: "55005", userMsg: "看图" }), []);
+  for (const field of ["deleted", "recalled", "retracted", "memoryCommand"]) {
+    groupChats["55006"] = [row("55007", "55008", "不可用图片", { imageUrls: ["https://example.com/old.png"], [field]: true })];
+    assert.deepEqual(pullRecentImages("55006", { uid: "55008", userMsg: "看图" }), []);
+  }
+});
+
 test("quoted message identity reaches context without changing its text", async () => {
   const originalFetch = globalThis.fetch;
   try {

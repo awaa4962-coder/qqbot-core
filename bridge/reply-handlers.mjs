@@ -8,6 +8,8 @@ import { selectRecentImageMessage, selectionSource } from "./context/conversatio
 import { traceStage } from "./diagnostics/message-trace.mjs";
 import { getMemoryPrivacyGeneration } from "./memory-profile/generation.mjs";
 import { validateQuotedReply } from "./context/quoted-reply.mjs";
+import { summaryPrivacy, isForgottenSummaryRecord } from "./group-summary/state.mjs";
+import { memoryCorrectionSnapshot } from "./memory-profile/notes.mjs";
 import {
   getImages,
   getImageSegments,
@@ -59,6 +61,7 @@ export function parseIncomingEvent(ev) {
     nickname: sender.card || sender.nickname || "群友",
     text,
     images,
+    imageSources: images.map(() => ({ kind: "current", messageId: String(ev.message_id || ""), userId: String(ev.user_id || "") })),
     imageSegments: getImageSegments(ev.message),
     rawText,
     isAtMe,
@@ -80,6 +83,8 @@ export async function resolveReplyContext(ctx) {
   ctx.replySpeaker = replyInfo.nickname || "unknown";
   ctx.replyUserId = evidence.userId;
   if (replyInfo.images.length) {
+    ctx.imageSources ??= ctx.images.map(() => ({ kind: "current" }));
+    ctx.imageSources.push(...replyInfo.images.slice(0, 3).map(() => ({ kind: "quote", messageId: evidence.messageId, userId: evidence.userId })));
     ctx.images.push(...replyInfo.images.slice(0, 3));
     log("pulled", Math.min(3, replyInfo.images.length), "images from verified replied message");
   }
@@ -95,11 +100,18 @@ function rejectQuote(ctx, reason) {
 }
 
 export function pullRecentImages(groupId, options = {}) {
-  const recentMsgs = groupChats[String(groupId)] || [];
+  let recentMsgs;
+  try {
+    const privacy = summaryPrivacy();
+    const corrections = memoryCorrectionSnapshot({ userId: options.uid, groupId });
+    recentMsgs = (groupChats[String(groupId)] || []).filter(item => !isForgottenSummaryRecord(item, privacy) &&
+      !corrections.excludedMessageIds.has(String(item.messageId)) && !item.memoryCommand && !item.retracted && !item.deleted && !item.recalled);
+  } catch { return []; }
   const message = selectRecentImageMessage(recentMsgs, options);
   const urls = [...new Set(message?.imageUrls || [])].slice(0, 3);
   if (urls.length) traceStage("context", { status: "ok", images: urls.length, sources: [selectionSource(message, "image", "image_reference")] });
   if (urls.length) log("pulled", urls.length, "recent images into context");
+  if (urls.length) options.onSource?.({ kind: "recent", messageId: String(message.messageId || ""), userId: String(message.uid || ""), at: message.ts });
   return urls;
 }
 

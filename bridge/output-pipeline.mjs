@@ -78,10 +78,11 @@ export function extractAssistantContent(raw, options = {}) {
   };
 }
 
-export function detectOutputRisk(text, _options = {}) {
+export function detectOutputRisk(text, options = {}) {
   const risks = [];
   if (!text || typeof text !== "string" || !text.trim()) risks.push("empty");
   if (isUnsafeReasoningText(text)) risks.push("reasoning_leak");
+  if (containsImagePayload(text, options.imagePayloads)) risks.push("image_payload");
   const secretPatterns = [
     /sk-[A-Za-z0-9_-]{20,}/,
     /Authorization:\s*Bearer\s+[A-Za-z0-9._-]{12,}/i,
@@ -91,6 +92,13 @@ export function detectOutputRisk(text, _options = {}) {
     risks.push("secret_leak");
   }
   return risks;
+}
+
+function containsImagePayload(text, images = []) {
+  if (typeof text !== "string") return false;
+  if (/data:image\/[^;,\s]+;base64,\s*\S|base64:\/\/[A-Za-z0-9+/=]{16,}/i.test(text)) return true;
+  if (/(?:\/9j\/|iVBORw0KGgo|R0lGODl[ha]|UklGR)[A-Za-z0-9+/=]{48,}/.test(text)) return true;
+  return (text.match(/[A-Za-z0-9+/]{48,}={0,2}/g) || []).some(fragment => images.some(url => typeof url === "string" && url.includes(fragment)));
 }
 
 export function normalizeFinalReply(text, options = {}) {
@@ -136,13 +144,13 @@ function buildPacket(raw, options = {}) {
   const cleaned = sanitizeAssistantReply(meta.content, options);
   lengths.cleaned = cleaned ? cleaned.length : 0;
   const risks = cleaned ? detectOutputRisk(cleaned, options) : ["reasoning_leak"];
-  if (!cleaned || risks.includes("reasoning_leak") || risks.includes("secret_leak")) {
+  if (!cleaned || risks.some(risk => ["reasoning_leak", "secret_leak", "image_payload"].includes(risk))) {
     return {
       ok: false,
       text: null,
       provider: meta.provider,
       finishReason: meta.finishReason,
-      reason: risks.includes("secret_leak") ? "secret_leak" : "unsafe_reasoning",
+      reason: outputRiskReason(risks),
       risks,
       lengths,
     };
@@ -160,4 +168,10 @@ function buildPacket(raw, options = {}) {
     lengths,
     usage: meta.usage,
   };
+}
+
+function outputRiskReason(risks) {
+  if (risks.includes("secret_leak")) return "secret_leak";
+  if (risks.includes("image_payload")) return "image_payload";
+  return "unsafe_reasoning";
 }

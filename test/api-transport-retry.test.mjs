@@ -127,3 +127,15 @@ test("bounded stream preserves UTF-8 split across chunks and accepts exact byte 
   const result = await postProviderJson(provider, "test-key", {}, { maxResponseBytes: bytes.length });
   assert.equal(result.ok, true); assert.deepEqual(result.data, payload);
 });
+
+test("provider failures expose only allowlisted metadata, not echoed image chunks or URLs", async t => {
+  const fragment = "/9j/" + "A".repeat(100);
+  const url = "https://example.com/private-user-image.png?identity=private";
+  t.mock.method(globalThis, "fetch", async () => response(400, { error: { type: "invalid_request_error", message: fragment + " " + url } }));
+  const result = await postProviderJson(provider, "test-key", {}, { maxAttempts: 1 });
+  assert.equal(result.ok, false); assert.match(result.error, /HTTP 400.*请求参数无效/);
+  assert.doesNotMatch(result.error, /AAAA|private|https/);
+  t.mock.method(globalThis, "fetch", async () => { throw new Error(url + " " + fragment); });
+  const failure = await postProviderJson(provider, "test-key", {}, { maxAttempts: 1 });
+  assert.equal(failure.error, "API 网络请求失败");
+});

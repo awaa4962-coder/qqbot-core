@@ -4,7 +4,7 @@ import { chatCancellation, chatRunStopReason } from "./cognition/chat-run.mjs";
 
 export const MODEL_FAILURE_NOTICE = "这次模型没有生成可用回复，请稍后再试。";
 const ERROR_REASONS = new Set(["model_unavailable", "request_failed", "tools_unavailable", "invalid_interjection",
-  "empty_content", "empty_content_with_reasoning", "unsafe_reasoning", "secret_leak", "output_budget"]);
+  "empty_content", "empty_content_with_reasoning", "unsafe_reasoning", "secret_leak", "output_budget", "image_payload"]);
 
 export function chatError(reason = "model_unavailable") {
   return { kind: "error", text: null, reason: ERROR_REASONS.has(reason) ? reason : "model_unavailable" };

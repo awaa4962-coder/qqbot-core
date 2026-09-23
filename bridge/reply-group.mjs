@@ -140,6 +140,7 @@ function pullRecentImagesIntoContext(ctx) {
   if (ctx.images.length || ctx.quoteEvidence?.state === "unavailable") return;
   const recentImgs = pullRecentImages(ctx.group_id, {
     uid: ctx.user_id, userMsg: ctx.text, mentions: ctx.mentions, replyToMessageId: ctx.replyData?.id,
+    onSource: source => { ctx.imageSources = Array(3).fill(source); ctx.imageAnchor = source; },
   });
   if (recentImgs.length) ctx.images.push(...recentImgs);
 }
@@ -205,7 +206,8 @@ function createPendingReplyState(ctx) {
 
 function replyRuntime(ctx) {
   return { messageId: ctx.message_id, eventTime: ctx.eventTime, replyToMessageId: ctx.replyData?.id,
-    replySpeaker: ctx.replySpeaker, replyUserId: ctx.replyUserId, quoteEvidence: ctx.quoteEvidence, contextPrivacyGeneration: ctx.contextPrivacyGeneration };
+    replySpeaker: ctx.replySpeaker, replyUserId: ctx.replyUserId, quoteEvidence: ctx.quoteEvidence, contextPrivacyGeneration: ctx.contextPrivacyGeneration,
+    imageSources: ctx.imageSources, imageAnchor: ctx.imageAnchor };
 }
 
 function stopStaleGroupContext(ctx) {

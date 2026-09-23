@@ -8,13 +8,22 @@ import { CHAT_TOOL_LIMITS, safeToolBatch, publicSearchPhrase } from "./policy.mj
 export async function runScopedChat(request, options = {}) {
   try {
     const context = createSlot(request, options);
-    if (!context.provider) return chatError();
+    if (!context.provider || context.provider.enabled === false) return chatError();
+    await appendVision(context);
     await compatibilitySearch(context);
     return await runRounds(context);
   } catch (error) {
     traceStage("tool", { status: "failed", reason: error.code === "CHAT_TOOL_STOPPED" ? "tool_budget" : "tool_unavailable" });
     return chatError("tools_unavailable");
   }
+}
+
+async function appendVision(context) {
+  if (!context.options.visionSession) return;
+  const evidence = await context.options.visionSession.message(context.provider, context.config);
+  context.session.assertCurrent();
+  context.messages.splice(Math.max(0, context.messages.length - 1), 0, evidence.message);
+  context.request.trustedImageUrls = evidence.trustedImageUrls;
 }
 
 async function compatibilitySearch(context) {
@@ -85,7 +94,7 @@ function assistantToolMessage(message, provider) {
 }
 
 function finalOutcome(result, context) {
-  const outcome = parseChatOutcome(result.raw, { provider: result.provider, replyMode: context.options.replyMode });
+  const outcome = parseChatOutcome(result.raw, { provider: result.provider, replyMode: context.options.replyMode, imagePayloads: context.request.trustedImageUrls });
   if (outcome.kind === "reply" && outcome.text.length > CHAT_TOOL_LIMITS.replyChars) return chatError("output_budget");
   const memorySources = context.session.sources();
   return outcome.kind === "reply" && memorySources.length ? { ...outcome, memorySources } : outcome;

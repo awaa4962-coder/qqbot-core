@@ -8,6 +8,7 @@ import { callChatSlot, chatError } from "./chat-outcome.mjs";
 import { traceStage } from "./diagnostics/message-trace.mjs";
 import { assertChatRunCurrent, noteChatOutcome } from "./cognition/chat-run.mjs";
 import { createChatToolSession } from "./chat-tools/session.mjs";
+import { createVisionSession } from "./vision/session.mjs";
 
 export const MODEL_PROVIDERS = Object.freeze({
   PRIMARY: "mimo",
@@ -63,20 +64,7 @@ export async function callFallbackChat(request = {}) {
 export async function executePrivateChatTask(request = {}, runtime = {}) {
   assertChatRunCurrent();
   const task = request.task === MODEL_TASKS.FILE_CHAT ? MODEL_TASKS.FILE_CHAT : MODEL_TASKS.PRIVATE_CHAT;
-  const imageUrls = request.imageUrls || [];
-  let visionContext = request.options?.visionContext;
-  if (imageUrls.length && !Object.hasOwn(request.options || {}, "visionContext")) {
-    const resolveVision = runtime.resolveVision || resolveVisionContext;
-    visionContext = await resolveVision(imageUrls, {
-      usageContext: { userId: request.options?.currentUserId, task, position: "primary" },
-    });
-  }
-  const prepared = {
-    ...request,
-    task,
-    groupId: null,
-    history: buildModelFallbackHistory(request.history, imageUrls, visionContext),
-  };
+  const prepared = await preparePrivateRequest(request, task, runtime);
   prepared.options = withToolSession(prepared, task);
   const callSlot = runtime.callSlot || callFallbackChat;
   for (const position of ["primary", "fallback"]) {
@@ -84,6 +72,27 @@ export async function executePrivateChatTask(request = {}, runtime = {}) {
     if (result.kind !== "error") return finishChatResult(result, position);
   }
   return finishChatResult(chatError(), "unavailable");
+}
+
+async function preparePrivateRequest(request, task, runtime) {
+  const imageUrls = request.imageUrls || [];
+  let visionContext = request.options?.visionContext;
+  if (imageUrls.length && runtime.resolveVision && !Object.hasOwn(request.options || {}, "visionContext")) {
+    visionContext = await runtime.resolveVision(imageUrls, {
+      usageContext: { userId: request.options?.currentUserId, task, position: "primary" },
+    });
+  }
+  const prepared = {
+    ...request,
+    task,
+    groupId: null,
+    history: request.history,
+  };
+  if (imageUrls.length && (runtime.resolveVision || Object.hasOwn(request.options || {}, "visionContext"))) {
+    prepared.history = buildModelFallbackHistory(request.history, imageUrls, visionContext);
+    prepared.options = { ...request.options, visionContext };
+  }
+  return prepared;
 }
 
 export async function callInterjectionFallback(request = {}) {
@@ -130,7 +139,7 @@ function buildFallbackChatRequest(request) {
   return {
     userMsg: request.userMsg,
     userName: request.userName,
-    history: buildModelFallbackHistory(
+    history: request.options?.visionSession ? request.history : buildModelFallbackHistory(
       request.history,
       request.imageUrls,
       request.options?.visionContext,
@@ -143,6 +152,7 @@ function buildFallbackChatRequest(request) {
       currentInput: request.options?.currentInput,
       toolSession: request.options?.toolSession,
       allowTools: request.options?.allowTools,
+      visionSession: request.options?.visionSession,
       personaCue: request.options?.personaCue,
     },
   };
@@ -151,8 +161,11 @@ function buildFallbackChatRequest(request) {
 function withToolSession(request, task) {
   const options = request.options || {};
   const surface = request.groupId === null || request.groupId === undefined ? "private" : "group";
-  return { ...options, toolSession: options.toolSession || createChatToolSession({
-    scope: { surface, groupId: request.groupId, userId: options.currentUserId }, task,
+  const scope = { surface, groupId: request.groupId, userId: options.currentUserId };
+  const visionSession = options.visionSession || (request.imageUrls?.length && !Object.hasOwn(options, "visionContext")
+    ? createVisionSession(request.imageUrls, { scope, sources: options.imageSources, usageContext: { task } }) : null);
+  return { ...options, ...(visionSession ? { visionSession } : {}), toolSession: options.toolSession || createChatToolSession({
+    scope, task,
     userMessage: request.userMsg, allowTools: task === "interjection" ? false : options.allowTools,
   }) };
 }
