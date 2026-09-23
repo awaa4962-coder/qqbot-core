@@ -16,11 +16,11 @@ const REASONS = new Set([
   "privacy_changed", "permission_changed", "preferences_changed", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping",
 ]);
 const ROUTES = new Set(["group_at", "interjection", "private_chat", "private_file", "command", "jm", "resource-transfer", "link-preview", "wordcloud", "preview", "file"]);
-const NUMBERS = ["chars", "messages", "pruned", "truncated", "images", "mentions", "httpStatus", "attempt", "reasoningLength", "promptTokens", "cachedTokens", "completionTokens", "probability", "selfFactsVersion", "capabilityCount", "turnRevision", "privacyRevision"];
+const NUMBERS = ["chars", "messages", "pruned", "truncated", "images", "mentions", "httpStatus", "attempt", "reasoningLength", "promptTokens", "cachedTokens", "completionTokens", "probability", "selfFactsVersion", "capabilityCount", "turnRevision", "privacyRevision", "staticChars", "dynamicChars", "inputTextChars"];
 
 // Records accept metadata only. No caller can attach message bodies or raw errors.
 function safeDetails(details) {
-  const safe = {};
+  const safe = safePromptIdentity(details);
   if (STATES.has(details.status)) safe.status = details.status;
   if (REASONS.has(details.reason)) safe.reason = details.reason;
   if (ROUTES.has(details.route)) safe.route = details.route;
@@ -32,6 +32,13 @@ function safeDetails(details) {
     if (typeof details[key] === "number" && Number.isFinite(details[key])) safe[key] = Math.max(0, Math.min(1e9, details[key]));
   }
   if (Array.isArray(details.sources)) safe.sources = safeSources(details.sources);
+  return safe;
+}
+
+function safePromptIdentity(details) {
+  const safe = {};
+  if (/^[a-f0-9]{16}$/.test(details.promptFingerprint || "")) safe.promptFingerprint = details.promptFingerprint;
+  if (/^(?:chat|interjection)-v\d{1,3}$/.test(details.promptVersion || "")) safe.promptVersion = details.promptVersion;
   return safe;
 }
 

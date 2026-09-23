@@ -91,6 +91,24 @@ describe("output pipeline", () => {
     assert.equal(sanitizeAssistantReply(text), text);
   });
 
+  it("allows ordinary clarification about context without confusing it with private planning", () => {
+    for (const text of [
+      "这个梗我没有可靠出处，能贴一下上下文吗？有原话才好判断。",
+      "我不确定，能给一点上下文帮助我理解吗？",
+      "没有原文我不好理解它的上下文，你可以发一下截图吗？",
+      "单看这句话不能判断是在开玩笑还是引用，需要结合上下文。",
+    ]) assert.equal(sanitizeAssistantReply(text), text);
+  });
+
+  it("still rejects context analysis that plans how the assistant should respond", () => {
+    for (const text of [
+      "根据上下文我需要理解用户到底在说什么，之后再回复。",
+      "上下文里用户在抱怨，我应该分析语气并组织回复。",
+      "分析上下文之后，接下来需要判断用户意图再组织答案。",
+      "我先理解这个对话上下文，然后应该注意措辞。",
+    ]) assert.equal(sanitizeAssistantReply(text), null);
+  });
+
   it("adds continuation hint when model finish_reason is length", () => {
     const text = normalizeFinalReply("这是一段回复", { finishReason: "length" });
     assert.ok(text.includes("发“继续”"));

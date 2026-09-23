@@ -7,28 +7,14 @@ import { tryMiMoVision } from "./vision.mjs";
 import { isLeakedReasoning } from "./thinking.mjs";
 import { buildCurrentInput } from "./context/messages.mjs";
 import { chatError, normalizeChatOutcome, parseChatOutcome } from "./chat-outcome.mjs";
-import { buildChatSystemPrompt } from "./system-prompts/chat.mjs";
-import { buildInterjectionSystemPrompt } from "./system-prompts/interjection.mjs";
+import { buildModelPrompt } from "./system-prompts/compose.mjs";
 import { buildImageContextMessage } from "./system-prompts/image-context.mjs";
 import { buildInterjectionPrompt } from "./interjection-policy.mjs";
 import { selectPersonaCue } from "./persona-style.mjs";
 import { assertChatRunCurrent } from "./cognition/chat-run.mjs";
 
 export function buildSystem(_userName, groupId, mood, options = {}) {
-  const gid = String(groupId);
-  const isLong = LONG_GROUPS.includes(gid);
-  if (options.replyMode === 'interjection') {
-    return buildInterjectionSystemPrompt({
-      mood: mood || '正常',
-      personaCue: options.personaCue,
-    });
-  }
-  return buildChatSystemPrompt({
-    mood: mood || '正常',
-    isLongGroup: isLong,
-    replyMode: options.replyMode || 'chat',
-    personaCue: options.personaCue,
-  });
+  return buildModelPrompt({ ...options, groupId, mood }).system;
 }
 
 // ── tryMiMo 拆分子函数 ──
@@ -56,6 +42,7 @@ export async function callMiMoApi(systemPrompt, messages, maxTokens, options = {
     toolChoice: "auto",
     usageContext: options.usageContext,
     selfContext: options.selfContext,
+    promptMetadata: options.promptMetadata,
   };
   const result = options.providerId
     ? await callApiProvider(options.providerId, request)
@@ -139,8 +126,10 @@ export async function tryMiMoResult(userMsg, userName, history, imageUrls, group
   };
 
   try {
-    const msgs = await buildMiMoMessages(history, imageUrls, userMsg, userName, mimoOptions);
-    const system = buildSystem(userName, groupId, mood || '', mimoOptions);
+    const prompt = buildModelPrompt({ ...mimoOptions, groupId, mood });
+    mimoOptions.promptMetadata = prompt.metadata;
+    const msgs = [prompt.dynamicMessage, ...await buildMiMoMessages(history, imageUrls, userMsg, userName, mimoOptions)];
+    const system = prompt.system;
     const response = await callMiMoApi(system, msgs, maxTok, {
       allowTools: mimoOptions.allowTools,
       thinking: mimoOptions.thinking,
@@ -150,6 +139,7 @@ export async function tryMiMoResult(userMsg, userName, history, imageUrls, group
       reasoningSignals: mimoOptions.reasoningSignals,
       usageContext: mimoOptions.usageContext,
       selfContext: mimoOptions.selfContext,
+      promptMetadata: prompt.metadata,
     });
     return await parseInitialMiMoResult(system, msgs, response, maxTok, userMsg, userName, mimoOptions);
   } catch (e) {

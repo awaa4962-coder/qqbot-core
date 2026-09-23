@@ -79,14 +79,25 @@ export function formatConversationThreadBlock(thread, options = {}) {
   const lines = [
     "[短期会话线程]",
     "用途：恢复承接词、上一轮处理结果和未说完的话题；当前输入优先，禁止向其他群或用户泄露。",
-    "范围=" + thread.scope + "；话题=" + (thread.topic || "连续对话") + "；已完成回合=" + thread.turnCount,
+    "范围=" + thread.scope + "；话题=" + (thread.topic || "连续对话") + "；已发送回合=" + thread.turnCount,
+    "以下为同一发言人的历史摘录，可能有省略；助手回复已发送，但建议不代表用户已执行，更不代表问题已解决。",
     "最近回合：",
   ];
   for (const turn of turns) {
-    lines.push("- 用户：" + turn.userSummary);
-    lines.push("  夜星：" + turn.assistantSummary);
+    lines.push("- 用户：" + compactText(turn.userSummary, 320));
+    lines.push("  夜星：" + compactText(turn.assistantSummary, 480));
   }
   return lines.join("\n");
+}
+
+export function formatConversationThreadLayers(thread, options = {}) {
+  if (!thread?.turns?.length) return [];
+  return thread.turns.slice(-(options.limit || 4)).map(turn => ({
+    turn,
+    clipped: Boolean(turn.userTruncated || turn.assistantTruncated ||
+      normalizedText(turn.userSummary).length > 320 || normalizedText(turn.assistantSummary).length > 480),
+    content: formatConversationThreadBlock({ ...thread, turns: [turn], turnCount: 1 }),
+  }));
 }
 
 export function clearConversationThreads(uid, options = {}) {
@@ -175,6 +186,8 @@ function buildTurn(event, userSummary, assistantSummary, now) {
     messageId: explicitId,
     userSummary,
     assistantSummary,
+    userTruncated: normalizedText(event.userText).length > 320,
+    assistantTruncated: normalizedText(event.assistantText).length > 480,
     outcome: String(event.outcome || "sent"),
     createdAt: now,
   };
@@ -250,7 +263,13 @@ function privateKey(uid) {
 }
 
 function compactText(value, maxLength) {
-  const text = redactSensitiveText(value).replace(/\s+/g, " ").trim();
+  const text = normalizedText(value);
   if (text.length <= maxLength) return text;
-  return text.slice(0, maxLength - 1).trimEnd() + "…";
+  const marker = "…[中间省略]…";
+  const headLength = Math.ceil((maxLength - marker.length) * 0.6);
+  return text.slice(0, headLength).trimEnd() + marker + text.slice(-(maxLength - marker.length - headLength)).trimStart();
+}
+
+function normalizedText(value) {
+  return redactSensitiveText(value).replace(/\s+/g, " ").trim();
 }

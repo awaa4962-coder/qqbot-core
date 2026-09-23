@@ -30,7 +30,7 @@ export function isLeakedReasoning(text) {
     /(我|夜星)(得|应该|要).*(理解|回应|回复|处理|判断|分析|构思)/,
     /(首先|然后|接着|最后).*[，,\n]/,
     /(应该|要).*(保持|注意|避免|确保)/,
-    /^.*(分析|判断|理解).*(对话|上下文|意图)/,
+    /^(我|夜星).{0,16}(先|需要|应该|得|要).{0,24}(分析|判断|理解).*(对话|上下文|意图)/,
   ];
   const responsePatterns = [
     /喵[～~！!。]/,
@@ -86,12 +86,14 @@ export function isUnsafeReasoningText(text) {
   if (!text || typeof text !== 'string') return false;
   const t = text.trim();
   if (!t) return false;
+  // Asking the user for context is a reply; planning how to answer is not.
   const unsafePatterns = [
     /^(思考过程|分析|推理|我的思路)\s*[:：]/,
     /^(我需要先|首先我需要|让我分析一下|用户的意思是)/,
     /(用户的意思是|让我分析一下|首先我需要|我需要先)/,
     /(用户|群友).{0,20}(说|问|提到|表示).{0,80}(我需要|我应该|我得|需要先|首先)/,
-    /(看起来|从之前的对话看|这个语境|上下文).{0,120}(我需要|我应该|我得|理解|分析|判断)/,
+    /(看起来|从之前的对话看|这个语境|上下文).{0,120}(我需要|我应该|我得).{0,60}(回应|回复|处理|理解|分析|判断)/,
+    /(上下文|语境).{0,120}(需要|应该|先|再|接下来|要).{0,24}(回复|回应|措辞|组织答案|用户意图)/,
     /^The user (said|asked|seems|wants)/i,
   ];
   if (unsafePatterns.some(p => p.test(t))) return true;

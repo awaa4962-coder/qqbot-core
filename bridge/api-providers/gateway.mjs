@@ -8,6 +8,7 @@ import { normalizeProviderUsage, recordApiUsage } from "./usage-metrics.mjs";
 import { traceStage } from "../diagnostics/message-trace.mjs";
 import { withBotSelfContext } from "../capabilities/self-context.mjs";
 import { chatRunPrivacyChanged, chatRunStopReason } from "../cognition/chat-run.mjs";
+import { measurePromptText } from "../system-prompts/compose.mjs";
 import {
   getProvider,
   getTaskRoute,
@@ -45,6 +46,8 @@ async function invokeApiProvider(providerId, request = {}, options = {}) {
     validateProviderEndpoint(provider);
     const key = options.key !== undefined ? String(options.key || "").trim() : readProviderSecret(provider, options);
     const prepared = withBotSelfContext(request, provider, options);
+    if (request.promptMetadata) traceStage("context", { status: "ok", ...request.promptMetadata,
+      inputTextChars: measurePromptText(prepared.request.messages) });
     if (prepared.snapshot) traceStage("model", { provider: provider.id, task: options.usageTask,
       position: options.usagePosition, selfFactsVersion: prepared.snapshot.version,
       capabilityCount: prepared.snapshot.capabilityCount, model: prepared.snapshot.model });

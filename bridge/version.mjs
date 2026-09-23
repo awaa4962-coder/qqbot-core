@@ -4,21 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.16-chat-lifecycle";
-export const VERSION_NAME = "chat-lifecycle";
+export const VERSION = "1.4.17-prompt-layers";
+export const VERSION_NAME = "prompt-layers";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "聊天生成期间清理记忆、撤销权限或更新称呼/偏好后，旧回复在后续检查点停止，不再降级续答或写回旧结果。",
-  "同一用户同一会话的新并发回复替换旧生成，停止服务时中止进行中的聊天模型请求；不同用户和会话互不替换。",
-  "长回复逐段复核，已送达内容不伪称撤回；诊断区分已停止、部分发送与回执未知，未知回执不自动重发。",
+  "固定聊天规则与动态表达设置分层，保留猫娘风格；诊断显示提示词版本、固定前缀指纹和文本长度。",
+  "历史按完整轮次优先保留最近反馈，长摘录保留首尾；明确建议过不等于用户执行过或问题已解决。",
+  "提示词要求承接失败反馈、采用当前纠正、缺关键证据只追问必要项；不靠增加每轮意图模型实现。",
   "JM 群聊/私聊下载、大写 FS 与延迟清理保留；模型主备、思考档位、白名单和关系评分不变，Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Privacy clears, revoked access and updated preferences stop stale chat results at subsequent boundaries without fallback or write-back.",
-  "New concurrent replies supersede the same user's active reply in the same conversation. Shutdown aborts active chat model requests.",
-  "Rechecks each outgoing chunk. Diagnostics distinguish cancellation, partial delivery and unknown receipts; unknown delivery is never blindly retried.",
+  "Separates stable task rules from dynamic expression settings while retaining persona. Diagnostics show prompt versions, prefix fingerprints and text lengths.",
+  "Keeps recent complete turn pairs and both ends of long excerpts. Advice is not evidence that a user acted or a problem was solved.",
+  "Prompts prioritize current corrections and failed-step feedback, asking only for necessary missing evidence without an extra intent-model call on every turn.",
   "Keeps group/private JM downloads, FS and delayed cleanup. Model routes, reasoning modes, allowlists and relationship scoring stay unchanged. Windows stays frozen.",
 ]);
 

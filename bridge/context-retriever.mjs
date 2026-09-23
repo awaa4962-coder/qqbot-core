@@ -16,7 +16,7 @@ import { compareRelevance, currentTopicText, isContinuation, messageFeatures, re
 import { selectConversationThread, selectGroupConversation, selectionSource } from "./context/conversation-selection.mjs";
 import { buildMemorySummary, getActiveMemoryContext } from "./memory-profile.mjs";
 import { buildMentionContextBlock } from "./mentions/index.mjs";
-import { formatConversationThreadBlock, getConversationThread } from "./cognition/index.mjs";
+import { formatConversationThreadLayers, getConversationThread } from "./cognition/index.mjs";
 import {
   buildMinimalPreferenceContextBlock,
   buildPreferenceContextBlock,
@@ -89,9 +89,12 @@ function appendQuotedLayer(layers, options) {
 }
 
 function appendThreadLayer(layers, options) {
-  const threadBlock = formatConversationThreadBlock(options.thread);
-  if (threadBlock) pushLayer(layers, threadBlock, 88, "user", options.thread.turns.map(turn =>
-    selectionSource({ ...turn, uid: options.uid }, "thread", "continuation")));
+  for (const { turn, content, clipped } of formatConversationThreadLayers(options.thread)) {
+    pushLayer(layers, content, 88, "user", [{
+      ...selectionSource({ ...turn, uid: options.uid }, "thread", "continuation"),
+      clipped,
+    }], true);
+  }
 }
 
 function appendPreferenceLayer(layers, uid) {
@@ -212,9 +215,9 @@ function normalizeMessageId(value) {
   return String(value);
 }
 
-function pushLayer(layers, content, contextPriority, role = "user", contextSources = []) {
+function pushLayer(layers, content, contextPriority, role = "user", contextSources = [], contextAtomic = false) {
   if (!content) return;
-  layers.push({ role, content, contextPriority, contextSources });
+  layers.push({ role, content, contextPriority, contextSources, contextAtomic });
 }
 
 export function buildMemoryContextBlock(uid, groupId) {

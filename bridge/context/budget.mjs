@@ -27,6 +27,7 @@ export function enforceContextBudget(messages, currentInput = "", options = {}) 
     priority: Number(item?.contextPriority || 50),
     role: item?.role || "user",
     content: redactSensitiveText(item?.content).trim(),
+    atomic: item?.contextAtomic === true,
     sources: Array.isArray(item?.contextSources) ? item.contextSources.slice(0, 12) : [],
   })).filter(item => item.content);
   ranked.sort((a, b) => b.priority - a.priority || b.index - a.index);
@@ -36,10 +37,11 @@ export function enforceContextBudget(messages, currentInput = "", options = {}) 
   for (const item of ranked) {
     if (selected.length >= limits.maxMessages || remaining < 40) break;
     const maxLength = Math.min(limits.maxMessageChars, remaining);
+    if (item.atomic && item.content.length > maxLength) continue;
     const content = clipContextContent(item.content, maxLength);
     if (!content) continue;
     if (content.length < item.content.length) truncatedMessages++;
-    const sources = item.sources.map(source => ({ ...source, clipped: content.length < item.content.length }));
+    const sources = item.sources.map(source => ({ ...source, clipped: source.clipped === true || content.length < item.content.length }));
     selected.push({ index: item.index, role: item.role, content, sources });
     remaining -= content.length;
   }

@@ -6,8 +6,8 @@ import { VERSION } from "../version.mjs";
 import { callTaskApi } from "../api-providers/gateway.mjs";
 import { enforceContextBudget } from "../context/budget.mjs";
 import { buildCurrentInput, buildGroupBackgroundBlock, buildQuotedMessageBlock, formatSpeakerLine } from "../context/messages.mjs";
-import { formatConversationThreadBlock } from "../cognition/thread-manager.mjs";
-import { buildChatSystemPrompt } from "../system-prompts/chat.mjs";
+import { formatConversationThreadLayers } from "../cognition/thread-manager.mjs";
+import { buildModelPrompt } from "../system-prompts/compose.mjs";
 import { buildImageContextMessage } from "../system-prompts/image-context.mjs";
 import { buildOutputPacket } from "../output-pipeline.mjs";
 import { REPLAY_CASES } from "./replay-cases.mjs";
@@ -21,19 +21,23 @@ export function buildReplayPacket(example) {
   const layers = [];
   if (example.quote) layers.push({ role: "user", content: buildQuotedMessageBlock(example.quote, "示例发言人"), contextPriority: 100 });
   const thread = selectConversationThread({ scope: "synthetic", turns: example.turns }, { userMsg: example.input });
-  if (thread) layers.push({ role: "user", content: formatConversationThreadBlock(thread), contextPriority: 88 });
+  for (const { content } of formatConversationThreadLayers(thread)) {
+    layers.push({ role: "user", content, contextPriority: 88, contextAtomic: true });
+  }
   if (example.background) layers.push({ role: "user", content: buildGroupBackgroundBlock(example.background), contextPriority: 40 });
   if (example.image !== undefined) layers.push({ ...buildImageContextMessage(example.image), contextPriority: 95 });
   appendReplayRetrieval(layers, example);
   const currentInput = buildCurrentInput("示例用户", example.input, "11");
   const bounded = enforceContextBudget(layers, currentInput, { mode: "group-at" });
+  const prompt = buildModelPrompt({ mood: "正常" });
   const messages = [
-    { role: "system", content: buildChatSystemPrompt({ mood: "正常" }) },
+    { role: "system", content: prompt.system },
+    prompt.dynamicMessage,
     ...bounded.messages,
     { role: "user", content: currentInput },
   ];
   return {
-    messages, budget: bounded.budget, sources: bounded.sources,
+    messages, budget: bounded.budget, sources: bounded.sources, promptMetadata: prompt.metadata,
     fingerprint: createHash("sha256").update(JSON.stringify(messages)).digest("hex").slice(0, 16),
   };
 }
@@ -166,6 +170,7 @@ async function generateAnswer(packet, callModel) {
     try {
       result = await callModel("group_chat", position, {
         messages: packet.messages, maxTokens: 1200, temperature: 0.2, tools: [], timeoutMs: 45000,
+        promptMetadata: packet.promptMetadata,
       }, { reasoningMode: "economy" });
     } catch { continue; }
     const output = result.ok ? buildOutputPacket(result.raw, { provider: result.provider }) : null;

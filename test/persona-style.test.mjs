@@ -10,6 +10,7 @@ import {
 import { buildChatSystemPrompt } from "../bridge/system-prompts/chat.mjs";
 import { CONTEXT_SAFETY } from "../bridge/system-prompts/identity.mjs";
 import { buildInterjectionSystemPrompt } from "../bridge/system-prompts/interjection.mjs";
+import { buildModelPrompt } from "../bridge/system-prompts/compose.mjs";
 
 describe("catgirl persona style", () => {
   it("keeps the safety and answer rules in a stable cacheable prefix", () => {
@@ -22,8 +23,8 @@ describe("catgirl persona style", () => {
     const prefixEnd = soft.indexOf(CONTEXT_SAFETY) + CONTEXT_SAFETY.length;
     assert.ok(prefixEnd > CONTEXT_SAFETY.length);
     assert.equal(soft.slice(0, prefixEnd), hiss.slice(0, prefixEnd));
-    assert.ok(soft.indexOf("当前氛围") > prefixEnd);
-    assert.ok(soft.indexOf("本轮猫娘表现") > prefixEnd);
+    assert.equal(soft, hiss);
+    assert.doesNotMatch(soft, /当前氛围|本轮猫娘表现/);
   });
 
   it("classifies playful, provoked and serious moments", () => {
@@ -50,10 +51,11 @@ describe("catgirl persona style", () => {
   });
 
   it("injects the selected cue into chat and interjection prompts", () => {
-    const chat = buildChatSystemPrompt({ personaCue: PERSONA_CUES.SOFT });
-    const interjection = buildInterjectionSystemPrompt({ personaCue: PERSONA_CUES.HISS });
-    assert.match(chat, /自然加入一处猫娘细节/);
-    assert.match(interjection, /哈气一次/);
-    assert.match(interjection, /每次最多一种/);
+    const chat = buildModelPrompt({ personaCue: PERSONA_CUES.SOFT });
+    const interjection = buildModelPrompt({ replyMode: "interjection", personaCue: PERSONA_CUES.HISS });
+    assert.match(chat.dynamicMessage.content, /自然加入一处猫娘细节/);
+    assert.match(interjection.dynamicMessage.content, /哈气一次/);
+    assert.match(buildInterjectionSystemPrompt(), /每次最多一种/);
+    assert.equal(interjection.dynamicMessage.role, "user");
   });
 });

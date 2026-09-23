@@ -2,7 +2,7 @@
 import { LONG_GROUPS } from "./config.mjs";
 import { log, logE } from "./logger.mjs";
 import { webSearch, needsSearch } from "./search.mjs";
-import { buildSystem } from "./model-mimo.mjs";
+import { buildModelPrompt } from "./system-prompts/compose.mjs";
 import { callApiProvider, callTaskApi } from "./api-providers/gateway.mjs";
 import { buildCurrentInput } from "./context/messages.mjs";
 import { chatError, parseChatOutcome } from "./chat-outcome.mjs";
@@ -47,21 +47,22 @@ export async function tryDeepSeekResult(userMsg, userName, history, groupId, isA
   const personaCue = options.personaCue || selectPersonaCue(userMsg, {
     replyMode: options.replyMode || "chat",
   });
-  const system = buildSystem(userName, groupId, mood || '', {
+  const prompt = buildModelPrompt({
     ...options,
-    personaCue,
+    personaCue, groupId, mood,
   });
 
   try {
     const privateRequest = isPrivateModelRequest(groupId);
     const task = options.task || (privateRequest ? "private_chat" : "group_chat");
     const request = {
-      messages: [{ role: 'system', content: system }, ...msgs],
+      messages: [{ role: 'system', content: prompt.system }, prompt.dynamicMessage, ...msgs],
       maxTokens: maxTok,
       temperature: 0.7,
       timeoutMs: 30000,
       usageContext: buildDeepSeekUsageContext(options, task, privateRequest),
       selfContext: { surface: privateRequest ? "private" : "group", groupId, userId: options.currentUserId },
+      promptMetadata: prompt.metadata,
     };
     const result = options.providerId
       ? await callApiProvider(options.providerId, request)
