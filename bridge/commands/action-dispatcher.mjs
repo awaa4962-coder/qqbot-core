@@ -11,6 +11,7 @@ import { isKnownCommand } from "./registry.mjs";
 import { isSuccessfulOutbound } from "../cognition/outcome.mjs";
 import { traceStage } from "../diagnostics/message-trace.mjs";
 import { handleConversationSummaryCommand, parseConversationSummaryCommand } from "../features/conversation-summary/index.mjs";
+import { createMemoryCommandGuard, isSelfMemoryCommand } from "./modules/memory.mjs";
 
 const SPECIAL_GROUP_ACTIONS = Object.freeze([
   { id: "conversation-summary", parse: parseConversationSummaryCommand, handle: handleConversationSummaryCommand },
@@ -65,12 +66,17 @@ async function executeSpecialGroupAction(action, ctx, commandText, options) {
 }
 
 async function dispatchCatalogCommand(ctx, commandText, options) {
+  const memoryGuard = catalogMemoryGuard(ctx, commandText, options);
   const reply = await buildCommandReplyAsync(commandText, {
     ...options,
     users: options.users || users,
     groupChats: options.groupChats || groupChats,
     userId: ctx.user_id,
     groupId: ctx.group_id,
+    surface: "group",
+    messageId: ctx.message_id,
+    contextPrivacyGeneration: ctx.contextPrivacyGeneration,
+    memoryGuard,
     requireMention: false,
     selfUin: options.selfUin ?? CFG.selfUin,
     botNames: options.botNames ?? CFG.botNames,
@@ -81,8 +87,18 @@ async function dispatchCatalogCommand(ctx, commandText, options) {
   traceStage("route", { status: "ok", route: "command" });
 
   const sender = options.sender || sendMsg;
-  const receipt = await sender(ctx.group_id, reply, options.replyToId ?? ctx.message_id);
+  if (memoryGuard?.stopReason()) return true;
+  const receipt = await sendCatalogReply(sender, ctx.group_id, reply, options.replyToId ?? ctx.message_id, memoryGuard);
   const recordCommand = options.recordCommand || logGroupMsg;
   if (isSuccessfulOutbound(receipt)) recordCommand(ctx.group_id, "夜星", "[command]", CFG.selfUin, "assistant");
   return true;
+}
+
+function catalogMemoryGuard(ctx, commandText, options) {
+  return isSelfMemoryCommand(commandText) ? createMemoryCommandGuard({ ...options, userId: ctx.user_id,
+    groupId: ctx.group_id, surface: "group", contextPrivacyGeneration: ctx.contextPrivacyGeneration }) : null;
+}
+
+function sendCatalogReply(sender, groupId, reply, replyTo, guard) {
+  return guard ? sender(groupId, reply, replyTo, { stopReason: guard.stopReason }) : sender(groupId, reply, replyTo);
 }

@@ -112,7 +112,7 @@ test("prompt diagnostics expose versions and counts, never raw instructions", as
     traceStage("context", { promptVersion: "private arbitrary text", promptFingerprint: "not-a-hash" });
   }, recorder);
   const stages = recorder.list().items[0].stages.filter(item => item.stage === "context");
-  assert.equal(stages[0].promptVersion, "chat-v3");
+  assert.equal(stages[0].promptVersion, "chat-v4");
   assert.match(stages[0].promptFingerprint, /^[a-f0-9]{16}$/);
   assert.equal(stages[0].inputTextChars, 2000);
   assert.equal(stages[1].promptVersion, undefined);

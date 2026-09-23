@@ -14,6 +14,8 @@ import { canUsePrivateChat } from "./commands/permissions.mjs";
 import { MODEL_FAILURE_NOTICE } from "./chat-outcome.mjs";
 import { assertChatRunCurrent, chatRunStopReason, withChatRun } from "./cognition/chat-run.mjs";
 import { getMemoryPrivacyGeneration } from "./memory-profile/generation.mjs";
+import { createMemoryCommandGuard, isSelfMemoryCommand } from "./commands/modules/memory.mjs";
+import { normalizeCommand } from "./commands/normalize.mjs";
 
 export async function handlePrivateMessage(ctx) {
   ctx.contextPrivacyGeneration ??= getMemoryPrivacyGeneration();
@@ -66,7 +68,7 @@ async function runPrivateReply(userId, text) {
   if (reply) {
     const result = await sendPrivateMsg(uid, reply);
     if (isSuccessfulOutbound(result)) {
-      recordPrivateTurn({ user_id: uid, message_id: null }, text, reply);
+      recordPrivateTurn({ user_id: uid, message_id: null, memorySources: context.memorySources }, text, reply);
       log("privateReply sent to", uid);
       await maybeSendPrivateSticker(uid, text, reply, context.history);
     }
@@ -163,7 +165,8 @@ function buildPrivateReplyContext(ctx, userMsg) {
     mode: "private",
     currentMessageId: ctx.message_id,
   });
-  return { history: contextPacket.messages, userName, currentInput: contextPacket.currentInput };
+  ctx.memorySources = contextPacket.retrieval.sources.filter(source => source.kind === "note");
+  return { history: contextPacket.messages, userName, currentInput: contextPacket.currentInput, memorySources: ctx.memorySources };
 }
 
 function recordPrivateTurn(ctx, userText, assistantText) {
@@ -175,14 +178,18 @@ function recordPrivateTurn(ctx, userText, assistantText) {
     userText,
     assistantText,
     outcome: "sent",
+    memorySources: ctx.memorySources || [],
   });
 }
 
 async function trySendPrivateCommand(ctx) {
-  const reply = await buildPrivateCommandReplyAsync(ctx, { users, groupChats });
+  const memoryGuard = isSelfMemoryCommand(normalizeCommand(ctx.text)) ? createMemoryCommandGuard({ userId: ctx.user_id,
+    surface: "private", contextPrivacyGeneration: ctx.contextPrivacyGeneration }) : null;
+  const reply = await buildPrivateCommandReplyAsync(ctx, { users, groupChats, memoryGuard });
   if (!reply) return false;
   traceStage("route", { status: "ok", route: "command" });
-  const receipt = await sendPrivateMsg(ctx.user_id, reply);
+  if (memoryGuard?.stopReason()) return true;
+  const receipt = await sendPrivateMsg(ctx.user_id, reply, { stopReason: memoryGuard?.stopReason });
   log(isSuccessfulOutbound(receipt) ? "private command reply sent to" : "private command reply not confirmed for", ctx.user_id);
   return true;
 }

@@ -7,6 +7,7 @@ import { forgetSummaryUser } from "./group-summary/journal.mjs";
 import { containsSensitiveText, redactSensitiveText } from "./privacy.mjs";
 import { invalidateUserMemoryGeneration } from "./memory-profile/generation.mjs";
 import { chatDeliveryLedger } from "./cognition/delivery-ledger.mjs";
+import { memoryNoteService } from "./memory-profile/notes.mjs";
 
 const DEFAULT_STYLE = Object.freeze({
   length: "normal",
@@ -179,13 +180,14 @@ export function buildPrivacyText() {
     "6. 发送 @夜星 忘记我 可以清理你的画像、偏好、关系缓存、缓存统计和个人聊天记忆。",
     "7. 日报和聊天总结会将所选脱敏群记录交给配置的模型，管理员工作台可查看相关证据；既有备份需管理员另行处理。",
     "8. 聊天发送状态不存正文，已结束记录保留约 24 小时，未知结果保留待核实；忘记我会解除身份关联，但保留防止旧消息重发的事件标记。",
+    "9. 明确记忆按群或私聊分别保存，默认 30 天、最长 90 天；私聊只有你主动使用记忆命令才保存条目，不自动保存私聊原文。管理员可在控制台查看、纠正或删除，备注标明管理员来源。删除条目不删除原群消息；完整清理请用“忘记我”。",
   ].join("\n");
 }
 
 export function forgetUserData(uid, options = {}) {
   const id = String(uid || "");
   if (!id) return { ok: false, text: "没有找到可清理的用户。" };
-  clearAdditionalUserRecords(id, options);
+  const notesCleared = clearAdditionalUserRecords(id, options);
   const userStore = options.users || users;
   const chatStore = options.groupChats || groupChats;
   if (userStore[id]) {
@@ -216,7 +218,12 @@ export function forgetUserData(uid, options = {}) {
     saveUsers();
     saveGroupChats();
   }
-  return finishForgetDelivery(id, options);
+  const result = finishForgetDelivery(id, options);
+  return combineForgetResult(result, notesCleared);
+}
+
+function combineForgetResult(result, notesCleared) {
+  return notesCleared ? result : { ok: false, text: "已清理原聊天记忆，但明确记忆文件清理未能确认，请管理员检查存储后重试。" };
 }
 
 function finishForgetDelivery(id, options) {
@@ -228,6 +235,8 @@ function finishForgetDelivery(id, options) {
 function clearAdditionalUserRecords(id, options) {
   clearMessageFeatureCache();
   if (!options.skipSave) forgetSummaryUser(id, options.summaryOptions || {});
+  try { memoryNoteService.clear({ userId: id }, { persist: !options.skipSave }); return true; }
+  catch { return false; }
 }
 
 export function buildPreferenceContextBlock(uid, options = {}) {

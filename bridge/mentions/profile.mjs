@@ -1,4 +1,4 @@
-import { buildMemorySummary } from "../memory-profile.mjs";
+import { recentTopicEvidence } from "../memory-profile/evidence.mjs";
 import { groupChats, users } from "../storage.mjs";
 import { resolveMentionDisplayName } from "./resolve.mjs";
 
@@ -21,9 +21,16 @@ function buildMentionProfile(uid, options) {
       mention: findMention(uid, options.mentions),
     }),
     memorySummary: groupId && groupId !== "private"
-      ? safeSummary(buildMemorySummary(uid, groupId, { ...options, groupOnly: true }))
+      ? safeSummary(mentionTopicHints(uid, groupId, options))
       : "",
   };
+}
+
+function mentionTopicHints(uid, groupId, options) {
+  try {
+    const hints = recentTopicEvidence(uid, groupId, options);
+    return hints.length ? "本群原话的话题线索，不代表偏好或事实：" + hints.map(item => item.label).join("；") : "";
+  } catch { return ""; }
 }
 
 function findMention(uid, mentions) {

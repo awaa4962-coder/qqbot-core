@@ -19,8 +19,10 @@ import { MEME_RETIRED_MESSAGE } from "../../knowledge/memes/archive.mjs";
 import { buildUserCacheStatsText } from "../../api-providers/usage-metrics.mjs";
 import { extractRawCommandArg } from "../normalize.mjs";
 import { isMemeCommand, isPreferenceCommand } from "../registry.mjs";
+import { buildMemoryCommandReply, isSelfMemoryCommand } from "./memory.mjs";
 
 export function buildUserCommandReply(cmd, options) {
+  if (isSelfMemoryCommand(cmd)) return buildMemoryCommandReply(cmd, options);
   if (isCapabilityHelpCommand(cmd)) {
     const parsed = parseCapabilityHelpCommand(cmd);
     return buildCapabilityHelpText(parsed.query, {

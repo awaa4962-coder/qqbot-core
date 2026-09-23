@@ -11,6 +11,7 @@ import { isAdminUser } from "./permissions.mjs";
 import { isKnownCommand } from "./registry.mjs";
 import { buildAdminCommandReply } from "./modules/admin.mjs";
 import { buildUserCommandReply } from "./modules/basic.mjs";
+import { buildMemoryCommandReplyAsync, isSelfMemoryCommand } from "./modules/memory.mjs";
 import {
   buildRelationshipCommandReply,
   buildRelationshipCommandReplyAsync,
@@ -39,6 +40,7 @@ export function buildCommandReply(commandText, options = {}) {
 export async function buildCommandReplyAsync(commandText, options = {}) {
   const cmd = normalizeCommand(commandText, options);
   if (!cmd) return null;
+  if (isSelfMemoryCommand(cmd)) return await buildMemoryCommandReplyAsync(cmd, { ...options, rawCommandText: commandText });
   if (isConversationSummaryCommand(cmd)) return conversationSummaryGuide(options);
   if (!isKnownCommand(cmd)) return buildUnknownCommandSuggestion(cmd, capabilityOptions(options));
 
@@ -71,6 +73,11 @@ export function buildPrivateCommandReply(ctx, options = {}) {
   return buildCommandReply(ctx?.text || "", {
     ...options,
     userId: ctx?.user_id,
+    groupId: undefined,
+    surface: "private",
+    messageId: ctx?.message_id,
+    contextPrivacyGeneration: ctx?.contextPrivacyGeneration,
+    requireMention: false,
   });
 }
 
@@ -78,6 +85,11 @@ export async function buildPrivateCommandReplyAsync(ctx, options = {}) {
   return await buildCommandReplyAsync(ctx?.text || "", {
     ...options,
     userId: ctx?.user_id,
+    groupId: undefined,
+    surface: "private",
+    messageId: ctx?.message_id,
+    contextPrivacyGeneration: ctx?.contextPrivacyGeneration,
+    requireMention: false,
   });
 }
 
@@ -95,6 +107,9 @@ function withGroupOptions(ctx, options) {
     ...options,
     userId: ctx.user_id,
     groupId: ctx.group_id,
+    surface: "group",
+    messageId: ctx.message_id,
+    contextPrivacyGeneration: ctx.contextPrivacyGeneration,
     requireMention: true,
     selfUin: options.selfUin ?? CFG.selfUin,
     botNames: options.botNames ?? CFG.botNames,

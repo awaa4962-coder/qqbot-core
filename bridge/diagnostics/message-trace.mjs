@@ -45,12 +45,13 @@ function safePromptIdentity(details) {
 }
 
 function safeSources(sources) {
-  const kinds = new Set(["quote", "thread", "memory", "group", "image"]);
-  const reasons = new Set(["reply_chain", "continuation", "keywords", "synonyms", "mention", "recent", "image_reference"]);
+  const kinds = new Set(["quote", "thread", "memory", "group", "image", "note"]);
+  const reasons = new Set(["reply_chain", "continuation", "keywords", "synonyms", "mention", "recent", "image_reference", "explicit_note", "operator_note", "inferred_topic"]);
   return sources.filter(item => kinds.has(item?.kind) && reasons.has(item.reason)).slice(0, 24).map(item => ({
     kind: item.kind, reason: item.reason, messageId: numericId(item.messageId), userId: numericId(item.userId),
     score: Number.isFinite(item.score) ? Math.max(0, Math.min(12, item.score)) : 0, clipped: item.clipped === true,
     ...(item.kind === "quote" && item.verified === true ? { verified: true, at: sourceTimestamp(item.at) } : {}),
+    ...(item.kind === "note" ? { noteId: /^[a-f0-9]{12}$/.test(item.noteId || "") ? item.noteId : "", at: sourceTimestamp(item.at), revision: Number.isSafeInteger(item.revision) ? item.revision : 0 } : {}),
   }));
 }
 

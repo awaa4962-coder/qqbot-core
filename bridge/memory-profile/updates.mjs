@@ -1,7 +1,9 @@
 import { DEFAULT_TTL_MS, INTERJECTION_PREFERENCE_TTL_MS, userGroupKey } from "./constants.mjs";
 import { MEMORY_TOPIC_RULES } from "../knowledge/topic-rules.mjs";
 import { getMemoryStatus } from "./query.mjs";
-import { memoryProfiles, saveMemoryProfiles } from "./store.mjs";
+import { memoryProfiles, memoryProfilesAvailable, saveMemoryProfiles } from "./store.mjs";
+import { memoryNoteService } from "./notes.mjs";
+import { logE } from "../logger.mjs";
 import { containsSensitiveText, redactSensitiveText } from "../privacy.mjs";
 import { invalidateMemoryPrivacyGeneration, invalidateUserMemoryGeneration } from "./generation.mjs";
 
@@ -10,6 +12,7 @@ export function isSensitiveMemoryText(text) {
 }
 
 export function observeMemoryEvent(event, options = {}) {
+  if (!memoryProfilesAvailable()) return null;
   const now = options.now || Date.now();
   const normalized = normalizeMemoryEvent(event);
   if (!normalized || isSensitiveMemoryText(normalized.text)) return null;
@@ -248,6 +251,7 @@ export function cleanupExpiredMemoryProfiles(now = Date.now()) {
   removeExpired(memoryProfiles.userProfiles, now);
   removeExpired(memoryProfiles.groupProfiles, now);
   removeExpired(memoryProfiles.userGroupProfiles, now);
+  try { memoryNoteService.prune(now); } catch { logE("memory note cleanup unavailable"); }
   saveMemoryProfiles();
   return before;
 }

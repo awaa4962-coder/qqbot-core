@@ -187,28 +187,28 @@ function replyIdentity(message) {
 
 export { normalizeOutboundText, splitLongText };
 
-export async function sendLongGroupMsg(groupId, text, replyTo) {
-  return sendTextToGroup({ groupId, text, replyTo });
+export async function sendLongGroupMsg(groupId, text, replyTo, options = {}) {
+  return sendTextToGroup({ ...options, groupId, text, replyTo });
 }
 
-export async function sendLongPrivateMsg(userId, text) {
-  return sendTextToPrivate({ userId, text });
+export async function sendLongPrivateMsg(userId, text, options = {}) {
+  return sendTextToPrivate({ ...options, userId, text });
 }
 
-export async function sendMsg(group_id, message, replyTo) {
-  if (typeof message === 'string') return sendLongGroupMsg(group_id, message, replyTo);
+export async function sendMsg(group_id, message, replyTo, options = {}) {
+  if (typeof message === 'string') return sendLongGroupMsg(group_id, message, replyTo, options);
   const msgArr = Array.isArray(message) ? [...message] : message;
   if (!msgArr?.length) return null;
   const payload = { group_id: group_id, message: msgArr };
   if (replyTo) payload.message.unshift({ type: 'reply', data: { id: replyTo } });
-  return sendGroupMessagePayload(payload, 'sendMsg');
+  return sendGroupMessagePayload(payload, 'sendMsg', options);
 }
 
-export async function sendPrivateMsg(user_id, message) {
-  if (typeof message === 'string') return sendLongPrivateMsg(user_id, message);
+export async function sendPrivateMsg(user_id, message, options = {}) {
+  if (typeof message === 'string') return sendLongPrivateMsg(user_id, message, options);
   const msgArr = Array.isArray(message) ? [...message] : message;
   if (!msgArr?.length) return null;
-  return sendPrivateMessagePayload({ user_id: user_id, message: msgArr }, 'sendPrivateMsg');
+  return sendPrivateMessagePayload({ user_id: user_id, message: msgArr }, 'sendPrivateMsg', options);
 }
 
 export async function uploadGroupFile(groupId, filePath, name, options = {}) {

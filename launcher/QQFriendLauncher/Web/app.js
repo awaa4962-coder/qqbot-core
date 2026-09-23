@@ -16,8 +16,25 @@ import { installTaskFeedback } from "./ui/background-feedback.js";
 
 installTaskFeedback();
 
+let memoryController;
+let memoryModule;
+if (host.mode === "browser") $("memoryNav").hidden = false;
+
+async function openMemory() {
+  try {
+    memoryModule ||= import("./memory.js");
+    const { initializeMemory } = await memoryModule;
+    memoryController ||= initializeMemory(host);
+  } catch (error) {
+    memoryModule = null;
+    $("memoryNotice").textContent = error.message || "记忆页面加载失败，请重新进入。";
+    $("memoryNotice").dataset.error = "true";
+  }
+}
+
 export function canLeaveCurrentView(nextView) {
   if (nextView === uiState.currentView) return true;
+  if (uiState.currentView === "memory" && memoryController && !memoryController.canLeave()) return false;
   if (uiState.currentView === "configuration" && uiState.configDirty) {
     const leave = window.confirm("配置有未保存修改。确定离开并放弃这些修改吗？");
     if (leave) renderConfigEditor(uiState.lastConfigSnapshot, { force: true });
@@ -28,6 +45,7 @@ export function canLeaveCurrentView(nextView) {
 
 export function showView(view) {
   if (!PAGE_META[view]) return;
+  if (view === "memory" && host.mode !== "browser") return;
   if (!canLeaveCurrentView(view)) return;
   if (uiState.currentView === "stickers" && view !== "stickers") {
     disposeStickerPreviews();
@@ -56,6 +74,7 @@ export function showView(view) {
   if (view === "api-center" && !uiState.apiProvidersLoaded) runAction("refreshApiProviders", null, { silent: true });
   if (view === "configuration" && !uiState.lastConfigSnapshot.editable) runAction("refreshConfig", null, { silent: true });
   if (view === "logs" && !uiState.logsLoaded) runAction("refreshLogs", null, { silent: true });
+  if (view === "memory") openMemory();
 }
 
 host.onEvent((message) => {

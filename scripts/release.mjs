@@ -19,7 +19,7 @@ const PUBLIC_LINUX_FILES = new Set([
   ".env.example", "qqfriend.env.example", "compose.yaml",
   "Dockerfile", "Dockerfile.dependencies", "Dockerfile.overlay",
   "check.sh", "prepare.sh", "install-docker-host.sh", "install-summary-schedule.sh", "install-time-order.sh",
-  "README.md", "ROADMAP.md", "MEMBER-SUMMARY.md", "MODULAR-RUNTIME.md", "SUMMARY-WORKBENCH.md",
+  "README.md", "ROADMAP.md", "MEMBER-SUMMARY.md", "MODULAR-RUNTIME.md", "SUMMARY-WORKBENCH.md", "MEMORY.md",
   "systemd/docker-chrony-wait.conf", "systemd/qqfriend-summary.service",
   "systemd/qqfriend-summary.timer", "systemd/qqfriend.service",
 ].map(file => "deploy/linux/" + file));

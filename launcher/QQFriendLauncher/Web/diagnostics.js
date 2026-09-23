@@ -124,11 +124,12 @@ import { initializeDeliveries } from "./deliveries.js";
   }
 
   function sourceLabel(source) {
-    const kinds = { quote: "引用", thread: "对话线程", memory: "个人历史", group: "群聊", image: "图片" };
-    const reasons = { reply_chain: "引用链", continuation: "承接", keywords: "关键词", synonyms: "同义表达", mention: "被提及者", recent: "最近背景", image_reference: "明确看图指向" };
+    const kinds = { quote: "引用", thread: "对话线程", memory: "个人历史", group: "群聊", image: "图片", note: "明确记忆" };
+    const reasons = { reply_chain: "引用链", continuation: "承接", keywords: "关键词", synonyms: "同义表达", mention: "被提及者", recent: "最近背景", image_reference: "明确看图指向", explicit_note: "本人记忆命令", operator_note: "管理员备注", inferred_topic: "原话话题线索" };
     const verified = source.verified ? ` · 同群来源已核验${source.at ? " · " + new Date(source.at).toLocaleString("zh-CN", { hour12: false }) : ""}` : "";
     const actor = source.kind === "quote" && source.userId ? " · 发言人 " + source.userId : "";
-    return `${kinds[source.kind] || "上下文"} ${source.messageId || "旧记录"}${actor} · ${reasons[source.reason] || "相关"}${verified}${source.clipped ? " · 摘录或所在层已裁剪" : ""}`;
+    const note = source.kind === "note" ? ` · 条目 ${source.noteId || "未知"} · 修订 ${source.revision || 0}` : "";
+    return `${kinds[source.kind] || "上下文"} ${source.messageId || "旧记录"}${actor} · ${reasons[source.reason] || "相关"}${verified}${note}${source.clipped ? " · 摘录或所在层已裁剪" : ""}`;
   }
 
   function stepDetails(step) {

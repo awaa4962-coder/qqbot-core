@@ -4,21 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.19-context-provenance";
-export const VERSION_NAME = "context-provenance";
+export const VERSION = "1.4.20-memory-evidence";
+export const VERSION_NAME = "memory-evidence";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "引用消息核对群范围、消息编号、作者和时间；同名按用户 ID 区分，拿不到引用时不借用旁边的聊天来猜。",
-  "忘记我后旧引用不再回填；读取群成员、引用或私聊文件期间发生清理，旧上下文会停止后续处理。",
-  "主模型与 DeepSeek 备用复用已脱敏的当前输入，长消息和引用保留首尾；诊断可查看来源核验，文件正文不触发自动搜索。",
+  "新增我的记忆、记住、纠正记忆和删除记忆；按群/私聊与本人隔离，明确条目带来源、有效期和修订，不自动保存私聊历史。",
+  "Linux 控制台可按范围与 QQ 查询、编辑记忆；管理员备注不冒充用户自述，冲突或保存失败不会显示成功。",
+  "聊天按需使用明确条目和带来源的话题线索，不再把旧规则画像当事实；纠正、遗忘和过期会影响下一次上下文，诊断只记元数据。",
   "JM 群聊/私聊下载、大写 FS 与延迟清理保留；模型主备、思考档位、白名单和关系评分不变，Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Validates quote scope, message ID, author and time. Stable IDs distinguish matching names; unavailable quotes are not replaced with nearby chatter.",
-  "Old quotes respect erasure cutoffs. Privacy changes during member, quote or private-file lookup stop stale context from progressing.",
-  "Primary and DeepSeek fallback reuse sanitized input snapshots. Excerpts retain both ends, diagnostics show provenance, and attachment bodies do not trigger implicit searches.",
+  "Adds scoped self-memory commands for listing, saving, correcting and removing explicit notes with source, expiry and revision. Private history is not captured automatically.",
+  "The Linux console edits one user and scope at a time. Operator notes are not user statements; conflicts and failed writes are reported honestly.",
+  "Chat selects explicit notes and sourced topic hints instead of treating legacy heuristic profiles as facts. Corrections, expiry and erasure affect context; diagnostics retain metadata only.",
   "Keeps group/private JM downloads, FS and delayed cleanup. Model routes, reasoning modes, allowlists and relationship scoring stay unchanged. Windows stays frozen.",
 ]);
 

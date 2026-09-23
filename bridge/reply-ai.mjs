@@ -97,6 +97,7 @@ async function runAiReply(group_id, userId, userMsg, userName, imageUrls, replyT
       userText: userMsg,
       assistantText: reply,
       outcome: "sent",
+      memorySources: contextPacket.retrieval.sources.filter(source => source.kind === "note"),
     });
   }
   log("aiReply done for", preferredUserName, "in", gid);

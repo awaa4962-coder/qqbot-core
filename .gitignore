@@ -55,6 +55,7 @@ launcher-background.json
 
 # 个人配置
 MEMORY.md
+!deploy/linux/MEMORY.md
 SOUL.md
 IDENTITY.md
 USER.md

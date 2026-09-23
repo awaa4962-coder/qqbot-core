@@ -26,6 +26,7 @@
         <button type="button" class="view-tab" data-view="stickers"><span>表情</span><i id="stickerNavCount">-</i></button>
         <button type="button" class="view-tab" data-view="diagnostics"><span>诊断</span></button>
         <button type="button" class="view-tab" data-view="summaries" id="summaryNav" hidden><span>日报</span></button>
+        <button type="button" class="view-tab" data-view="memory" id="memoryNav" hidden><span>记忆</span></button>
         <button type="button" class="view-tab" data-view="logs"><span>日志</span></button>
       </nav>
 
@@ -421,6 +422,39 @@
               <button type="button" data-summary-action="confirm-not-delivered" hidden>确认该段未送出</button>
             </div>
             <details class="technical-details"><summary>查看所选版本的证据</summary><div id="summaryEvidence" class="summary-evidence"></div></details>
+          </section>
+        </section>
+
+        <section class="view" data-view-panel="memory" hidden>
+          <section class="memory-workspace" id="memoryPanel" aria-label="记忆编辑器">
+            <form id="memoryQuery" class="memory-query" autocomplete="off">
+              <label>范围<select id="memoryScope"><option value="group">群聊</option><option value="private">私聊</option></select></label>
+              <label id="memoryGroupField">群号<input id="memoryGroup" inputmode="numeric" autocomplete="off" maxlength="32" placeholder="必填群号"></label>
+              <label>QQ 号<input id="memoryUser" inputmode="numeric" autocomplete="off" maxlength="32" placeholder="必填 QQ 号"></label>
+              <button type="submit" id="memoryLoad">查询</button>
+              <button type="button" id="memoryRefresh" class="memory-icon" title="刷新当前范围与用户" aria-label="刷新当前范围与用户" disabled>↻</button>
+            </form>
+            <p id="memoryNotice" class="memory-notice" role="status" aria-live="polite">请选择范围并填写 QQ 号，尚未读取记忆。</p>
+            <p id="memoryTarget" class="memory-meta">未选择用户</p>
+            <div class="memory-workbench">
+              <section class="memory-list-pane" aria-label="记忆记录">
+                <div class="section-head"><h2>记录 <small id="memoryCount">0 / 32</small></h2><button type="button" id="memoryNew" disabled>新建备注</button></div>
+                <div id="memoryList" class="memory-list"><p class="memory-meta">尚未读取</p></div>
+              </section>
+              <form id="memoryEditor" class="memory-editor" autocomplete="off">
+                <div class="section-head"><h2 id="memoryEditorTitle">未选择记录</h2><span id="memoryDirty" class="memory-meta"></span></div>
+                <label>标题<input id="memoryTitle" maxlength="32" autocomplete="off" required disabled></label>
+                <label>内容<textarea id="memoryText" rows="6" maxlength="300" required disabled></textarea></label>
+                <div class="memory-editor-meta"><label>保存后有效天数<input id="memoryTtl" type="number" min="1" max="90" step="1" value="30" required disabled></label><span id="memoryChars" class="memory-meta">0 / 300 字</span></div>
+                <p class="memory-meta" id="memoryAttribution">保存类型：管理员备注；不作为用户自述。</p>
+                <dl id="memorySource" class="memory-facts"></dl>
+                <div class="memory-actions"><button type="submit" class="primary" id="memorySave" disabled>创建备注</button><button type="button" id="memoryDelete" class="danger-quiet" disabled>删除记录</button></div>
+              </form>
+            </div>
+            <div class="memory-context">
+              <section aria-labelledby="memoryPreferencesTitle"><h2 id="memoryPreferencesTitle">明确偏好 <small>只读</small></h2><dl class="memory-facts"><dt>称呼</dt><dd id="memoryDisplayName">尚未读取</dd><dt>表达风格</dt><dd id="memoryStyleText">尚未读取</dd></dl></section>
+              <section aria-labelledby="memoryInferencesTitle"><h2 id="memoryInferencesTitle">推断 <small>非用户自述 · 只读</small></h2><ul id="memoryInferences" class="memory-inferences"></ul><p id="memoryLegacy" class="memory-meta"></p></section>
+            </div>
           </section>
         </section>
 

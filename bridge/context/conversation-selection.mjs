@@ -107,6 +107,7 @@ function usableMessage(message, options) {
 }
 
 function excludedMessage(message, options) {
+  if (message.memoryCommand) return true;
   if (message.group && options.groupId && String(message.group) !== String(options.groupId)) return true;
   if (String(message.messageId || "") === String(options.currentMessageId || "") && options.currentMessageId) return true;
   if ([message.messageId, message.turnId].some(id => id && options.excludeMessageIds?.has(String(id)))) return true;

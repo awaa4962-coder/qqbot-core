@@ -49,7 +49,7 @@ describe("context retriever", () => {
         style: { length: "short", tone: "technical", humor: "light", updatedAt: Date.now() },
       },
       chats: [
-        { group: "1", nickname: "alice", text: "jm download failed with archive", ts: Date.now() - 1000 },
+        { group: "1", nickname: "alice", text: "jm download failed with archive", ts: Date.now() - 1000, messageId: "101" },
       ],
     };
     groupChats["1"] = [
@@ -72,7 +72,8 @@ describe("context retriever", () => {
     assert.match(joined, /jm download failed/);
     assert.match(joined, /background from another speaker/);
     assert.match(joined, /uid=99/);
-    assert.match(buildMemoryContextBlock("42", "1"), /confidence=/);
+    assert.doesNotMatch(buildMemoryContextBlock("42", "1"), /confidence=|固定偏好=/);
+    assert.match(buildMemoryContextBlock("42", "1"), /非个人事实或固定偏好/);
     assert.match(ctx.currentInput, /uid=42/);
     assert.match(ctx.currentInput, /speaker=Alice/);
   });

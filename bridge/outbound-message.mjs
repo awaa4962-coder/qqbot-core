@@ -77,6 +77,7 @@ export async function sendTextToGroup({
   maxLen = DEFAULT_MAX_LEN,
   maxAttempts = DEFAULT_SEND_ATTEMPTS,
   retryDelayMs = DEFAULT_RETRY_DELAY_MS,
+  stopReason,
 }) {
   const chunks = splitLongText(text, maxLen);
   if (!chunks.length) return null;
@@ -89,7 +90,7 @@ export async function sendTextToGroup({
     const result = await sendGroupPayload(
       { group_id: groupId, message },
       "sendMsg",
-      { maxAttempts, retryDelayMs }
+      { maxAttempts, retryDelayMs, stopReason }
     );
     results.push(result);
     if (!isOutboundPayloadSuccessful(result)) break;
@@ -104,6 +105,7 @@ export async function sendTextToPrivate({
   maxLen = DEFAULT_MAX_LEN,
   maxAttempts = DEFAULT_SEND_ATTEMPTS,
   retryDelayMs = DEFAULT_RETRY_DELAY_MS,
+  stopReason,
 }) {
   const chunks = splitLongText(text, maxLen);
   if (!chunks.length) return null;
@@ -115,7 +117,7 @@ export async function sendTextToPrivate({
     const result = await sendPrivatePayload(
       { user_id: userId, message },
       "sendPrivateMsg",
-      { maxAttempts, retryDelayMs }
+      { maxAttempts, retryDelayMs, stopReason }
     );
     results.push(result);
     if (!isOutboundPayloadSuccessful(result)) break;
@@ -143,7 +145,7 @@ async function sendPayloadWithRetry({ url, payload, label, options }) {
   let lastError = "";
   let usedAttempts = 0;
   for (let attempt = 1; attempt <= attempts; attempt++) {
-    const blocked = checkSendStart();
+    const blocked = checkSendStart(options);
     if (blocked) return blocked;
     usedAttempts = attempt;
     markOutboundAttempt();
@@ -175,11 +177,16 @@ function recordFinalRejection(result) {
   if (classifyOneBotReceipt(result) === "failed") recordChatSendRejection();
 }
 
-function checkSendStart() {
-  const reason = chatRunStopReason() || (!recordChatSendAttempt() ? "delivery_state_unavailable" : "");
+function checkSendStart(options) {
+  const reason = chatRunStopReason() || commandStopReason(options) || (!recordChatSendAttempt() ? "delivery_state_unavailable" : "");
   if (!reason) return null;
   traceStage("send", { status: "skipped", reason });
   return { status: "cancelled", reason };
+}
+
+function commandStopReason(options) {
+  try { return options.stopReason?.() || ""; }
+  catch { return "privacy_changed"; }
 }
 
 async function sendPayloadOnce(url, payload) {

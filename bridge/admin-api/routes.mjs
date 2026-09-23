@@ -27,6 +27,7 @@ import { summaryManager } from "./summary-manager.mjs";
 import { adminTaskManager } from "./task-manager.mjs";
 import { conversationSummaryService } from "../features/conversation-summary/service.mjs";
 import { buildChatDeliverySnapshot, resolveChatDelivery } from "../cognition/delivery-ledger.mjs";
+import { buildMemoryManagerSnapshot, applyMemoryManagerAction } from "./memory-manager.mjs";
 
 const GET_ROUTES = new Map([
   ["/admin/status", handleStatusRoute],
@@ -45,6 +46,7 @@ const GET_ROUTES = new Map([
   ["/admin/stickers", handleStickersReadRoute],
   ["/admin/diagnose/traces", handleTracesRoute],
   ["/admin/diagnose/deliveries", handleDeliveriesReadRoute],
+  ["/admin/memory", handleMemoryReadRoute],
   ["/admin/diagnose/replay", handleReplayReadRoute],
   ["/admin/summaries", handleSummariesReadRoute],
   ["/admin/tasks", handleTasksReadRoute],
@@ -58,6 +60,7 @@ const POST_ROUTES = new Map([
   ["/admin/stickers", handleStickersSaveRoute],
   ["/admin/diagnose/reply", handleReplyDiagnoseRoute],
   ["/admin/diagnose/deliveries", handleDeliveriesPostRoute],
+  ["/admin/memory", handleMemoryPostRoute],
   ["/admin/diagnose/replay", handleReplayPostRoute],
   ["/admin/summaries", handleSummariesPostRoute],
   ["/admin/tasks", handleTasksPostRoute],
@@ -253,6 +256,16 @@ function handleTracesRoute(_req, res, context) {
 
 function handleDeliveriesReadRoute(_req, res, context) {
   context.sendJson(res, 200, buildChatDeliverySnapshot(Object.fromEntries(context.url.searchParams)));
+}
+
+function handleMemoryReadRoute(_req, res, context) {
+  try { context.sendJson(res, 200, buildMemoryManagerSnapshot(Object.fromEntries(context.url.searchParams))); }
+  catch (error) { context.sendJson(res, error.statusCode || 503, { error: error.statusCode ? error.message : "记忆暂不可用，请检查存储。" }); }
+}
+
+async function handleMemoryPostRoute(req, res, context) {
+  try { context.sendJson(res, 200, applyMemoryManagerAction(await readJsonRequestBody(req))); }
+  catch (error) { context.sendJson(res, error.statusCode || 503, { error: error.statusCode ? error.message : "记忆未保存，请刷新后检查。" }); }
 }
 
 async function handleDeliveriesPostRoute(req, res, context) {

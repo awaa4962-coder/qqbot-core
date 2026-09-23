@@ -70,6 +70,15 @@
     if (action === "getReplay") return apiRequest("/admin/diagnose/replay");
     if (action === "getDeliveries") return apiRequest("/admin/diagnose/deliveries?" + new window.URLSearchParams(payload));
     if (action === "resolveDelivery") return apiPost("/admin/diagnose/deliveries", payload);
+    if (action === "getMemory" || action === "saveMemory") {
+      const groupId = String(payload.groupId ?? "").trim();
+      const userId = String(payload.userId ?? "").trim();
+      if (!/^(?:[0-9]+|private)$/.test(groupId) || !/^[0-9]+$/.test(userId)) {
+        throw new Error("记忆查询必须指定群号（或 private）和 QQ 号。");
+      }
+      if (action === "saveMemory") return apiRequest("/admin/memory", { method: "POST", body: { ...payload, groupId, userId }, timeoutMs: 30_000 });
+      return apiRequest("/admin/memory?groupId=" + encodeURIComponent(groupId) + "&userId=" + encodeURIComponent(userId));
+    }
     if (action === "getSummaries") {
       const query = Object.entries(payload).map(([key, value]) => encodeURIComponent(key) + "=" + encodeURIComponent(value)).join("&");
       return apiRequest("/admin/summaries?" + query);
@@ -150,8 +159,8 @@
     const abort = () => controller?.abort();
     if (options.signal?.aborted) abort();
     else options.signal?.addEventListener("abort", abort, { once: true });
-    const timer = controller && (!options.method || options.method === "GET")
-      ? global.setTimeout(() => controller.abort(), 30_000) : null;
+    const timer = controller && (options.timeoutMs || !options.method || options.method === "GET")
+      ? global.setTimeout(() => controller.abort(), options.timeoutMs || 30_000) : null;
     try {
       response = await global.fetch(path, {
         method: options.method || "GET",

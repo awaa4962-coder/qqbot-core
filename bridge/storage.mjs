@@ -108,6 +108,7 @@ export function logGroupMsg(group_id, nickname, text, uid, role, imageUrls, meta
 }
 
 function appendMessageMetadata(target, meta) {
+  if (meta.memoryCommand === true) target.memoryCommand = true;
   const messageId = normalizeMetadataId(meta.messageId);
   const replyToMessageId = normalizeMetadataId(meta.replyToMessageId);
   const turnId = normalizeMetadataId(meta.turnId);

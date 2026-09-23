@@ -16,7 +16,9 @@ import { wallAgeMs } from "./runtime-clock.mjs";
 import { users, groupChats } from "./storage.mjs";
 import { compareRelevance, currentTopicText, isContinuation, messageFeatures, retrievalFeatures } from "./context/relevance.mjs";
 import { selectConversationThread, selectGroupConversation, selectionSource } from "./context/conversation-selection.mjs";
-import { buildMemorySummary, getActiveMemoryContext } from "./memory-profile.mjs";
+import { getActiveMemoryContext } from "./memory-profile.mjs";
+import { memoryEvidenceLayers } from "./memory-profile/evidence.mjs";
+import { memoryCorrectionSnapshot } from "./memory-profile/notes.mjs";
 import { buildMentionContextBlock } from "./mentions/index.mjs";
 import { formatConversationThreadLayers, getConversationThread } from "./cognition/index.mjs";
 import {
@@ -39,7 +41,7 @@ export function buildLayeredReplyContext(options = {}) {
 
   const currentInput = buildCurrentInput(userName, userMsg, uid, { hasQuote: Boolean(options.replyToMessageId || options.replyText || options.quoteEvidence) });
   const layers = [];
-  const thread = isPassiveInterjection ? null : selectConversationThread(getConversationThread(uid, groupId), {
+  let thread = isPassiveInterjection ? null : selectConversationThread(getConversationThread(uid, groupId), {
     ...options, userMsg, selfUin: CFG.selfUin,
   });
   if (isPassiveInterjection) {
@@ -47,7 +49,9 @@ export function buildLayeredReplyContext(options = {}) {
     appendMinimalPreferenceLayer(layers, uid);
     appendInterjectionGroupLayer(layers, groupId, options);
   } else {
-    appendActiveReplyLayers(layers, { ...options, uid, groupId, userMsg, thread });
+    const evidence = activeMemoryEvidence({ ...options, uid, groupId, userMsg, thread });
+    thread = afterMemoryCorrection(thread, evidence.corrections);
+    appendActiveReplyLayers(layers, { ...options, uid, groupId, userMsg, thread, evidence });
   }
 
   return {
@@ -57,6 +61,19 @@ export function buildLayeredReplyContext(options = {}) {
     memory: getActiveMemoryContext(uid, groupId, { groupOnly: groupId !== "private" }),
     thread,
   };
+}
+
+function activeMemoryEvidence(options) {
+  return options.quoteEvidence?.state === "unavailable" ? { layers: [], supersededMessageIds: new Set() }
+    : memoryEvidenceLayers(options.uid, options.groupId, { query: memoryQuery(options), thread: options.thread });
+}
+
+function afterMemoryCorrection(thread, corrections) {
+  if (!thread || !corrections) return null;
+  const turns = thread.turns.filter(turn => Array.isArray(turn.memorySources)
+    ? turn.memorySources.every(source => corrections.revisions.get(source.noteId) === source.revision)
+    : Number(turn.createdAt || 0) > corrections.correctedAt);
+  return turns.length ? { ...thread, turns, turnCount: turns.length } : null;
 }
 
 function appendInterjectionGroupLayer(layers, groupId, options) {
@@ -74,7 +91,7 @@ function appendActiveReplyLayers(layers, options) {
   appendMentionLayer(layers, contextOptions);
   appendThreadLayer(layers, contextOptions);
   appendPreferenceLayer(layers, contextOptions.uid);
-  appendMemoryLayer(layers, contextOptions.uid, contextOptions.groupId);
+  appendMemoryLayer(layers, contextOptions);
   appendUserHistoryLayer(layers, contextOptions);
   appendGroupBackgroundLayer(layers, contextOptions.groupId, contextOptions);
 }
@@ -108,7 +125,7 @@ function appendThreadLayer(layers, options) {
 
 function appendPreferenceLayer(layers, uid) {
   const preferenceBlock = buildPreferenceContextBlock(uid);
-  if (preferenceBlock) pushLayer(layers, preferenceBlock, 90);
+  if (preferenceBlock) pushLayer(layers, preferenceBlock, 96, "user", [], true);
 }
 
 function appendMinimalPreferenceLayer(layers, uid) {
@@ -116,13 +133,14 @@ function appendMinimalPreferenceLayer(layers, uid) {
   if (preferenceBlock) pushLayer(layers, preferenceBlock, 90);
 }
 
-function appendMemoryLayer(layers, uid, groupId) {
-  const memoryBlock = buildMemoryContextBlock(uid, groupId);
-  if (memoryBlock) pushLayer(layers, memoryBlock, 82);
+function appendMemoryLayer(layers, options) {
+  const evidence = options.evidence;
+  layers.push(...evidence.layers);
+  for (const id of evidence.supersededMessageIds) options.excludeMessageIds.add(id);
 }
 
 function appendUserHistoryLayer(layers, options) {
-  if (options.quoteEvidence?.state === "unavailable" || isOtherPersonQuote(options)) return;
+  if (options.quoteEvidence?.state === "unavailable" || !options.evidence.corrections || isOtherPersonQuote(options)) return;
   const relevant = retrieveRelevantUserMemories(options.uid, memoryQuery(options), {
     groupId: options.groupId,
     currentMessageId: options.currentMessageId,
@@ -150,7 +168,7 @@ function isOtherPersonQuote(options) {
 }
 
 function appendGroupBackgroundLayer(layers, groupId, options) {
-  if (groupId === "private" || options.quoteEvidence?.state === "unavailable") return;
+  if (groupId === "private" || options.quoteEvidence?.state === "unavailable" || !options.evidence.corrections) return;
   const selected = selectGroupConversation(groupChats[groupId] || [], { ...options, selfUin: CFG.selfUin });
   // Deduplicate after selection so recalled anchors can still recover linked replies.
   const recalledIds = new Set(layers.flatMap(layer => layer.contextSources || [])
@@ -199,6 +217,7 @@ export function retrieveRelevantUserMemories(uid, query, options = {}) {
 }
 
 function isCurrentMemory(chat, options) {
+  if (chat.memoryCommand) return true;
   if (hasExcludedMessageId(chat, options.excludeMessageIds)) return true;
   const currentMessageId = normalizeMessageId(options.currentMessageId);
   if (currentMessageId && normalizeMessageId(chat?.messageId) === currentMessageId) return true;
@@ -229,15 +248,13 @@ function pushLayer(layers, content, contextPriority, role = "user", contextSourc
   layers.push({ role, content, contextPriority, contextSources, contextAtomic });
 }
 
-export function buildMemoryContextBlock(uid, groupId) {
-  const summary = buildMemorySummary(uid, groupId, { groupOnly: String(groupId) !== "private" });
-  if (!summary) return "";
-  return "[个性化画像摘要]\n" +
-    "仅作为语气和偏好参考；低置信度、过期或敏感内容不得强行影响回复。\n" +
-    summary;
+export function buildMemoryContextBlock(uid, groupId, options = {}) {
+  return memoryEvidenceLayers(uid, groupId, options).layers.map(item => item.content).join("\n");
 }
 
 export function buildInterjectionBackgroundBlock(groupId, options = {}) {
+  const excluded = interjectionExclusions(groupId, options);
+  if (!excluded) return "";
   const source = groupChats[String(groupId)] || [];
   const limit = options.hasImages ? 6 : 4;
   const now = Number(options.now || Date.now());
@@ -248,6 +265,7 @@ export function buildInterjectionBackgroundBlock(groupId, options = {}) {
 
   for (let index = source.length - 1; index >= 0 && selected.length < limit; index--) {
     const message = source[index];
+    if (excludedInterjectionSource(message, excluded)) continue;
     if (!isUsableInterjectionMessage(message, {
       currentMessageId,
       currentText,
@@ -266,6 +284,13 @@ export function buildInterjectionBackgroundBlock(groupId, options = {}) {
     ...selected.map(formatSpeakerLine),
   ].join("\n");
 }
+
+function interjectionExclusions(groupId, options) {
+  try { return memoryCorrectionSnapshot({ groupId: String(groupId), userId: String(options.uid || options.userId || "1") }).excludedMessageIds; }
+  catch { return null; }
+}
+
+function excludedInterjectionSource(message, excluded) { return excluded.has(String(message?.messageId)) || message?.memoryCommand; }
 
 function isUsableInterjectionMessage(message, options) {
   if (isExcludedInterjectionAuthor(message)) return false;

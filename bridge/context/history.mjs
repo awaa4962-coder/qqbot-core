@@ -64,6 +64,7 @@ function collectWeightedUserChats(chats, currentGroup, options) {
 }
 
 function isExcludedMessage(message, options = {}) {
+  if (message?.memoryCommand) return true;
   if (hasExcludedMessageId(message, options.excludeMessageIds)) return true;
   const currentMessageId = normalizeMessageId(options.currentMessageId);
   if (currentMessageId && normalizeMessageId(message?.messageId) === currentMessageId) return true;

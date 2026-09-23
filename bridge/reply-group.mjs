@@ -21,6 +21,8 @@ import { observeGroupStickerCandidates } from "./features/stickers/index.mjs";
 import { traceStage } from "./diagnostics/message-trace.mjs";
 import { getMemoryPrivacyGeneration } from "./memory-profile/generation.mjs";
 import { messageRouteRejection } from "./event-admission.mjs";
+import { isSelfMemoryCommand } from "./commands/modules/memory.mjs";
+import { normalizeCommand } from "./commands/normalize.mjs";
 
 export async function handleGroupMessage(ctx, rawMessage) {
   ctx.contextPrivacyGeneration ??= getMemoryPrivacyGeneration();
@@ -88,6 +90,7 @@ function logGroupMemberMessage(ctx) {
       mentions: ctx.mentions,
       messageId: ctx.message_id,
       replyToMessageId: ctx.replyData?.id,
+      memoryCommand: ctx.isAtMe && isSelfMemoryCommand(normalizeCommand(ctx.text)),
     });
   observeMemoryEvent({
     uid: ctx.user_id,

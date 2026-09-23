@@ -3,7 +3,7 @@ import { redactSensitiveText } from "../privacy.mjs";
 const TEXT_FIELDS = new Set([
   "text", "content", "nickname", "nicknames", "alias", "description", "profile", "displayName",
   "userSummary", "assistantSummary", "topic", "topics", "commonTopics", "activeTopics", "recentTopics",
-  "dislikes", "replyStyle", "preferredTone", "tone", "interactionStyle",
+  "dislikes", "replyStyle", "preferredTone", "tone", "interactionStyle", "title",
 ]);
 
 // Walk text-bearing fields only; IDs, timestamps and attachment URLs are not prose.

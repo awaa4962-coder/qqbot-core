@@ -115,6 +115,15 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
     keywords: ["档案", "画像", "隐私", "忘记我", "记忆"],
   }),
   capability({
+    id: "personal.memory",
+    category: "personal",
+    name: "我的记忆",
+    summary: "查看、保存、纠正或删除当前会话中自己的记忆；各群与私聊隔离，私聊只保存明确提交的单条内容，不自动保存私聊历史。",
+    scopes: ["group", "private"],
+    examples: ["@夜星 我的记忆", "@夜星 记忆帮助", "@夜星 记住 编程语言 = 我使用 JavaScript", "@夜星 纠正记忆 <id> = 我使用 TypeScript", "@夜星 删除记忆 <id>"],
+    keywords: ["记忆", "我的记忆", "记忆帮助", "记住", "纠正记忆", "删除记忆"],
+  }),
+  capability({
     id: "personal.style",
     category: "personal",
     name: "称呼与回复风格",
