@@ -2,6 +2,7 @@ import { CFG } from "../config.mjs";
 import { users } from "../storage.mjs";
 import { summaryPrivacy } from "../group-summary/state.mjs";
 import { memoryNotesSnapshot, memoryCorrectionSnapshot } from "../memory-profile/notes.mjs";
+import { noteSemanticText, projectNoteSemantics, validNoteSemantics } from "../memory-profile/semantics.mjs";
 import { redactSensitiveText } from "../privacy.mjs";
 import { compareRelevance, retrievalFeatures } from "../context/relevance.mjs";
 import { normalizeCommand } from "../commands/normalize.mjs";
@@ -17,7 +18,7 @@ const MAX_JSON_CHARS = 1800;
 const RECALL_KEYS = new Set(["query", "days", "limit", "kind"]);
 const NO_KEYS = new Set();
 const NOTE_ID = /^[a-f0-9]{12}$/;
-const COMMAND = /^(?:\[command\]|\[\u5df2\u6309\u7528\u6237\u8bf7\u6c42\u6e05\u9664\]|(?:\u6211\u7684\u8bb0\u5fc6|\u8bb0\u5fc6\u5e2e\u52a9|\u8bb0\u4f4f|\u7ea0\u6b63\u8bb0\u5fc6|\u5220\u9664\u8bb0\u5fc6)(?=\s|$))/u;
+const COMMAND = /^(?:\[command\]|\[\u5df2\u6309\u7528\u6237\u8bf7\u6c42\u6e05\u9664\]|(?:\u6211\u7684\u8bb0\u5fc6|\u8bb0\u5fc6\u5e2e\u52a9|\u8bb0\u4f4f|\u8bb0\u4e8b|\u4e8b\u9879\u72b6\u6001|\u7ea0\u6b63\u8bb0\u5fc6|\u5220\u9664\u8bb0\u5fc6)(?=\s|$))/u;
 
 // Scope and options are backend-owned; only args may come from a model call.
 export function recallMemory(scope, args = {}, options = {}) {
@@ -169,6 +170,7 @@ function excludedSources(notes, corrections, currentMessageId) {
 }
 
 function validNote(note, corrections, context) {
+  if (!validNoteSemantics(note)) return false;
   if (typeof note.id !== "string" || !NOTE_ID.test(note.id) || !Number.isSafeInteger(note.revision) || note.revision < 1) return false;
   if (note.state !== "active" || !inWindow(note.source?.at, context) || !timestamp(note.expiresAt) || note.expiresAt <= context.now) return false;
   if (corrections.revisions.get(note.id) !== note.revision) return false;
@@ -188,10 +190,10 @@ function noteCandidates(notes, corrections, context) {
     if (!validNote(note, corrections, context)) continue;
     const text = cleanText(note.text, 300);
     const title = cleanText(note.title, 32);
-    const score = relevance(title + " " + text, context);
+    const score = relevance(title + " " + text + " " + noteSemanticText(note), context);
     if (!text || !title || !score) continue;
     candidates.push({ priority: note.revision > 1 ? 2 : 1, score, item: {
-      kind: note.kind, text, title, source: { noteId: note.id, revision: note.revision,
+      kind: note.kind, text, title, ...projectNoteSemantics(note), recordValidity: "active", source: { noteId: note.id, revision: note.revision,
         messageId: messageId(note.source.messageId), at: note.source.at, expiresAt: note.expiresAt },
     } });
   }

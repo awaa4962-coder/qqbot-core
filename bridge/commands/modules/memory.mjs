@@ -4,8 +4,12 @@ import { prepareCommandText } from "../normalize.mjs";
 import { canUsePrivateChat, isAdminUser } from "../permissions.mjs";
 import { messageRouteRejection } from "../../event-admission.mjs";
 
-const COMMAND_HEAD = /^(我的记忆|记忆帮助|记住|纠正记忆|删除记忆)(?=\s|$)/;
+const COMMAND_HEAD = /^(我的记忆|记忆帮助|记住|记事|事项状态|纠正记忆|删除记忆)(?=\s|$)/;
 const NOTE_ID = /^[A-Za-z0-9_-]+$/;
+const RECORD_TYPES = Object.freeze({ 事实: "fact", 事件: "event", 待办: "todo", 状态: "current_state" });
+const RECORD_LABELS = Object.freeze({ fact: "事实", event: "事件", todo: "待办", current_state: "状态" });
+const STATUSES = Object.freeze({ 待办: "pending", 进行中: "in_progress", 已完成: "done", 已取消: "cancelled", 当前有效: "current", 已结束: "ended" });
+const STATUS_LABELS = Object.freeze({ recorded: "已记录", ...Object.fromEntries(Object.entries(STATUSES).map(([label, value]) => [value, label])) });
 const SELF_ONLY = "记忆命令只能管理你自己在当前会话的记忆，不能指定其他用户或群。";
 const PRIVACY_CHANGED = "记忆或隐私状态已更新，请重新发送命令。";
 
@@ -19,7 +23,11 @@ export function memoryCommandHelp() {
     "我的记忆：查看当前会话中自己的记忆和 id",
     "记忆帮助：查看本帮助",
     "记住 <标题> = <内容>",
+    "记事 <事实|事件|待办|状态> <标题> = <内容>",
+    "事项状态 <id> <待办|进行中|已完成|已取消|当前有效|已结束>",
+    "事项状态只适用于待办或当前状态，不修改内容或到期时间。",
     "纠正记忆 <id> = <内容>",
+    "纠正只修改内容，不延长有效期；过期后可删除再重新记住。",
     "删除记忆 <id>",
     "每个范围最多 32 条；标题最多 32 字，内容最多 300 字；命令保存有效期为 30 天，最长 90 天。",
     "群聊需要 @机器人；只能操作自己的记忆，各群与私聊相互隔离。",
@@ -59,7 +67,7 @@ export async function buildMemoryCommandReplyAsync(cmd, options = {}) {
     guard.acceptCommit();
     const fresh = await result;
     if (guard.stopReason()) return PRIVACY_CHANGED;
-    const verb = { create: "保存", update: "纠正", remove: "删除" }[request.action];
+    const verb = { create: "保存", update: "纠正", remove: "删除", transition: "更新状态" }[request.action];
     return "记忆已" + verb + "。\n" + renderSnapshot(fresh, request.scope);
   } catch (error) {
     return renderError(error);
@@ -120,6 +128,12 @@ function parseMemoryRequest(source, scope) {
       ? { action: "remove", fields: { id: arg }, scope }
       : { reply: SELF_ONLY + "\n用法：删除记忆 <id>；id 请从“我的记忆”获取。" };
   }
+  if (head === "事项状态") {
+    const match = arg.match(/^(\S+)\s+(\S+)$/);
+    return match && NOTE_ID.test(match[1]) && Object.hasOwn(STATUSES, match[2])
+      ? { action: "transition", fields: { id: match[1], status: STATUSES[match[2]] }, scope }
+      : { reply: "格式不正确，未修改记忆。\n用法：事项状态 <id> <待办|进行中|已完成|已取消|当前有效|已结束>" };
+  }
   return parseMemoryAssignment(head, arg, scope);
 }
 
@@ -127,9 +141,12 @@ function parseMemoryAssignment(head, arg, scope) {
   const equals = arg.indexOf("=");
   const key = arg.slice(0, equals).trim();
   const text = arg.slice(equals + 1).trim();
-  if (equals < 0 || !key || !text || (head === "纠正记忆" && !NOTE_ID.test(key))) {
+  const typed = head === "记事" ? key.match(/^(\S+)\s+(.+)$/) : null;
+  if (equals < 0 || !key || !text || (head === "纠正记忆" && !NOTE_ID.test(key)) ||
+      (head === "记事" && (!typed || !Object.hasOwn(RECORD_TYPES, typed[1])))) {
     return { reply: "格式不正确，未修改记忆。\n" + memoryCommandHelp() };
   }
+  if (head === "记事") return { action: "create", fields: { recordType: RECORD_TYPES[typed[1]], title: typed[2], text }, scope };
   return head === "记住"
     ? { action: "create", fields: { title: key, text }, scope }
     : { action: "update", fields: { id: key, text }, scope };
@@ -166,7 +183,10 @@ function renderSnapshot(snapshot, scope) {
     const state = { active: "有效", expired: "已过期" }[item.state] || item.state;
     const source = item.kind === "user_statement" ? "本人命令" : "管理员备注";
     const expiry = new Date(item.expiresAt);
-    lines.push("状态：" + state + "；来源：" + source + "；到期：" + (Number.isNaN(expiry.getTime()) ? "未标注" : expiry.toISOString()));
+    const recordType = RECORD_LABELS[item.recordType] || "未分类";
+    const businessStatus = STATUS_LABELS[item.status];
+    lines.push("类型：" + recordType + (businessStatus ? "；事项状态：" + businessStatus : "") +
+      "；有效期：" + state + "；来源：" + source + "；到期：" + (Number.isNaN(expiry.getTime()) ? "未标注" : expiry.toISOString()));
   }
   lines.push("", "发送“记忆帮助”查看用法。群聊中的命令回复对本群可见。");
   return lines.join("\n");

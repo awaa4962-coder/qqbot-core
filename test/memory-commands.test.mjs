@@ -93,8 +93,8 @@ function fakeService() {
 }
 
 describe("ordinary self memory commands", () => {
-  it("registers all five commands as ordinary deterministic commands", () => {
-    const cases = ["我的记忆", "记忆帮助", "记住 Stack = JavaScript", "纠正记忆 Note_A1 = TypeScript", "删除记忆 Note_A1"];
+  it("registers all seven commands as ordinary deterministic commands", () => {
+    const cases = ["我的记忆", "记忆帮助", "记住 Stack = JavaScript", "记事 待办 文档 = 更新说明", "事项状态 Note_A1 已完成", "纠正记忆 Note_A1 = TypeScript", "删除记忆 Note_A1"];
     for (const command of cases) {
       assert.equal(isKnownCommand(command), true);
       assert.equal(isSelfMemoryCommand(command), true);
@@ -103,7 +103,7 @@ describe("ordinary self memory commands", () => {
       assert.equal(isCommandContext(privateContext(command)), true);
       assert.ok(COMMAND_DEFINITIONS.some(entry => entry.permission === "user" && (entry.aliases.includes(command) || entry.pattern?.test(command))));
     }
-    for (const text of ["请帮我记住 JavaScript", "记住了", "我想删除记忆", "纠正记忆力", "记住Stack=JavaScript", "我的记忆是什么"]) {
+    for (const text of ["请帮我记住 JavaScript", "记住了", "我想删除记忆", "纠正记忆力", "记住Stack=JavaScript", "我的记忆是什么", "记事本", "事项状态表"]) {
       assert.equal(isSelfMemoryCommand(text), false);
       assert.equal(isCommandContext(privateContext(text)), false);
     }
@@ -112,9 +112,9 @@ describe("ordinary self memory commands", () => {
   it("keeps every capability example in the actual registry and documents private opt-in", async () => {
     const definition = CAPABILITY_DEFINITIONS.find(item => item.id === "personal.memory");
     assert.equal(definition.permission, "user");
-    assert.equal(definition.examples.length, 5);
+    assert.equal(definition.examples.length, 7);
     for (const example of definition.examples) assert.equal(isKnownCommand(example.replace(/^@夜星\s*/, "")), true);
-    assert.match(helpLinesForPage(4).join("\n"), /我的记忆[\s\S]*记忆帮助[\s\S]*记住[\s\S]*纠正记忆[\s\S]*删除记忆/);
+    assert.match(helpLinesForPage(4).join("\n"), /我的记忆[\s\S]*记忆帮助[\s\S]*记住[\s\S]*记事[\s\S]*事项状态[\s\S]*纠正记忆[\s\S]*删除记忆/);
     assert.match(memoryCommandHelp(), /只授权保存这一条/);
     assert.match(memoryCommandHelp(), /不会开启自动保存私聊历史/);
     const service = fakeService();
@@ -147,6 +147,114 @@ describe("ordinary self memory commands", () => {
     assert.match(removed, /记忆已删除/);
     assert.match(removed, /当前没有记忆/);
     assert.deepEqual(service.calls.at(-1).payload, { action: "remove", userId: 42, groupId: 100, revision: "Rev_A0xx", id: "Note_A1" });
+  });
+
+  it("maps typed records and status transitions without changing their text or expiry", async () => {
+    const calls = [];
+    const item = { id: "Note_A1", title: "Release", text: "Ship v2=soon!", kind: "user_statement",
+      recordType: "todo", status: "pending", eventAt: null, state: "active", expiresAt: now + 30 * 86400000 };
+    const service = {
+      snapshot: () => ({ revision: "Rev_A0", items: item.id ? [item] : [] }),
+      act(payload, context) {
+        calls.push({ payload, context });
+        if (payload.action === "create") { item.title = payload.title; item.text = payload.text; item.recordType = payload.recordType; }
+        if (payload.action === "transition") item.status = payload.status;
+        return { revision: "Rev_A1", items: [item] };
+      },
+    };
+    const options = optionsFor(service);
+    for (const [label, recordType] of Object.entries({ 事实: "fact", 事件: "event", 待办: "todo", 状态: "current_state" })) {
+      const reply = await buildCommandReplyAsync(`记事 ${label} Release = Ship v2=soon!`, options);
+      assert.match(reply, new RegExp("类型：" + label));
+      assert.deepEqual(calls.at(-1), { payload: { action: "create", userId: 42, groupId: 100,
+        revision: "Rev_A0", recordType, title: "Release", text: "Ship v2=soon!" },
+        context: { origin: "user_command", messageId: 71, now } });
+    }
+    item.recordType = "todo";
+    const expiry = item.expiresAt;
+    const text = item.text;
+    const reply = await buildCommandReplyAsync("事项状态 Note_A1 已完成", options);
+    assert.match(reply, /记忆已更新状态/);
+    assert.match(reply, /类型：待办；事项状态：已完成；有效期：有效/);
+    assert.deepEqual(calls.at(-1).payload, { action: "transition", userId: 42, groupId: 100,
+      revision: "Rev_A0", id: "Note_A1", status: "done" });
+    assert.equal(item.expiresAt, expiry);
+    assert.equal(item.text, text);
+    for (const [label, status] of Object.entries({ 待办: "pending", 进行中: "in_progress", 已完成: "done", 已取消: "cancelled", 当前有效: "current", 已结束: "ended" })) {
+      await buildCommandReplyAsync(`事项状态 Note_A1 ${label}`, options);
+      assert.equal(calls.at(-1).payload.status, status);
+    }
+    const legacy = { ...item, recordType: undefined, status: undefined, state: "expired" };
+    service.snapshot = () => ({ revision: "Rev_A2", items: [legacy] });
+    const listing = await buildCommandReplyAsync("我的记忆", options);
+    assert.match(listing, /类型：未分类；有效期：已过期/);
+    assert.doesNotMatch(listing, /事项状态：/);
+    service.snapshot = () => ({ revision: "Rev_A3", items: [{ ...legacy, recordType: "unclassified", status: "recorded" }] });
+    assert.match(await buildCommandReplyAsync("我的记忆", options), /类型：未分类；事项状态：已记录；有效期：已过期/);
+  });
+
+  it("integrates typed creation and transitions with an isolated note backend", async () => {
+    const profiles = {};
+    const service = createMemoryNoteService({ profiles, now: () => now, available: () => true,
+      persist: () => true, invalidate: () => {}, readPrivacy: () => ({ users: {} }) });
+    const options = optionsFor(service);
+    assert.match(await buildCommandReplyAsync("记事 事实 工具 = 使用 TypeScript", options), /类型：事实；事项状态：已记录/);
+    const fact = service.snapshot({ userId: 42, groupId: 100 }).items[0];
+    assert.equal(fact.recordType, "fact");
+    assert.equal(fact.status, "recorded");
+    assert.match(await buildCommandReplyAsync(`事项状态 ${fact.id} 已完成`, options), /只有待办和当前状态/);
+    assert.match(await buildCommandReplyAsync("记事 待办 发布 = 发布 v2", options), /类型：待办；事项状态：待办/);
+    const todo = service.snapshot({ userId: 42, groupId: 100 }).items.find(entry => entry.recordType === "todo");
+    assert.equal(todo.kind, "user_statement");
+    assert.equal(todo.source.kind, "user_command");
+    assert.equal(todo.source.messageId, "71");
+    const expiry = todo.expiresAt;
+    assert.match(await buildCommandReplyAsync(`事项状态 ${todo.id} 已完成`, optionsFor(service, { messageId: 72 })), /类型：待办；事项状态：已完成/);
+    const updated = service.snapshot({ userId: 42, groupId: 100 }).items.find(entry => entry.id === todo.id);
+    assert.equal(updated.text, "发布 v2");
+    assert.equal(updated.expiresAt, expiry);
+    assert.equal(updated.status, "done");
+    assert.equal(updated.kind, "user_statement");
+    assert.equal(updated.source.kind, "user_command");
+    assert.equal(updated.source.messageId, "72");
+    assert.match(await buildCommandReplyAsync(`纠正记忆 ${todo.id} = 发布 v2.1`, options), /类型：待办；事项状态：已完成/);
+    const corrected = service.snapshot({ userId: 42, groupId: 100 }).items.find(entry => entry.id === todo.id);
+    assert.equal(corrected.recordType, "todo");
+    assert.equal(corrected.status, "done");
+    assert.match(await buildCommandReplyAsync("记事 事件 发布会 = 发布会已经举行", options), /类型：事件；事项状态：已记录/);
+    assert.equal(service.snapshot({ userId: 42, groupId: 100 }).items.find(entry => entry.recordType === "event").eventAt, null);
+  });
+
+  it("rejects malformed state syntax before reading, and keeps group mention and source guards", async () => {
+    const service = fakeService();
+    for (const command of ["记事", "记事 其他 标题 = 内容", "记事 toString 标题 = 内容", "记事 constructor 标题 = 内容", "记事 待办 = 内容", "记事 待办 标题", "记事 待办 标题 =", "事项状态", "事项状态 bad! 已完成", "事项状态 Note_A1 完成", "事项状态 Note_A1 toString", "事项状态 Note_A1 constructor", "事项状态 Note_A1 已完成 其他"]) {
+      assert.match(await buildCommandReplyAsync(command, optionsFor(service)), /未修改记忆/);
+    }
+    assert.deepEqual(service.calls, []);
+    assert.equal(await buildGroupCommandReplyAsync(groupContext("记事 待办 文档 = 更新说明", { isAtMe: false }), optionsFor(service)), null);
+    assert.equal(await buildGroupCommandReplyAsync(groupContext("事项状态 Note_A1 已完成", { isAtMe: false }), optionsFor(service)), null);
+    for (const command of ["记事 待办 文档 = 更新说明", "事项状态 Note_A1 已完成"]) {
+      assert.match(await buildGroupCommandReplyAsync(groupContext(command, { message_id: undefined }), optionsFor(service)), /缺少有效消息来源/);
+    }
+    assert.deepEqual(service.calls, []);
+  });
+
+  it("does not reach the isolated backend when mention or private permission checks fail", async () => {
+    const backend = createMemoryNoteService({ profiles: {}, now: () => now, available: () => true,
+      persist: () => true, invalidate: () => {}, readPrivacy: () => ({ users: {} }) });
+    const calls = [];
+    const service = {
+      snapshot(scope) { calls.push("snapshot"); return backend.snapshot(scope); },
+      act(payload, context) { calls.push("act"); return backend.act(payload, context); },
+    };
+    const options = optionsFor(service);
+    assert.equal(await buildGroupCommandReplyAsync(groupContext("记事 待办 发布 = 发布 v2", { isAtMe: false }), options), null);
+    assert.equal(await buildGroupCommandReplyAsync(groupContext("事项状态 Note_A1 已完成", { isAtMe: false }), options), null);
+    assert.match(await buildPrivateCommandReplyAsync(privateContext("记事 待办 发布 = 发布 v2", { user_id: 66 }), options), /普通私聊白名单/);
+    assert.match(await buildPrivateCommandReplyAsync(privateContext("事项状态 Note_A1 已完成", { user_id: 66 }), options), /普通私聊白名单/);
+    assert.match(await buildGroupCommandReplyAsync(groupContext("记事 待办 发布 = 发布 v2", { mentionedUsers: [{ qq: "77", isBot: false }] }), options), /不能指定其他用户或群/);
+    assert.match(await buildGroupCommandReplyAsync(groupContext("事项状态 Note_A1 已完成", { mentionedUsers: [{ qq: "77", isBot: false }] }), options), /不能指定其他用户或群/);
+    assert.deepEqual(calls, []);
   });
 
   it("uses fresh snapshots for listing and never creates a note from free text", async () => {
@@ -360,6 +468,8 @@ describe("ordinary self memory commands", () => {
     const item = service.snapshot({ userId: 42, groupId: 100 }).items[0];
     assert.equal(item.title, "Stack");
     assert.equal(item.text, "JavaScript!");
+    assert.equal(item.recordType, "unclassified");
+    assert.equal(item.status, "recorded");
     assert.equal(item.source.kind, "user_command");
     assert.equal(item.source.messageId, "71");
     for (const scope of [{ userId: 84, groupId: 100 }, { userId: 42, groupId: 200 }, { userId: 42, groupId: undefined }]) {

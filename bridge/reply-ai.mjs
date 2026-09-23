@@ -121,7 +121,7 @@ async function notifyGroupFailure(outcome, passive, groupId, replyTo) {
 }
 
 function replyMemorySources(packet, outcome) {
-  return [...packet.retrieval.sources.filter(source => source.kind === "note"), ...(outcome.memorySources || [])];
+  return [...packet.memorySources, ...(outcome.memorySources || [])];
 }
 
 export function shouldGenerateProfile(uid, now = Date.now()) {

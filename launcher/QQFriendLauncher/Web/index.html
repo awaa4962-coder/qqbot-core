@@ -478,10 +478,12 @@
                 <div class="section-head"><h2 id="memoryEditorTitle">未选择记录</h2><span id="memoryDirty" class="memory-meta"></span></div>
                 <label>标题<input id="memoryTitle" maxlength="32" autocomplete="off" required disabled></label>
                 <label>内容<textarea id="memoryText" rows="6" maxlength="300" required disabled></textarea></label>
+                <div class="memory-classification"><label>内容类型<select id="memoryRecordType" disabled></select></label><label>任务 / 内容状态<select id="memoryStatus" disabled></select></label></div>
+                <label id="memoryEventAtField" hidden>事件发生时间<input id="memoryEventAt" type="datetime-local" disabled></label>
                 <div class="memory-editor-meta"><label>保存后有效天数<input id="memoryTtl" type="number" min="1" max="90" step="1" value="30" required disabled></label><span id="memoryChars" class="memory-meta">0 / 300 字</span></div>
                 <p class="memory-meta" id="memoryAttribution">保存类型：管理员备注；不作为用户自述。</p>
                 <dl id="memorySource" class="memory-facts"></dl>
-                <div class="memory-actions"><button type="submit" class="primary" id="memorySave" disabled>创建备注</button><button type="button" id="memoryDelete" class="danger-quiet" disabled>删除记录</button></div>
+                <div class="memory-actions"><button type="submit" class="primary" id="memorySave" disabled>创建备注</button><button type="button" id="memoryTransition" disabled>更新状态</button><button type="button" id="memoryDelete" class="danger-quiet" disabled>删除记录</button></div>
               </form>
             </div>
             <div class="memory-context">

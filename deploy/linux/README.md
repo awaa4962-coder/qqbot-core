@@ -221,4 +221,4 @@ docker compose up -d --no-deps bridge
 docker compose ps
 ```
 
-Rollback by restoring the previous source tag or image tag and recreating only the Bridge container. Never run two NapCat instances with the same QQ account at the same time.
+Before restoring an older image, stop Bridge, confirm it exited and check data compatibility without changing the data. From `1.4.24-memory-state`, existing memory items may contain `recordType`, `status` and `eventAt`; the `1.4.23` editor can read but silently discard these fields when writing. If any current item contains these fields, or the configured memory file is missing, malformed or cannot be checked reliably, do not start that older writer. Keep Bridge stopped with all current state preserved until a compatible fix is ready. Never restore an old state backup over newer records. With compatible state, restore only the previous source/image and recreate Bridge; the older release is not feature-equivalent. Never run two NapCat instances with the same QQ account at the same time.

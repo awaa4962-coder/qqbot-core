@@ -2,6 +2,7 @@ import { saveUsers, users } from "../storage.mjs";
 import { wallAgeMs } from "../runtime-clock.mjs";
 import { currentTopicText } from "../context/relevance.mjs";
 import { redactSensitiveText } from "../privacy.mjs";
+import { normalizeMemoryDependencies } from "../context/memory-dependencies.mjs";
 
 const GROUP_THREAD_TTL_MS = 90 * 60 * 1000;
 const PRIVATE_THREAD_TTL_MS = 6 * 60 * 60 * 1000;
@@ -181,6 +182,7 @@ function createThread(scope, now) {
 
 function buildTurn(event, userSummary, assistantSummary, now) {
   const explicitId = normalizeId(event.messageId || event.turnId);
+  const memorySources = normalizeMemoryDependencies(event.memorySources);
   return {
     id: explicitId || "turn-" + now,
     messageId: explicitId,
@@ -190,8 +192,7 @@ function buildTurn(event, userSummary, assistantSummary, now) {
     assistantTruncated: normalizedText(event.assistantText).length > 480,
     outcome: String(event.outcome || "sent"),
     createdAt: now,
-    ...(Array.isArray(event.memorySources) ? { memorySources: event.memorySources.filter(source => /^[a-f0-9]{12}$/.test(source.noteId || "") && Number.isSafeInteger(source.revision))
-      .slice(0, 32).map(source => ({ noteId: source.noteId, revision: source.revision })) } : {}),
+    ...(memorySources ? { memorySources, memoryDependencyVersion: 1 } : {}),
   };
 }
 

@@ -36,7 +36,7 @@ class Element {
 }
 
 function setup(reply = () => snapshot()) {
-  const ids = ["Panel", "Scope", "Group", "User", "GroupField", "Load", "Refresh", "New", "Title", "Text", "Ttl", "Save", "Delete",
+  const ids = ["Panel", "Scope", "Group", "User", "GroupField", "Load", "Refresh", "New", "Title", "Text", "Ttl", "RecordType", "Status", "EventAt", "EventAtField", "Transition", "Save", "Delete",
     "List", "Dirty", "Chars", "Notice", "Source", "EditorTitle", "Target", "Count", "DisplayName", "StyleText", "Inferences", "Legacy", "Query", "Editor"];
   const nodes = new Map(ids.map(id => ["memory" + id, new Element()]));
   const $ = id => { assert.ok(nodes.has("memory" + id), id); return nodes.get("memory" + id); };
@@ -87,7 +87,7 @@ test("create and update use distinct actions and snapshot tokens, never spoof us
   const f = setup(); await f.load(); await f.edit();
   f.setReply((_action, payload) => snapshot({ revision: "snapshot-2", items: [item("one", { text: payload.text, kind: "operator_note" })] }));
   await f.$("Editor").fire("submit");
-  assert.deepEqual(f.calls[1], { action: "saveMemory", payload: { action: "update", groupId: "101", userId: "202", id: "one", revision: "snapshot-1", title: "Test title", text: "Operator correction", ttlDays: 30 } });
+  assert.deepEqual(f.calls[1], { action: "saveMemory", payload: { action: "update", groupId: "101", userId: "202", id: "one", revision: "snapshot-1", title: "Test title", text: "Operator correction", ttlDays: 30, recordType: "unclassified", status: "recorded", eventAt: null } });
   assert.match(f.confirmations[0], /不代表用户自述/); assert.equal(f.$("Dirty").textContent, "");
   await f.$("New").fire("click"); assert.equal(f.$("Title").value, ""); assert.equal(f.$("Delete").disabled, true);
   f.$("Title").value = "New title";
@@ -255,10 +255,10 @@ test("memory browser interactions and 1440/390 layout (mocked HTTP only)", { ski
   assert.equal(await page.locator("#memoryList img").count(), 0);
   assert.equal(await page.evaluate(() => globalThis.window.injected), undefined);
   const output = await fs.mkdtemp(path.join(os.tmpdir(), "qqfriend-memory-ui-"));
-  for (const width of [1440, 390]) {
+  for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
     await page.screenshot({ path: path.join(output, `memory-${width}.png`), fullPage: true, animations: "disabled" });
-    const overflow = await page.locator("#memoryPanel").evaluate(panel => [...panel.querySelectorAll("input,textarea,button,label,dl,dd")].filter(node => {
+    const overflow = await page.locator("#memoryPanel").evaluate(panel => [...panel.querySelectorAll("input,select,textarea,button,label,dl,dd")].filter(node => {
       if (!node.getClientRects().length) return false;
       const box = node.getBoundingClientRect(); return box.right > globalThis.window.innerWidth + 1 || box.left < 0 || box.width < 1;
     }).map(node => node.id || node.tagName));

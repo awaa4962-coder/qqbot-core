@@ -70,9 +70,9 @@ function activeMemoryEvidence(options) {
 
 function afterMemoryCorrection(thread, corrections) {
   if (!thread || !corrections) return null;
-  const turns = thread.turns.filter(turn => Array.isArray(turn.memorySources)
-    ? turn.memorySources.every(source => corrections.revisions.get(source.noteId) === source.revision)
-    : Number(turn.createdAt || 0) > corrections.correctedAt);
+  // Older turns may omit inherited dependencies even when they contain an empty array.
+  const turns = thread.turns.filter(turn => turn.memoryDependencyVersion === 1 && Array.isArray(turn.memorySources) &&
+    turn.memorySources.every(source => corrections.revisions.get(source.noteId) === source.revision));
   return turns.length ? { ...thread, turns, turnCount: turns.length } : null;
 }
 
@@ -127,10 +127,10 @@ function appendQuotedLayer(layers, options) {
 
 function appendThreadLayer(layers, options) {
   for (const { turn, content, clipped } of formatConversationThreadLayers(options.thread)) {
-    pushLayer(layers, content, 88, "user", [{
+    layers.push({ content, role: "user", contextPriority: 88, contextAtomic: true, contextMemorySources: turn.memorySources, contextSources: [{
       ...selectionSource({ ...turn, uid: options.uid }, "thread", "continuation"),
       clipped,
-    }], true);
+    }] });
   }
 }
 

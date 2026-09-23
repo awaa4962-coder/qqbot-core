@@ -1,4 +1,5 @@
 import { redactSensitiveText } from "../privacy.mjs";
+import { normalizeMemoryDependencies } from "./memory-dependencies.mjs";
 
 export function estimateContextBudget(messages, currentInput = "") {
   const messageChars = (messages || []).reduce(function(total, item) {
@@ -29,20 +30,25 @@ export function enforceContextBudget(messages, currentInput = "", options = {}) 
     content: redactSensitiveText(item?.content).trim(),
     atomic: item?.contextAtomic === true,
     sources: Array.isArray(item?.contextSources) ? item.contextSources.slice(0, 12) : [],
+    memorySources: layerDependencies(item),
   })).filter(item => item.content);
   ranked.sort((a, b) => b.priority - a.priority || b.index - a.index);
 
   const selected = [];
+  let memorySources = [];
   let truncatedMessages = 0;
   for (const item of ranked) {
     if (selected.length >= limits.maxMessages || remaining < 40) break;
     const maxLength = Math.min(limits.maxMessageChars, remaining);
     if (item.atomic && item.content.length > maxLength) continue;
+    const dependencies = item.memorySources && normalizeMemoryDependencies([...memorySources, ...item.memorySources]);
+    if (!dependencies) continue;
     const content = clipContextContent(item.content, maxLength);
     if (!content) continue;
     if (content.length < item.content.length) truncatedMessages++;
     const sources = item.sources.map(source => ({ ...source, clipped: source.clipped === true || content.length < item.content.length }));
     selected.push({ index: item.index, role: item.role, content, sources });
+    memorySources = dependencies;
     remaining -= content.length;
   }
   selected.sort((a, b) => a.index - b.index);
@@ -50,6 +56,7 @@ export function enforceContextBudget(messages, currentInput = "", options = {}) 
   const measured = estimateContextBudget(bounded, currentInput);
   return {
     messages: bounded,
+    memorySources,
     sources: selected.flatMap(item => item.sources).slice(0, 24),
     budget: {
       ...measured,
@@ -60,6 +67,13 @@ export function enforceContextBudget(messages, currentInput = "", options = {}) 
       truncatedMessageCount: truncatedMessages,
     },
   };
+}
+
+function layerDependencies(item) {
+  const inherited = item?.contextMemorySources === undefined ? [] : item.contextMemorySources;
+  if (!Array.isArray(inherited)) return null;
+  const notes = (Array.isArray(item?.contextSources) ? item.contextSources : []).filter(source => source.kind === "note");
+  return normalizeMemoryDependencies([...inherited, ...notes]);
 }
 
 export function resolveContextLimits(mode = "group-at", overrides = {}) {

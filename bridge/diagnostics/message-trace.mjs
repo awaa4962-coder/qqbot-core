@@ -15,7 +15,7 @@ const REASONS = new Set([
   "intentional_silence", "invalid_interjection", "request_failed", "tools_unavailable",
   "privacy_changed", "permission_changed", "preferences_changed", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping",
   "reply_duplicate", "delivery_state_unavailable", "forgotten_event", "stale_event",
-  "quote_source_unknown", "quote_scope_mismatch", "quote_message_mismatch", "quote_privacy_unavailable", "quote_forgotten", "quote_content_empty",
+  "quote_source_unknown", "quote_scope_mismatch", "quote_message_mismatch", "quote_privacy_unavailable", "quote_forgotten", "quote_content_empty", "quote_superseded", "quote_memory_unavailable",
   "tool_model_round", "tool_completed", "tool_empty", "tool_denied", "tool_arguments", "tool_unavailable", "tool_reused", "tool_budget", "output_budget",
   "image_direct", "image_description", "image_cache", "image_unavailable", "image_payload",
 ]);

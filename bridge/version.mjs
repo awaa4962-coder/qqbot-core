@@ -4,22 +4,22 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.23-usage-dimensions";
-export const VERSION_NAME = "usage-dimensions";
+export const VERSION = "1.4.24-memory-state";
+export const VERSION_NAME = "memory-state";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "JM 群聊/私聊下载、大写 FS 与延迟清理保留；模型主备、思考档位、白名单和关系评分不变，Windows 继续冻结。",
-  "管理员可在 API 页按模型、任务、主备、提示词版本和实际思考模式查看用量；旧记录缺少的资料明确显示未知。",
-  "供应商未报告的用量不当作零；缓存命中按已报告的输入量加权，重试和失败也单独计数，不冒充账单或节费金额。",
-  "成员仍可查询自己的缓存命中，最多回看30天的匿名用量，不存聊天正文或私有推理。清除统计需确认落盘，失败会明确提示。",
+  "明确记忆新增事实、事件、待办和状态分类；事件时间与来源时间分开，旧条目不猜类型。",
+  "可显式记录和变更事项状态；控制台分类、事件时间与状态分开编辑，状态更新不改正文或期限。",
+  "保留旧记忆命令与管理员备注来源；已完成表示操作者声明，不代表机器人执行。",
+  "JM、模型主备、思考档位与关系评分保持不变；Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Keeps group/private JM downloads, FS and delayed cleanup. Model routes, reasoning modes, allowlists and relationship scoring stay unchanged. Windows stays frozen.",
-  "Admins can inspect usage by model, task, slot, prompt version and effective reasoning mode on the API page. Missing historical metadata stays unknown.",
-  "Missing provider usage is not zero. Cache weighting uses reported input units; retries and failures are counted separately, without billing or savings claims.",
-  "Members keep their personal cache statistics with a maximum 30-day query window, without chat bodies or private reasoning. Erasure must persist before success; failures are explicit.",
+  "Explicit memories add fact, event, todo and state types; event time stays separate from source time, and legacy entries are not guessed.",
+  "Items support explicit status changes; the console edits type, event time and status separately. Status changes leave text and expiry unchanged.",
+  "Legacy memory commands and administrator-note provenance remain. Done records an operator's statement, not bot execution.",
+  "JM, model routes, reasoning modes and relationship scoring remain unchanged. Windows stays frozen.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

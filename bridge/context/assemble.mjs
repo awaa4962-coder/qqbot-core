@@ -30,6 +30,7 @@ export function buildReplyContextPacket(options = {}) {
     currentInput: layered.currentInput,
     mood: layered.mood,
     memory: layered.memory,
+    memorySources: bounded.memorySources,
     thread: buildThreadMetadata(layered.thread),
     metadata: {
       uid,

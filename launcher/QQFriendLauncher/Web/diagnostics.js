@@ -39,6 +39,7 @@ import { initializeDeliveries } from "./deliveries.js";
     reply_duplicate: "这条消息已处理，不再重发", delivery_state_unavailable: "发送状态无法保存，已停止回复", forgotten_event: "已清理的旧事件", stale_event: "超过保留期的旧事件",
     quote_source_unknown: "引用来源资料不完整", quote_scope_mismatch: "引用不属于当前群", quote_message_mismatch: "引用消息编号不匹配",
     quote_privacy_unavailable: "无法核对引用的隐私边界", quote_forgotten: "引用内容已被清理", quote_content_empty: "引用没有可用正文或图片",
+    quote_superseded: "引用来源已被纠正或删除", quote_memory_unavailable: "无法核对引用的记忆修订",
   };
   const label = (value) => labels[value] || value || "待判断";
 

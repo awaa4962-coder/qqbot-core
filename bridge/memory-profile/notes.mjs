@@ -4,6 +4,7 @@ import { invalidateMemoryPrivacyGeneration } from "./generation.mjs";
 import { containsSensitiveText, redactSensitiveText } from "../privacy.mjs";
 import { summaryPrivacy } from "../group-summary/state.mjs";
 import { users, groupChats } from "../storage.mjs";
+import { MEMORY_SEMANTICS, assertNoteTransition, buildNoteSemantics, projectNoteSemantics, validNoteSemantics } from "./semantics.mjs";
 
 const DAY = 86400000;
 const MAX_ITEMS = 32;
@@ -100,8 +101,8 @@ function applyAction(root, index, scope, payload, context, now) {
     root.items.splice(index, 1);
     return;
   }
-  if (!["create", "update"].includes(payload.action)) throw memoryError("不支持的记忆操作。");
-  if (payload.action === "update" && index < 0) throw memoryError("这条记忆不存在或不属于当前范围。", 404);
+  if (!["create", "update", "transition"].includes(payload.action)) throw memoryError("不支持的记忆操作。");
+  if (payload.action !== "create" && index < 0) throw memoryError("这条记忆不存在或不属于当前范围。", 404);
   const previous = index >= 0 ? root.items[index] : null;
   if (payload.action === "create" && payload.id) throw memoryError("新建记忆不能覆盖已有编号。");
   const entry = buildNote(scope, payload, context, previous, now);
@@ -133,18 +134,30 @@ function hasStoredSource(item) {
 
 function buildNote(scope, payload, context, previous, now) {
   assertNoteTime(previous, now);
+  const transition = payload.action === "transition";
+  if (transition) assertNoteTransition(previous, payload, now);
   const source = noteSource(context, now);
-  const days = payload.ttlDays === undefined ? 30 : Number(payload.ttlDays);
-  if (!Number.isInteger(days) || days < 1 || days > 90) throw memoryError("有效期应为 1 到 90 天。");
   const title = cleanNoteText(payload.title ?? previous?.title, 32);
-  const text = cleanNoteText(payload.text, 300);
+  const text = cleanNoteText(transition ? previous.text : payload.text, 300);
   return {
     id: previous?.id || randomBytes(6).toString("hex"), ...scope, title, text,
+    ...buildNoteSemantics(payload, previous, now),
     kind: source.kind === "user_command" ? "user_statement" : "operator_note", source,
     replacedSources: priorSources(previous),
     revision: (previous?.revision || 0) + 1, createdAt: previous?.createdAt || now,
-    updatedAt: now, expiresAt: now + days * DAY,
+    updatedAt: now, expiresAt: noteExpiresAt(payload, previous, now),
   };
+}
+
+function noteExpiresAt(payload, previous, now) {
+  if (payload.action === "transition") return previous.expiresAt;
+  if (payload.action === "update" && payload.ttlDays === undefined) {
+    if (previous.expiresAt <= now) throw memoryError("记录已过期，请明确设置有效期后保存，或删除后重新记住。", 409);
+    return previous.expiresAt;
+  }
+  const days = payload.ttlDays === undefined ? 30 : Number(payload.ttlDays);
+  if (!Number.isInteger(days) || days < 1 || days > 90) throw memoryError("有效期应为 1 到 90 天。");
+  return now + days * DAY;
 }
 
 function assertNoteTime(previous, now) {
@@ -187,11 +200,12 @@ function snapshotRevision(root, scope, cutoff) { return createHash("sha256").upd
 function projectSnapshot(root, scope, now, cutoff) {
   return { ok: true, ...scope, revision: snapshotRevision(root, scope, cutoff),
     items: root.items.filter(item => sameScope(item, scope) && item.source.at > cutoff).map(item => projectNote(item, now)),
-    limits: MEMORY_NOTE_LIMITS, legacyInferenceIgnored: true };
+    limits: MEMORY_NOTE_LIMITS, semantics: MEMORY_SEMANTICS, legacyInferenceIgnored: true };
 }
 
 function projectNote(item, now) {
   return { id: item.id, userId: item.userId, groupId: item.groupId, kind: item.kind,
+    ...projectNoteSemantics(item),
     source: { kind: item.source.kind, messageId: item.source.messageId, at: item.source.at }, replacedSources: [...item.replacedSources],
     revision: item.revision, createdAt: item.createdAt, updatedAt: item.updatedAt, expiresAt: item.expiresAt,
     title: redactSensitiveText(item.title), text: redactSensitiveText(item.text), state: item.expiresAt > now ? "active" : "expired" };
@@ -211,7 +225,7 @@ function validRetraction(item) { return item && ID.test(item.noteId) && validSco
 
 function validNote(item) {
   return item && ID.test(item.id) && validScope(item) && validText(item) && KINDS.has(item.kind) &&
-    validSource(item) && validTimes(item) && Number.isSafeInteger(item.revision) && item.revision > 0 &&
+    validSource(item) && validTimes(item) && validNoteSemantics(item) && Number.isSafeInteger(item.revision) && item.revision > 0 &&
     Array.isArray(item.replacedSources) && item.replacedSources.length <= 8 && item.replacedSources.every(value => sourceMessageId(value) === value);
 }
 function validScope(item) { return Boolean(positiveId(item.userId)) && positiveId(item.userId) === item.userId &&
@@ -224,7 +238,8 @@ function validSource(item) {
     : source.kind === "operator" && source.messageId === "";
 }
 function validTimes(item) { return [item.createdAt, item.updatedAt, item.expiresAt].every(value => Number.isFinite(value) && value > 0 && value < 8640000000000000) &&
-  item.expiresAt > item.updatedAt && item.expiresAt - item.updatedAt <= 90 * DAY && item.updatedAt >= item.createdAt && item.source.at === item.updatedAt; }
+  item.expiresAt > item.updatedAt && item.expiresAt - item.updatedAt <= 90 * DAY && item.updatedAt >= item.createdAt && item.source.at === item.updatedAt &&
+  (item.eventAt === undefined || item.eventAt === null || item.eventAt <= item.source.at); }
 function invalidStore() { return memoryError("记忆条目格式异常，已停止读取和修改，请管理员检查。", 503); }
 function memoryError(message, statusCode = 400) { return Object.assign(new Error(message), { statusCode }); }
 

@@ -93,6 +93,7 @@ test("production context uses atomic same-scope turns and keeps excerpt provenan
     recordConversationTurn({ uid, groupId: "123123", messageId: "555",
       userText: "解压失败。" + "文件细节。".repeat(150) + "确认分卷齐全，最后发现校验错误。",
       assistantText: "检查校验值，不要继续猜密码。",
+      memorySources: [],
     }, { save: false });
     const packet = buildReplyContextPacket({ uid, groupId: "123123", userName: "synthetic", userMsg: "还是不行，下一步呢？" });
     const messages = packet.messages.filter(item => item.content.includes("短期会话线程"));
@@ -112,7 +113,7 @@ test("prompt diagnostics expose versions and counts, never raw instructions", as
     traceStage("context", { promptVersion: "private arbitrary text", promptFingerprint: "not-a-hash" });
   }, recorder);
   const stages = recorder.list().items[0].stages.filter(item => item.stage === "context");
-  assert.equal(stages[0].promptVersion, "chat-v8");
+  assert.equal(stages[0].promptVersion, "chat-v10");
   assert.match(stages[0].promptFingerprint, /^[a-f0-9]{16}$/);
   assert.equal(stages[0].inputTextChars, 2000);
   assert.equal(stages[1].promptVersion, undefined);

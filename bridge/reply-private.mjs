@@ -165,7 +165,7 @@ function buildPrivateReplyContext(ctx, userMsg) {
     mode: "private",
     currentMessageId: ctx.message_id,
   });
-  ctx.memorySources = contextPacket.retrieval.sources.filter(source => source.kind === "note");
+  ctx.memorySources = contextPacket.memorySources;
   return { history: contextPacket.messages, userName, currentInput: contextPacket.currentInput, memorySources: ctx.memorySources };
 }
 

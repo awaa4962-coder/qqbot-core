@@ -105,6 +105,7 @@ describe("reply context packet", () => {
       messageId: "previous",
       userText: "JM 下载失败",
       assistantText: "已经检查到依赖缺失",
+      memorySources: [],
       now: Date.now() - 1000,
     }, { save: false });
 
@@ -178,6 +179,7 @@ describe("reply context packet", () => {
       messageId: "previous",
       userText: "JM CTX_DEDUPE_USER_MARKER",
       assistantText: "CTX_DEDUPE_ASSISTANT_MARKER",
+      memorySources: [],
       now: now - 900,
     }, { save: false });
 

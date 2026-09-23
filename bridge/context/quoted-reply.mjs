@@ -1,5 +1,6 @@
 import { summaryPrivacy } from "../group-summary/state.mjs";
 import { getMemoryPrivacyGeneration } from "../memory-profile/generation.mjs";
+import { memoryCorrectionSnapshot } from "../memory-profile/notes.mjs";
 
 export function validateQuotedReply(ctx, reply, options = {}) {
   if ((options.privacyGeneration ?? getMemoryPrivacyGeneration()) !== getMemoryPrivacyGeneration()) return unavailable("privacy_changed");
@@ -10,8 +11,18 @@ export function validateQuotedReply(ctx, reply, options = {}) {
   if (mismatch) return unavailable(mismatch);
   const reason = erasureReason(evidence.userId, evidence.at, options);
   if (reason) return unavailable(reason);
+  const correction = correctionReason(evidence, options);
+  if (correction) return unavailable(correction);
   if (!String(reply.text || "").trim() && !reply.images?.length) return unavailable("quote_content_empty");
   return evidence;
+}
+
+function correctionReason(source, options) {
+  try {
+    const value = (options.readCorrections || memoryCorrectionSnapshot)({ userId: source.userId, groupId: source.groupId });
+    if (!(value?.excludedMessageIds instanceof Set)) return "quote_memory_unavailable";
+    return value.excludedMessageIds.has(source.messageId) ? "quote_superseded" : "";
+  } catch { return "quote_memory_unavailable"; }
 }
 
 function sourceScopeReason(ctx, source, evidence) {

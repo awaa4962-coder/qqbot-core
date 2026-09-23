@@ -121,6 +121,22 @@ export const COMMAND_DEFINITIONS = Object.freeze([
     helpLine: "  记住 <标题> = <内容>  保存一条自己的记忆",
   },
   {
+    id: "memory-state-create",
+    permission: "user",
+    aliases: ["记事"],
+    pattern: /^记事(?:\s|$)/,
+    helpPage: 4,
+    helpLine: "  记事 <类型> <标题> = <内容>  记录事实、事件、待办或状态",
+  },
+  {
+    id: "memory-state-transition",
+    permission: "user",
+    aliases: ["事项状态"],
+    pattern: /^事项状态(?:\s|$)/,
+    helpPage: 4,
+    helpLine: "  事项状态 <id> <状态>  更新待办或当前状态",
+  },
+  {
     id: "memory-note-update",
     permission: "user",
     aliases: ["纠正记忆"],
