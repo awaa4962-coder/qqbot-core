@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import process from "node:process";
 import { afterEach, describe, it } from "node:test";
 
-import { CFG } from "../bridge/config.mjs";
-import { getConversationThread, resetCognitionForTest } from "../bridge/cognition/index.mjs";
-import { processEvent } from "../bridge/reply.mjs";
-import { users } from "../bridge/storage.mjs";
+// A delivery ledger has one writer; parallel test files must not share it.
+const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-private-cognition-"));
+Object.assign(process.env, { QQBOT_DATA_DIR: root, QQBOT_LOG_DIR: path.join(root, "logs") });
+const { CFG } = await import("../bridge/config.mjs");
+const { getConversationThread, resetCognitionForTest } = await import("../bridge/cognition/index.mjs");
+const { processEvent } = await import("../bridge/reply.mjs");
+const { users } = await import("../bridge/storage.mjs");
 
 describe("private cognition integration", () => {
   afterEach(() => resetCognitionForTest());

@@ -137,6 +137,7 @@ function buildFallbackChatRequest(request) {
     mood: request.mood,
     options: {
       currentUserId: request.options?.currentUserId,
+      currentInput: request.options?.currentInput,
       personaCue: request.options?.personaCue,
     },
   };

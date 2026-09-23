@@ -25,7 +25,8 @@ const PROFILE_MIN_MESSAGES = 10;
 const profileRefreshInFlight = new Map();
 
 export async function aiReply(group_id, userId, userMsg, userName, imageUrls, replyTo, replyText, isAtMe, mentions = [], runtime = {}) {
-  return await withChatRun({ surface: "group", groupId: group_id, userId, messageId: runtime.messageId, eventTime: runtime.eventTime }, () =>
+  return await withChatRun({ surface: "group", groupId: group_id, userId, messageId: runtime.messageId,
+    eventTime: runtime.eventTime, contextPrivacyGeneration: runtime.contextPrivacyGeneration }, () =>
     runAiReply(group_id, userId, userMsg, userName, imageUrls, replyTo, replyText, isAtMe, mentions, runtime));
 }
 
@@ -53,13 +54,13 @@ async function runAiReply(group_id, userId, userMsg, userName, imageUrls, replyT
     replyToMessageId: runtime.replyToMessageId,
     replySpeaker: runtime.replySpeaker,
     replyUserId: runtime.replyUserId,
+    quoteEvidence: runtime.quoteEvidence,
     hasImages: Boolean(imageUrls?.length),
     imageCount: imageUrls?.length || 0,
   });
 
-  const mimoOptions = isPassiveInterjection
-    ? { allowTools: false, replyMode: "interjection", currentUserId: uid, personaCue }
-    : { allowTools: true, replyMode: "chat", currentUserId: uid, personaCue };
+  const mimoOptions = { allowTools: !isPassiveInterjection, replyMode: isPassiveInterjection ? "interjection" : "chat",
+    currentUserId: uid, personaCue, currentInput: contextPacket.currentInput };
   const outcome = await resolveAiReply({
     userMsg,
     userName: preferredUserName,

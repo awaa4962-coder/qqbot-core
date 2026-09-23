@@ -6,6 +6,8 @@ import { normalizeMsg, cleanText } from "./context/messages.mjs";
 import { mentionedUsers, parseMentions } from "./mentions/index.mjs";
 import { selectRecentImageMessage, selectionSource } from "./context/conversation-selection.mjs";
 import { traceStage } from "./diagnostics/message-trace.mjs";
+import { getMemoryPrivacyGeneration } from "./memory-profile/generation.mjs";
+import { validateQuotedReply } from "./context/quoted-reply.mjs";
 import {
   getImages,
   getImageSegments,
@@ -69,14 +71,27 @@ export function parseIncomingEvent(ev) {
 
 export async function resolveReplyContext(ctx) {
   if (!ctx.replyData) return "";
-  const replyInfo = await fetchReplyData(ctx.replyData);
+  ctx.contextPrivacyGeneration ??= getMemoryPrivacyGeneration();
+  if (ctx.contextPrivacyGeneration !== getMemoryPrivacyGeneration()) return rejectQuote(ctx, "privacy_changed");
+  const replyInfo = await fetchReplyData(ctx.replyData, { includeSource: true });
+  const evidence = validateQuotedReply(ctx, replyInfo, { privacyGeneration: ctx.contextPrivacyGeneration });
+  if (evidence.state !== "verified") return rejectQuote(ctx, evidence.reason);
+  ctx.quoteEvidence = evidence;
   ctx.replySpeaker = replyInfo.nickname || "unknown";
-  ctx.replyUserId = replyInfo.userId || "";
+  ctx.replyUserId = evidence.userId;
   if (replyInfo.images.length) {
-    ctx.images.push(...replyInfo.images);
-    log("pulled", replyInfo.images.length, "images from replied message");
+    ctx.images.push(...replyInfo.images.slice(0, 3));
+    log("pulled", Math.min(3, replyInfo.images.length), "images from verified replied message");
   }
   return replyInfo.text;
+}
+
+function rejectQuote(ctx, reason) {
+  ctx.quoteEvidence = { state: "unavailable", reason };
+  ctx.replySpeaker = "";
+  ctx.replyUserId = "";
+  traceStage("context", { status: "skipped", reason });
+  return "";
 }
 
 export function pullRecentImages(groupId, options = {}) {

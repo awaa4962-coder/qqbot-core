@@ -13,8 +13,10 @@ import { traceStage } from "./diagnostics/message-trace.mjs";
 import { canUsePrivateChat } from "./commands/permissions.mjs";
 import { MODEL_FAILURE_NOTICE } from "./chat-outcome.mjs";
 import { assertChatRunCurrent, chatRunStopReason, withChatRun } from "./cognition/chat-run.mjs";
+import { getMemoryPrivacyGeneration } from "./memory-profile/generation.mjs";
 
 export async function handlePrivateMessage(ctx) {
+  ctx.contextPrivacyGeneration ??= getMemoryPrivacyGeneration();
   if (await handlePrivateJmTransferCommand(ctx)) {
     traceStage("route", { status: "ok", route: "jm" });
     return;
@@ -37,7 +39,7 @@ export async function handlePrivateMessage(ctx) {
 }
 
 function privateRunScope(ctx) {
-  return { surface: "private", userId: ctx.user_id, messageId: ctx.message_id, eventTime: ctx.eventTime };
+  return { surface: "private", userId: ctx.user_id, messageId: ctx.message_id, eventTime: ctx.eventTime, contextPrivacyGeneration: ctx.contextPrivacyGeneration };
 }
 
 export async function privateReply(userId, text) {
@@ -58,7 +60,7 @@ async function runPrivateReply(userId, text) {
     groupId: null,
     isAtMe: true,
     mood: "",
-    options: { currentUserId: uid },
+    options: { currentUserId: uid, currentInput: context.currentInput },
   });
   const reply = await privateReplyText(uid, outcome);
   if (reply) {
@@ -81,7 +83,7 @@ export async function tryDeepSeekFriend(userId, userMsg) {
     groupId: null,
     isAtMe: true,
     mood: "",
-    options: { currentUserId: uid },
+    options: { currentUserId: uid, currentInput: context.currentInput },
   });
   return reply || MODEL_FAILURE_NOTICE;
 }
@@ -93,10 +95,11 @@ async function handlePrivateFileMessage(ctx) {
   for (const f of ctx.files) {
     assertChatRunCurrent();
     const content = await fetchFileContent(f);
+    assertChatRunCurrent();
     if (content) fileContent += content + "\n";
   }
   const fullMsg = ctx.text + " " + fileDesc + (fileContent ? "\n[文件内容]:\n" + fileContent : "");
-  const { history, userName } = buildPrivateReplyContext(ctx, fullMsg);
+  const { history, userName, currentInput } = buildPrivateReplyContext(ctx, fullMsg);
   const outcome = await executePrivateChatTask({
     task: MODEL_TASKS.FILE_CHAT,
     imageUrls: ctx.images,
@@ -106,7 +109,7 @@ async function handlePrivateFileMessage(ctx) {
     groupId: null,
     isAtMe: true,
     mood: "",
-    options: { currentUserId: ctx.user_id },
+    options: { currentUserId: ctx.user_id, currentInput },
   });
   const reply = await privateReplyText(ctx.user_id, outcome);
   if (reply) {
@@ -121,7 +124,7 @@ async function handlePrivateFileMessage(ctx) {
 async function handlePrivateChatMessage(ctx) {
   traceStage("route", { status: "ok", route: "private_chat" });
   const fullMsg = ctx.text + (ctx.images.length ? " [图片" + ctx.images.length + "张]" : "");
-  const { history, userName } = buildPrivateReplyContext(ctx, fullMsg);
+  const { history, userName, currentInput } = buildPrivateReplyContext(ctx, fullMsg);
   const outcome = await executePrivateChatTask({
     imageUrls: ctx.images,
     userMsg: fullMsg,
@@ -130,7 +133,7 @@ async function handlePrivateChatMessage(ctx) {
     groupId: null,
     isAtMe: true,
     mood: "",
-    options: { currentUserId: ctx.user_id },
+    options: { currentUserId: ctx.user_id, currentInput },
   });
   const reply = await privateReplyText(ctx.user_id, outcome);
   if (reply) {
@@ -160,7 +163,7 @@ function buildPrivateReplyContext(ctx, userMsg) {
     mode: "private",
     currentMessageId: ctx.message_id,
   });
-  return { history: contextPacket.messages, userName };
+  return { history: contextPacket.messages, userName, currentInput: contextPacket.currentInput };
 }
 
 function recordPrivateTurn(ctx, userText, assistantText) {
@@ -179,8 +182,8 @@ async function trySendPrivateCommand(ctx) {
   const reply = await buildPrivateCommandReplyAsync(ctx, { users, groupChats });
   if (!reply) return false;
   traceStage("route", { status: "ok", route: "command" });
-  await sendPrivateMsg(ctx.user_id, reply);
-  log("private command reply sent to", ctx.user_id);
+  const receipt = await sendPrivateMsg(ctx.user_id, reply);
+  log(isSuccessfulOutbound(receipt) ? "private command reply sent to" : "private command reply not confirmed for", ctx.user_id);
   return true;
 }
 

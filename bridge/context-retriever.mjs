@@ -3,7 +3,9 @@ import {
   buildCurrentInput,
   buildGroupBackgroundBlock,
   buildQuotedMessageBlock,
+  buildUnavailableQuoteBlock,
   formatSpeakerLine,
+  safeContextText,
 } from "./context/messages.mjs";
 import {
   recentGroupChat,
@@ -35,7 +37,7 @@ export function buildLayeredReplyContext(options = {}) {
   const userMsg = String(options.userMsg || "");
   const isPassiveInterjection = options.isPassiveInterjection === true;
 
-  const currentInput = buildCurrentInput(userName, userMsg, uid);
+  const currentInput = buildCurrentInput(userName, userMsg, uid, { hasQuote: Boolean(options.replyToMessageId || options.replyText || options.quoteEvidence) });
   const layers = [];
   const thread = isPassiveInterjection ? null : selectConversationThread(getConversationThread(uid, groupId), {
     ...options, userMsg, selfUin: CFG.selfUin,
@@ -58,6 +60,7 @@ export function buildLayeredReplyContext(options = {}) {
 }
 
 function appendInterjectionGroupLayer(layers, groupId, options) {
+  if (options.quoteEvidence?.state === "unavailable") return;
   const block = buildInterjectionBackgroundBlock(groupId, options);
   if (block) pushLayer(layers, block, 80);
 }
@@ -82,10 +85,16 @@ function appendMentionLayer(layers, options) {
 }
 
 function appendQuotedLayer(layers, options) {
+  if (options.quoteEvidence?.state === "unavailable") {
+    pushLayer(layers, buildUnavailableQuoteBlock(), 100, "user", [], true);
+    return;
+  }
   if (!options.replyText) return;
-  pushLayer(layers, buildQuotedMessageBlock(options.replyText, options.replySpeaker || "unknown"), 100, "user", [
-    selectionSource({ messageId: options.replyToMessageId, uid: options.replyUserId }, "quote", "reply_chain"),
-  ]);
+  const maxTextChars = options.isPassiveInterjection ? 280 : 500;
+  const evidence = { userId: options.replyUserId, ...options.quoteEvidence, maxTextChars };
+  const source = { ...selectionSource({ messageId: options.replyToMessageId, uid: options.replyUserId }, "quote", "reply_chain"),
+    verified: evidence.state === "verified", at: evidence.at, clipped: safeContextText(options.replyText, Infinity).length > maxTextChars };
+  pushLayer(layers, buildQuotedMessageBlock(options.replyText, options.replySpeaker || "unknown", evidence), 100, "user", [source], true);
 }
 
 function appendThreadLayer(layers, options) {
@@ -113,7 +122,7 @@ function appendMemoryLayer(layers, uid, groupId) {
 }
 
 function appendUserHistoryLayer(layers, options) {
-  if (isOtherPersonQuote(options)) return;
+  if (options.quoteEvidence?.state === "unavailable" || isOtherPersonQuote(options)) return;
   const relevant = retrieveRelevantUserMemories(options.uid, memoryQuery(options), {
     groupId: options.groupId,
     currentMessageId: options.currentMessageId,
@@ -141,7 +150,7 @@ function isOtherPersonQuote(options) {
 }
 
 function appendGroupBackgroundLayer(layers, groupId, options) {
-  if (groupId === "private") return;
+  if (groupId === "private" || options.quoteEvidence?.state === "unavailable") return;
   const selected = selectGroupConversation(groupChats[groupId] || [], { ...options, selfUin: CFG.selfUin });
   // Deduplicate after selection so recalled anchors can still recover linked replies.
   const recalledIds = new Set(layers.flatMap(layer => layer.contextSources || [])

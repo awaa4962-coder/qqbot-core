@@ -8,7 +8,9 @@ import { buildCurrentInput } from "./context/messages.mjs";
 import { chatError, parseChatOutcome } from "./chat-outcome.mjs";
 import { selectPersonaCue } from "./persona-style.mjs";
 
-async function buildSearchContext(userMsg) {
+async function buildSearchContext(userMsg, options) {
+  // Attachment contents are model input, not permission to publish a search query.
+  if (options.task === 'file_chat') return '';
   if (needsSearch(userMsg)) {
     log('DS pre-search input chars:', userMsg.length);
     const searchResult = await webSearch(userMsg);
@@ -24,7 +26,8 @@ function buildDeepSeekMessages(userMsg, userName, history, searchCtx, options) {
   const msgs = [];
   if (history?.length) msgs.push.apply(msgs, history);
   if (searchCtx) msgs.push({ role: 'user', content: searchCtx });
-  msgs.push({ role: 'user', content: buildCurrentInput(userName, userMsg, options.currentUserId) });
+  const currentInput = typeof options.currentInput === 'string' ? options.currentInput : buildCurrentInput(userName, userMsg, options.currentUserId);
+  msgs.push({ role: 'user', content: currentInput });
   return msgs;
 }
 
@@ -41,7 +44,7 @@ export async function tryDeepSeek(userMsg, userName, history, groupId, isAtMe, m
 export async function tryDeepSeekResult(userMsg, userName, history, groupId, isAtMe, mood, options = {}) {
   if (isAtMe === undefined) isAtMe = true;
   const maxTok = resolveDeepSeekMaxTokens(groupId, isAtMe);
-  const searchCtx = await buildSearchContext(userMsg);
+  const searchCtx = await buildSearchContext(userMsg, options);
   const msgs = buildDeepSeekMessages(userMsg, userName, history, searchCtx, options);
 
   const personaCue = options.personaCue || selectPersonaCue(userMsg, {

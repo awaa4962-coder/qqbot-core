@@ -34,7 +34,7 @@ export function buildReplyContextPacket(options = {}) {
     metadata: {
       uid,
       groupId,
-      hasQuotedMessage: Boolean(options.replyText),
+      hasQuotedMessage: bounded.sources.some(source => source.kind === "quote"),
       mentionedUsers: Array.isArray(options.mentions)
         ? options.mentions.filter(item => !item.isBot && !item.isAll).map(item => String(item.qq))
         : [],

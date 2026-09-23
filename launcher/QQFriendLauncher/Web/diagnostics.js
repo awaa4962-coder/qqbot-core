@@ -29,6 +29,8 @@ import { initializeDeliveries } from "./deliveries.js";
     cancelled: "已停止", privacy_changed: "记忆已清理，旧回复作废", permission_changed: "会话权限已变化", preferences_changed: "称呼或偏好已更新", reply_superseded: "已有更新的回复请求", reply_expired: "回复处理超时", reply_capacity: "进行中的回复过多", bridge_stopping: "服务正在停止",
     unknown: "回执未知", send_unknown: "发送结果未知，请先核实",
     reply_duplicate: "这条消息已处理，不再重发", delivery_state_unavailable: "发送状态无法保存，已停止回复", forgotten_event: "已清理的旧事件", stale_event: "超过保留期的旧事件",
+    quote_source_unknown: "引用来源资料不完整", quote_scope_mismatch: "引用不属于当前群", quote_message_mismatch: "引用消息编号不匹配",
+    quote_privacy_unavailable: "无法核对引用的隐私边界", quote_forgotten: "引用内容已被清理", quote_content_empty: "引用没有可用正文或图片",
   };
   const label = (value) => labels[value] || value || "待判断";
 
@@ -124,7 +126,9 @@ import { initializeDeliveries } from "./deliveries.js";
   function sourceLabel(source) {
     const kinds = { quote: "引用", thread: "对话线程", memory: "个人历史", group: "群聊", image: "图片" };
     const reasons = { reply_chain: "引用链", continuation: "承接", keywords: "关键词", synonyms: "同义表达", mention: "被提及者", recent: "最近背景", image_reference: "明确看图指向" };
-    return `${kinds[source.kind] || "上下文"} ${source.messageId || "旧记录"} · ${reasons[source.reason] || "相关"}${source.clipped ? " · 所在层已裁剪" : ""}`;
+    const verified = source.verified ? ` · 同群来源已核验${source.at ? " · " + new Date(source.at).toLocaleString("zh-CN", { hour12: false }) : ""}` : "";
+    const actor = source.kind === "quote" && source.userId ? " · 发言人 " + source.userId : "";
+    return `${kinds[source.kind] || "上下文"} ${source.messageId || "旧记录"}${actor} · ${reasons[source.reason] || "相关"}${verified}${source.clipped ? " · 摘录或所在层已裁剪" : ""}`;
   }
 
   function stepDetails(step) {

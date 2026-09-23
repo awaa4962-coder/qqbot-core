@@ -132,7 +132,7 @@ function createRun(scope, options) {
   run.check = () => {
     if (run.reason) return run.reason;
     // Context can contain other participants' text, so any privacy clear invalidates it.
-    if (run.privacyGeneration !== getMemoryPrivacyGeneration()) run.reason = "privacy_changed";
+    if (staleInputContext(scope, run.privacyGeneration) || run.privacyGeneration !== getMemoryPrivacyGeneration()) run.reason = "privacy_changed";
     else if (userGeneration !== getUserMemoryGeneration(scope.userId)) run.reason = "preferences_changed";
     else if (!permitted(scope, cfg)) run.reason = "permission_changed";
     else if (now() >= expiresAt) run.reason = "reply_expired";
@@ -140,4 +140,8 @@ function createRun(scope, options) {
     return run.reason;
   };
   return run;
+}
+
+function staleInputContext(scope, current) {
+  return scope.contextPrivacyGeneration !== undefined && scope.contextPrivacyGeneration !== current;
 }

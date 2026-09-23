@@ -116,8 +116,8 @@ export function buildInterjectionPrompt(text, ctx = {}) {
     "trigger_type=" + kind,
     "has_images=" + Boolean(ctx.hasImages),
     "vision_available=" + Boolean(ctx.visionAvailable),
-    buildCurrentInput(ctx.userName, text, ctx.userId),
-    "请结合前面的被回复消息、最近对话、梗库提示和图片客观描述，找到具体回应点；接不上时输出空 reply。",
+    typeof ctx.currentInput === "string" ? ctx.currentInput : buildCurrentInput(ctx.userName, text, ctx.userId),
+    "请结合前面的被回复消息、最近对话和图片客观描述，找到具体回应点；接不上时输出空 reply。",
   ].join("\n");
 }
 

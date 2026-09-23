@@ -164,8 +164,9 @@ test("image follow-up selects one recent message from the relevant author", () =
 test("quoted message identity reaches context without changing its text", async () => {
   const originalFetch = globalThis.fetch;
   try {
-    globalThis.fetch = async () => ({ json: async () => ({ status: "ok", data: { user_id: 12, sender: { card: "小林" }, message: [{ type: "text", data: { text: "分卷没下齐" } }] } }) });
-    const ctx = { replyData: { id: 9 }, images: [] };
+    globalThis.fetch = async () => ({ json: async () => ({ status: "ok", data: { user_id: 12, message_type: "group", group_id: 22,
+      message_id: 9, time: Math.floor(now / 1000), sender: { card: "小林" }, message: [{ type: "text", data: { text: "分卷没下齐" } }] } }) });
+    const ctx = { message_type: "group", group_id: 22, user_id: 11, message_id: 10, replyData: { id: 9 }, images: [] };
     assert.equal(await resolveReplyContext(ctx), "分卷没下齐");
     assert.equal(ctx.replySpeaker, "小林");
     assert.equal(ctx.replyUserId, "12");

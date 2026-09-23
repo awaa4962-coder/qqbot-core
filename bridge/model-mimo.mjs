@@ -77,8 +77,9 @@ async function buildMiMoMessages(history, imageUrls, userMsg, userName, options)
         userId: options.currentUserId,
         hasImages: Boolean(imageUrls?.length),
         visionAvailable: Boolean(visionDesc),
+        currentInput: options.currentInput,
       })
-    : buildCurrentInput(userName, userMsg, options.currentUserId);
+    : typeof options.currentInput === 'string' ? options.currentInput : buildCurrentInput(userName, userMsg, options.currentUserId);
   msgs.push({ role: 'user', content: currentInput });
   return msgs;
 }
@@ -110,6 +111,7 @@ export async function tryMiMoResult(userMsg, userName, history, imageUrls, group
     allowTools: options.allowTools !== undefined ? options.allowTools : shouldAnswer,
     replyMode: options.replyMode || 'chat',
     currentUserId: options.currentUserId,
+    currentInput: options.currentInput,
     thinking: options.replyMode === 'interjection' ? { type: 'disabled' } : undefined,
     personaCue: options.personaCue || selectPersonaCue(userMsg, {
       replyMode: options.replyMode || 'chat',

@@ -1,5 +1,5 @@
 // bridge/reply-group.mjs - group message pipeline.
-import { CFG, LONG_GROUPS } from "./config.mjs";
+import { LONG_GROUPS } from "./config.mjs";
 import { log, logE } from "./logger.mjs";
 import { captureSummaryMessage } from "./group-summary/journal.mjs";
 import { logGroupMsg } from "./storage.mjs";
@@ -19,12 +19,16 @@ import { hydrateMentions } from "./mentions/index.mjs";
 import { aiReply } from "./reply-ai.mjs";
 import { observeGroupStickerCandidates } from "./features/stickers/index.mjs";
 import { traceStage } from "./diagnostics/message-trace.mjs";
+import { getMemoryPrivacyGeneration } from "./memory-profile/generation.mjs";
+import { messageRouteRejection } from "./event-admission.mjs";
 
 export async function handleGroupMessage(ctx, rawMessage) {
-  if (shouldIgnoreGroupMessage(ctx)) return;
-  try { captureSummaryMessage(ctx); } catch { logE("summary journal capture failed"); }
+  ctx.contextPrivacyGeneration ??= getMemoryPrivacyGeneration();
+  if (stopStaleGroupContext(ctx)) return;
+  captureGroupSummary(ctx);
 
   await hydrateMentions(ctx.mentions, { groupId: ctx.group_id, getGroupMemberInfo });
+  if (stopStaleGroupContext(ctx)) return;
   logGroupAttachments(ctx);
   ctx.duplicateInfo = logGroupMemberMessage(ctx);
   if (ctx.duplicateInfo?.duplicate && !ctx.isAtMe) {
@@ -34,9 +38,11 @@ export async function handleGroupMessage(ctx, rawMessage) {
 
   const replyState = createPendingReplyState(ctx);
   if (await dispatchGroupCommand(ctx, { replyToId: replyState.replyToId })) return;
+  if (stopStaleGroupContext(ctx)) return;
   if (!ctx.isAtMe) observeGroupStickerCandidates(ctx);
 
   const previewState = await handleGroupPreviews(ctx, rawMessage);
+  if (stopStaleGroupContext(ctx)) return;
 
   if (previewState.sent && !ctx.isAtMe) {
     traceStage("route", { status: "ok", route: "preview" });
@@ -48,6 +54,10 @@ export async function handleGroupMessage(ctx, rawMessage) {
   await handleRandomInterjection(ctx, previewState.suppressInterjection, replyState);
 }
 
+function captureGroupSummary(ctx) {
+  try { captureSummaryMessage(ctx); } catch { logE("summary journal capture failed"); }
+}
+
 export async function buildReplyState(ctx, resolveContext = resolveReplyContext) {
   return {
     replyText: await resolveContext(ctx),
@@ -55,17 +65,9 @@ export async function buildReplyState(ctx, resolveContext = resolveReplyContext)
   };
 }
 
-function shouldIgnoreGroupMessage(ctx) {
-  if (ctx.user_id === CFG.selfUin) return true;
-  if (CFG.groupWhitelist.includes(ctx.group_id)) return false;
-  log("msg from non-whitelist group:", ctx.group_id);
-  return true;
-}
-
 function logGroupAttachments(ctx) {
   if (!ctx.images.length) return;
-  log("IMG detected in", ctx.group_id, ":", ctx.images.length,
-    "urls:", JSON.stringify(ctx.images.map(function (u) { return u.slice(0, 80); })));
+  log("IMG detected in", ctx.group_id, ":", ctx.images.length);
 }
 
 function logGroupMemberMessage(ctx) {
@@ -112,6 +114,7 @@ async function handleMentionedGroupMessage(ctx, replyState) {
   if (!ctx.isAtMe) return false;
   traceStage("route", { status: "ok", route: "group_at" });
   await ensureReplyState(ctx, replyState);
+  if (stopStaleGroupContext(ctx)) return true;
   pullRecentImagesIntoContext(ctx);
 
   log("at detected, processing AI reply...");
@@ -131,7 +134,7 @@ async function handleMentionedGroupMessage(ctx, replyState) {
 }
 
 function pullRecentImagesIntoContext(ctx) {
-  if (ctx.images.length) return;
+  if (ctx.images.length || ctx.quoteEvidence?.state === "unavailable") return;
   const recentImgs = pullRecentImages(ctx.group_id, {
     uid: ctx.user_id, userMsg: ctx.text, mentions: ctx.mentions, replyToMessageId: ctx.replyData?.id,
   });
@@ -173,6 +176,7 @@ async function handleRandomInterjection(ctx, previewSent, replyState = {}) {
   }
   log("random interjection triggered:", decision.kind);
   await ensureReplyState(ctx, replyState);
+  if (stopStaleGroupContext(ctx)) return;
   const text = ctx.text || (ctx.images.length ? "[图片]" : "");
   await aiReply(
     ctx.group_id,
@@ -197,7 +201,16 @@ function createPendingReplyState(ctx) {
 }
 
 function replyRuntime(ctx) {
-  return { messageId: ctx.message_id, eventTime: ctx.eventTime, replyToMessageId: ctx.replyData?.id, replySpeaker: ctx.replySpeaker, replyUserId: ctx.replyUserId };
+  return { messageId: ctx.message_id, eventTime: ctx.eventTime, replyToMessageId: ctx.replyData?.id,
+    replySpeaker: ctx.replySpeaker, replyUserId: ctx.replyUserId, quoteEvidence: ctx.quoteEvidence, contextPrivacyGeneration: ctx.contextPrivacyGeneration };
+}
+
+function stopStaleGroupContext(ctx) {
+  const reason = ctx.contextPrivacyGeneration !== getMemoryPrivacyGeneration() ? "privacy_changed"
+    : messageRouteRejection({ ...ctx, message_type: "group" }) ? "permission_changed" : "";
+  if (!reason) return false;
+  traceStage("output", { status: "skipped", reason });
+  return true;
 }
 
 async function ensureReplyState(ctx, state) {

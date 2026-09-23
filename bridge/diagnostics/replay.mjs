@@ -19,7 +19,7 @@ const DAILY_LIMIT = 20;
 
 export function buildReplayPacket(example) {
   const layers = [];
-  if (example.quote) layers.push({ role: "user", content: buildQuotedMessageBlock(example.quote, "示例发言人"), contextPriority: 100 });
+  if (example.quote) layers.push({ role: "user", content: buildQuotedMessageBlock(example.quote, "示例发言人"), contextPriority: 100, contextAtomic: true });
   const thread = selectConversationThread({ scope: "synthetic", turns: example.turns }, { userMsg: example.input });
   for (const { content } of formatConversationThreadLayers(thread)) {
     layers.push({ role: "user", content, contextPriority: 88, contextAtomic: true });
@@ -27,7 +27,7 @@ export function buildReplayPacket(example) {
   if (example.background) layers.push({ role: "user", content: buildGroupBackgroundBlock(example.background), contextPriority: 40 });
   if (example.image !== undefined) layers.push({ ...buildImageContextMessage(example.image), contextPriority: 95 });
   appendReplayRetrieval(layers, example);
-  const currentInput = buildCurrentInput("示例用户", example.input, "11");
+  const currentInput = buildCurrentInput("示例用户", example.input, "11", { hasQuote: Boolean(example.quote) });
   const bounded = enforceContextBudget(layers, currentInput, { mode: "group-at" });
   const prompt = buildModelPrompt({ mood: "正常" });
   const messages = [

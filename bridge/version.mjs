@@ -4,21 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.18-delivery-state";
-export const VERSION_NAME = "delivery-state";
+export const VERSION = "1.4.19-context-provenance";
+export const VERSION_NAME = "context-provenance";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "普通聊天按原始消息编号保存不含正文的发送状态；重启后未知、部分发送和中断不会自动重发。",
-  "统一检查 OneBot 回执：冲突字段、异步受理和 HTTP 异常不算发送成功，JM 上传也不再误报完成。",
-  "诊断页可筛选并人工核实发送结果；遗忘解除身份关联，保留防重复标记，不补发也不补写聊天记忆。",
+  "引用消息核对群范围、消息编号、作者和时间；同名按用户 ID 区分，拿不到引用时不借用旁边的聊天来猜。",
+  "忘记我后旧引用不再回填；读取群成员、引用或私聊文件期间发生清理，旧上下文会停止后续处理。",
+  "主模型与 DeepSeek 备用复用已脱敏的当前输入，长消息和引用保留首尾；诊断可查看来源核验，文件正文不触发自动搜索。",
   "JM 群聊/私聊下载、大写 FS 与延迟清理保留；模型主备、思考档位、白名单和关系评分不变，Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Persists content-free delivery metadata for numbered chat events. Unknown, partial and interrupted replies are not automatically replayed after restart.",
-  "Checks OneBot receipts consistently: contradictory fields, async acceptance and HTTP failures are not delivery success, including JM uploads.",
-  "Diagnostics support filtering and manual verification without resending or rebuilding chat memory. Forgetting unlinks identity while retaining replay fences.",
+  "Validates quote scope, message ID, author and time. Stable IDs distinguish matching names; unavailable quotes are not replaced with nearby chatter.",
+  "Old quotes respect erasure cutoffs. Privacy changes during member, quote or private-file lookup stop stale context from progressing.",
+  "Primary and DeepSeek fallback reuse sanitized input snapshots. Excerpts retain both ends, diagnostics show provenance, and attachment bodies do not trigger implicit searches.",
   "Keeps group/private JM downloads, FS and delayed cleanup. Model routes, reasoning modes, allowlists and relationship scoring stay unchanged. Windows stays frozen.",
 ]);
 

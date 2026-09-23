@@ -148,7 +148,7 @@ export function getReplyData(msg) {
   return found ? found.data : null;
 }
 
-export async function fetchReplyData(replyData, { timeoutMs = 8000 } = {}) {
+export async function fetchReplyData(replyData, { timeoutMs = 8000, includeSource = false } = {}) {
   if (!replyData) return { text: '', images: [] };
   const msgId = replyData.id;
   if (msgId === undefined || msgId === null || msgId === '') return { text: '', images: [] };
@@ -166,10 +166,16 @@ export async function fetchReplyData(replyData, { timeoutMs = 8000 } = {}) {
       let res = text;
       if (images.length) res += ' [图片' + images.length + '张]';
       if (files.length) res += ' ' + describeFiles(files);
-      return { text: res, images, ...replyIdentity(msg) };
+      return { text: res, images, ...replyIdentity(msg), ...(includeSource ? { source: replySource(msg) } : {}) };
     }
   } catch {}
   return { text: '', images: [] };
+}
+
+function replySource(message) {
+  return { messageId: message.message_id, messageType: message.message_type,
+    groupId: message.group_id, userId: message.user_id ?? message.sender?.user_id,
+    senderUserId: message.sender?.user_id, time: message.time };
 }
 
 function replyIdentity(message) {

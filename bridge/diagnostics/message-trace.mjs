@@ -15,6 +15,7 @@ const REASONS = new Set([
   "intentional_silence", "invalid_interjection", "request_failed", "tools_unavailable",
   "privacy_changed", "permission_changed", "preferences_changed", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping",
   "reply_duplicate", "delivery_state_unavailable", "forgotten_event", "stale_event",
+  "quote_source_unknown", "quote_scope_mismatch", "quote_message_mismatch", "quote_privacy_unavailable", "quote_forgotten", "quote_content_empty",
 ]);
 const ROUTES = new Set(["group_at", "interjection", "private_chat", "private_file", "command", "jm", "resource-transfer", "link-preview", "wordcloud", "preview", "file"]);
 const NUMBERS = ["chars", "messages", "pruned", "truncated", "images", "mentions", "httpStatus", "attempt", "reasoningLength", "promptTokens", "cachedTokens", "completionTokens", "probability", "selfFactsVersion", "capabilityCount", "turnRevision", "privacyRevision", "staticChars", "dynamicChars", "inputTextChars"];
@@ -49,8 +50,11 @@ function safeSources(sources) {
   return sources.filter(item => kinds.has(item?.kind) && reasons.has(item.reason)).slice(0, 24).map(item => ({
     kind: item.kind, reason: item.reason, messageId: numericId(item.messageId), userId: numericId(item.userId),
     score: Number.isFinite(item.score) ? Math.max(0, Math.min(12, item.score)) : 0, clipped: item.clipped === true,
+    ...(item.kind === "quote" && item.verified === true ? { verified: true, at: sourceTimestamp(item.at) } : {}),
   }));
 }
+
+function sourceTimestamp(value) { return Number.isFinite(value) && value > 0 && value < 8640000000000000 ? value : 0; }
 
 function numericId(value) {
   const text = String(value ?? "");

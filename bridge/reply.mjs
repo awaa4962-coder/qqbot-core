@@ -8,6 +8,7 @@ import { handlePrivateMessage } from "./reply-private.mjs";
 import { traceStage, withMessageTrace } from "./diagnostics/message-trace.mjs";
 import { inspectChatEvent } from "./cognition/delivery-ledger.mjs";
 import { isCommandContext } from "./commands/action-dispatcher.mjs";
+import { getMemoryPrivacyGeneration } from "./memory-profile/generation.mjs";
 
 export {
   aiReply,
@@ -34,6 +35,7 @@ async function processMessageContext(ctx, ev) {
   const admission = admitMessageContext(ctx);
   traceStage("admission", { status: admission.ok ? "ok" : "skipped", reason: admission.reason });
   if (!admission.ok) return admission;
+  ctx.contextPrivacyGeneration = getMemoryPrivacyGeneration();
   const stopped = durableReplyRejection(ctx);
   if (stopped) {
     traceStage("route", { status: "skipped", reason: stopped });

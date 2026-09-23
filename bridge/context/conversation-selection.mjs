@@ -5,7 +5,7 @@ const MAX_SCAN = 120;
 const GROUP_MAX_AGE_MS = 30 * 60 * 1000;
 
 export function selectConversationThread(thread, options = {}) {
-  if (!thread?.turns?.length || currentTopicText(options.userMsg).switched) return null;
+  if (!thread?.turns?.length || options.quoteEvidence?.state === "unavailable" || currentTopicText(options.userMsg).switched) return null;
   const turns = thread.turns;
   const anchor = threadAnchor(turns, options);
   if (anchor < 0) return null;
@@ -138,7 +138,7 @@ function dedupeSelection(items) {
 }
 
 export function selectionSource(message, kind, reason, score = 0) {
-  return { kind, messageId: String(message.messageId || ""), userId: String(message.uid || ""), reason, score };
+  return { kind, messageId: String(message.messageId ?? ""), userId: String(message.uid ?? ""), reason, score };
 }
 
 export function selectRecentImageMessage(messages = [], options = {}) {
