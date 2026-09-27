@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -6,10 +7,32 @@ import path from "node:path";
 import { afterEach, test } from "node:test";
 import { runZipCommand, zipDirectory } from "../bridge/jm/archive.mjs";
 import { activeJmTask, handleJmTransferCommand, waitJmTasks } from "../bridge/jm/commands.mjs";
+import { findUsableSevenZip } from "../bridge/seven-zip.mjs";
 
 const roots = [];
 afterEach(async () => {
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
+});
+
+test("real 7-Zip creates a readable JM archive protected by uppercase FS", async t => {
+  const sevenZip = findUsableSevenZip();
+  if (!sevenZip) return t.skip("7-Zip is unavailable in this environment");
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "qqfriend-jm-real-zip-"));
+  roots.push(root);
+  const source = path.join(root, "download");
+  const archive = path.join(root, "jm-123456.zip");
+  await fs.mkdir(source);
+  await fs.writeFile(path.join(source, "001.txt"), "synthetic JM archive fixture");
+
+  await zipDirectory(source, archive, { password: "FS", sevenZipPath: sevenZip, timeoutMs: 30000 });
+  const listing = spawnSync(sevenZip, ["l", archive], { encoding: "utf8", timeout: 30000 });
+  const good = spawnSync(sevenZip, ["t", "-pFS", archive], { encoding: "utf8", timeout: 30000 });
+  const wrong = spawnSync(sevenZip, ["t", "-pfs", archive], { encoding: "utf8", timeout: 30000 });
+  assert.equal(listing.status, 0, listing.stderr || listing.stdout);
+  assert.match(listing.stdout, /001\.txt/);
+  assert.equal(good.status, 0, good.stderr || good.stdout);
+  assert.equal(wrong.error, undefined, "lowercase password check must finish");
+  assert.notEqual(wrong.status, 0, "lowercase fs must not read an archive protected by FS");
 });
 
 test("archive timeout kills the child and drains both output pipes", async () => {
