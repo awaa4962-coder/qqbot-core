@@ -131,14 +131,15 @@ async function runSync(options) {
         ...(options.analyzerOptions || {}),
       });
     const result = {
-      ok: true,
+      ok: analysis.cancelled !== true,
+      ...(analysis.cancelled ? { error: "收藏已读取，但旧表情分析因资料更新停止" } : {}),
       items: remote.items.length,
       ...merged,
       analysis,
     };
     status.supported = true;
     status.lastSyncAt = new Date(Number(options.now || Date.now())).toISOString();
-    status.lastError = "";
+    status.lastError = result.error || "";
     status.lastResult = result;
     status.lastAnalysis = { ...analysis, at: new Date(Number(options.now || Date.now())).toISOString() };
     log("sticker favorites synced:", remote.items.length, "items,", merged.added, "new");

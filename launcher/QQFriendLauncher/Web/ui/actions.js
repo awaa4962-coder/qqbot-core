@@ -5,7 +5,7 @@ import { diagnosePayload, formatDiagnoseResult, renderDiagnoseSummary } from "..
 import { renderLogs } from "../pages/logs.js";
 import { renderMemes, RETIRED_MEME_ACTIONS } from "../pages/memes.js";
 import { markStatusStale, renderSnapshot, renderStoppedStatus } from "../pages/overview.js";
-import { renderStickerSimulation, renderStickers, stickerEntryPayload, stickerSettingsPayload, stickerSimulationPayload } from "../pages/stickers.js";
+import { renderStickerSimulation, renderStickers, setStickerCatalogAvailability, stickerEntryPayload, stickerSettingsPayload, stickerSimulationPayload } from "../pages/stickers.js";
 import { actionGroup, beginAction, endAction, finishActivity, showActivity, toast } from "./activity.js";
 import { applyBackground } from "./appearance.js";
 import { $, setOutput, splitList } from "./dom.js";
@@ -141,7 +141,9 @@ export async function runAction(action, button = null, options = {}) {
       return;
     }
     if (action === "refreshStickers") {
-      renderStickers(await host.call("getStickers"));
+      const snapshot = await host.call("getStickers");
+      renderStickers(snapshot);
+      if (snapshot.available === false) throw new Error("表情目录暂不可读，原文件已保留");
       if (!silent) toast(ACTION_DONE[action], "success");
       return;
     }
@@ -218,10 +220,13 @@ export async function runAction(action, button = null, options = {}) {
         renderStickerSimulation(result);
       } else {
         if (action === "removeCapturedSticker") uiState.selectedStickerId = "";
-        renderStickers(result.snapshot || await host.call("getStickers"), {
+        const snapshot = result.snapshot || await host.call("getStickers");
+        renderStickers(snapshot, {
           selectId: uiState.selectedStickerId,
         });
+        if (snapshot.available === false) throw new Error("表情目录暂不可读，原文件已保留");
         const operation = result.result || {};
+        if (operation.ok === false || operation.cancelled) throw new Error(operation.error || "表情任务未完成");
         $("stickerStatus").textContent = [
           ACTION_DONE[action],
           operation.items !== undefined ? `读取 ${operation.items} 张 · 新增 ${operation.added || 0} 张` : "",
@@ -292,6 +297,7 @@ export async function runAction(action, button = null, options = {}) {
     if (!silent) toast(error.message || "操作失败", "error");
   } finally {
     endAction(action);
+    if (actionGroup(action) === "stickers") setStickerCatalogAvailability();
     if (!silent) finishActivity(
       failure?.taskStateUnknown ? "任务结果尚未确认" : failure ? `${ACTION_LABELS[action] || "操作"}失败` : ACTION_DONE[action] || "操作完成",
       failure ? "error" : "success", failure?.taskStateUnknown ? failure.message : undefined,

@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { CFG } from "../../config.mjs";
+import { writeJsonFileSync } from "../../persistence/json-file.mjs";
 import {
   createEmptyStickerCatalog,
   normalizeStickerEntry,
@@ -15,14 +16,41 @@ import {
 let catalogPath = CFG.stickerCatalogFile;
 let loadedPath = "";
 let catalog = null;
+let catalogReadReliable = true;
+let catalogDirty = false;
 
 export function getStickerCatalog() {
   ensureLoaded();
   return catalog;
 }
 
+export function stickerCatalogAvailable() {
+  ensureLoaded();
+  return catalogReadReliable;
+}
+
 export function getStickerSettings() {
   return { ...getStickerCatalog().settings, allowedGroups: [...getStickerCatalog().settings.allowedGroups] };
+}
+
+export function forgetStickerSender(userId, options = {}) {
+  const store = getStickerCatalog();
+  if (!catalogReadReliable) throw new Error("表情目录暂不可读，发送者关联清理未确认");
+  const hash = hashSender(store, userId);
+  let changed = 0;
+  for (const entry of store.entries) {
+    if (!entry.senderHashes.includes(hash)) continue;
+    entry.senderHashes = entry.senderHashes.filter(value => value !== hash);
+    entry.distinctSenderCount = entry.senderHashes.length;
+    if (!entry.distinctSenderCount && entry.source === "group-capture" && !entry.manual) {
+      entry.enabled = false;
+      entry.captureState = "retired";
+    }
+    changed++;
+  }
+  if (changed) catalogDirty = true;
+  if (options.persist !== false && catalogDirty) persistCatalog({ durable: true });
+  return { changed, cloudDeleted: false };
 }
 
 export function updateStickerSettings(value = {}) {
@@ -211,6 +239,7 @@ export function removeStickerEntry(id, options = {}) {
 }
 
 export function listPendingStickerAnalysis(options = {}) {
+  if (!stickerCatalogAvailable()) return [];
   const now = Number(options.now || Date.now());
   const limit = Math.max(1, Math.min(50, Number(options.limit || 6)));
   return getStickerCatalog().entries
@@ -220,6 +249,7 @@ export function listPendingStickerAnalysis(options = {}) {
 }
 
 export function listSelectableStickers(options = {}) {
+  if (!stickerCatalogAvailable()) return [];
   const groupId = Number(options.groupId || 0);
   return getStickerCatalog().entries
     .filter(isStickerEntrySendable)
@@ -336,6 +366,7 @@ export function buildStickerCatalogSnapshot() {
   const entries = store.entries.map(publicStickerEntry);
   return {
     schemaVersion: store.schemaVersion,
+    available: catalogReadReliable,
     revision: store.revision,
     updatedAt: store.updatedAt,
     lastSyncedAt: store.lastSyncedAt,
@@ -364,11 +395,15 @@ export function setStickerCatalogPath(file) {
   catalogPath = path.resolve(file);
   loadedPath = "";
   catalog = null;
+  catalogReadReliable = true;
+  catalogDirty = false;
 }
 
 export function resetStickerCatalogForTest() {
   loadedPath = "";
   catalog = null;
+  catalogReadReliable = true;
+  catalogDirty = false;
 }
 
 function ensureLoaded() {
@@ -376,10 +411,26 @@ function ensureLoaded() {
   loadedPath = catalogPath;
   try {
     const parsed = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
+    catalogReadReliable = reliableCatalog(parsed);
     catalog = normalizeCatalog(parsed);
-  } catch {
+  } catch (error) {
+    catalogReadReliable = error.code === "ENOENT";
     catalog = createEmptyStickerCatalog(defaultSettings());
   }
+}
+
+function reliableCatalog(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !Array.isArray(value.entries)) return false;
+  if (!value.entries.every(reliableCatalogEntry)) return false;
+  return !value.entries.some(entry => entry.senderHashes?.length) || /^[0-9a-f]{64}$/.test(value.identitySalt || "");
+}
+
+function reliableCatalogEntry(entry) {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
+  const normalized = normalizeStickerEntry(entry);
+  if (!normalized.id || !normalized.url || normalized.id !== entry.id || normalized.url !== entry.url) return false;
+  return entry.senderHashes === undefined || (Array.isArray(entry.senderHashes) &&
+    entry.senderHashes.length <= 80 && entry.senderHashes.every(hash => typeof hash === "string" && /^[0-9a-f]{24}$/.test(hash)));
 }
 
 function normalizeCatalog(value) {
@@ -419,14 +470,14 @@ function defaultSettings() {
   };
 }
 
-function persistCatalog() {
+function persistCatalog(options = {}) {
   const store = getStickerCatalog();
+  if (!catalogReadReliable) throw new Error("表情目录暂不可读，已停止覆盖文件");
+  catalogDirty = true;
   store.revision = Math.max(1, Number(store.revision || 0) + 1);
   store.updatedAt = new Date().toISOString();
-  fs.mkdirSync(path.dirname(catalogPath), { recursive: true });
-  const tmp = catalogPath + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(store, null, 2) + "\n", "utf8");
-  fs.renameSync(tmp, catalogPath);
+  writeJsonFileSync(catalogPath, store, { spacing: 2, durable: options.durable === true });
+  catalogDirty = false;
 }
 
 function normalizeFavorite(value) {
@@ -457,7 +508,7 @@ function updateObservedEntry(existing, value, options, senderHash, now) {
 }
 
 function addSenderHash(entry, senderHash) {
-  if (!senderHash || entry.senderHashes.includes(senderHash)) return;
+  if (!senderHash || entry.senderHashes.includes(senderHash) || entry.senderHashes.length >= 80) return;
   entry.senderHashes.push(senderHash);
   entry.distinctSenderCount = entry.senderHashes.length;
 }
@@ -495,7 +546,7 @@ function applyCloudSuccess(store, entry, result, now) {
     md5: firstText(result.item?.md5, result.md5),
     summary: result.item?.summary,
   }));
-  entry.captureState = "active";
+  if (entry.captureState !== "retired" || entry.enabled !== false) entry.captureState = "active";
   entry.cloudManaged = result.created === true;
   entry.cloudAddedAt = entry.cloudManaged ? now : 0;
   entry.lastError = "";

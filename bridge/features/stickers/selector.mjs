@@ -1,5 +1,6 @@
 import { callStickerSelection } from "../../model-router.mjs";
 import { listSelectableStickers } from "./catalog-store.mjs";
+import { createStickerPrivacyGuard } from "./privacy.mjs";
 
 const CUE_RULES = Object.freeze([
   ["无语", /无语|离谱|看不懂|没话说|沉默|服了|逆天/],
@@ -18,12 +19,14 @@ const CUE_RULES = Object.freeze([
 ]);
 
 export async function selectSticker(context = {}, options = {}) {
+  const check = createStickerPrivacyGuard(context.userId);
   const candidates = buildStickerCandidates(context, options);
   if (!candidates.length) return noMatch("没有语义可靠的候选", []);
   const model = options.model || callStickerSelection;
   const prompt = buildStickerSelectionPrompt(context, candidates);
   let output = await model(prompt, "primary");
-  if (!output) output = await model(prompt, "fallback");
+  check();
+  if (!output) { output = await model(prompt, "fallback"); check(); }
   const selectedId = parseStickerSelection(output);
   const selected = candidates.find(candidate => candidate.id === selectedId);
   if (!selected) return noMatch("模型选择无匹配", candidates);

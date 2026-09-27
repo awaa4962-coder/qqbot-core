@@ -11,6 +11,7 @@ import {
 } from "./catalog-store.mjs";
 import { normalizeStickerTags } from "./schema.mjs";
 import { loadStickerPreview } from "./preview.mjs";
+import { createStickerPrivacyGuard } from "./privacy.mjs";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 let analysisPromise = null;
@@ -24,12 +25,16 @@ export async function analyzePendingStickers(options = {}) {
 }
 
 export async function analyzeStickerEntry(entry, options = {}) {
+  const check = options.privacyGuard || createStickerPrivacyGuard();
+  check();
   const download = options.download
     ? () => options.download(entry.url)
     : () => downloadStickerEntry(entry);
   const describe = options.describe || describeStickerWithVision;
   const data = await download();
+  check();
   const fingerprint = await perceptualImageHash(data.buffer);
+  check();
   const md5 = crypto.createHash("md5").update(data.buffer).digest("hex");
   const existing = findStickerByFingerprint(fingerprint, entry.id, { md5 });
   if (existing) {
@@ -46,7 +51,8 @@ export async function analyzeStickerEntry(entry, options = {}) {
     buffer: data.buffer,
     mimeType: data.mimeType,
     url: entry.url,
-  });
+  }, { assertCurrent: check });
+  check();
   const normalized = normalizeAnalysis(modelResult);
   if (!normalized.description) throw new Error("视觉模型没有返回可用描述");
   return { fingerprint, md5, ...normalized, reused: false };
@@ -91,6 +97,7 @@ export function inferStickerTags(text) {
 }
 
 async function runPendingAnalysis(options) {
+  const privacyGuard = createStickerPrivacyGuard();
   const entries = listPendingStickerAnalysis({
     limit: options.limit || 6,
     now: options.now,
@@ -100,11 +107,14 @@ async function runPendingAnalysis(options) {
   let failed = 0;
   for (const entry of entries) {
     try {
-      const result = await analyzeStickerEntry(entry, options);
+      privacyGuard();
+      const result = await analyzeStickerEntry(entry, { ...options, privacyGuard });
+      privacyGuard();
       applyStickerAnalysis(entry.id, result, { now: options.now });
       if (result.reused) reused++;
       else analyzed++;
     } catch (error) {
+      if (error.code === "STICKER_PRIVACY_CHANGED") return { ok: false, error: "资料已更新，旧表情分析已停止", requested: entries.length, analyzed, reused, failed, cancelled: true, reason: "privacy_changed" };
       failed++;
       markStickerAnalysisFailure(entry.id, error, { now: options.now });
       logE("sticker analysis failed:", entry.id, error.message);
@@ -124,7 +134,7 @@ async function downloadStickerEntry(entry) {
   return preview;
 }
 
-async function describeStickerWithVision(image) {
+async function describeStickerWithVision(image, options = {}) {
   const dataUrl = "data:" + image.mimeType + ";base64," + image.buffer.toString("base64");
   const request = {
     messages: [{
@@ -148,7 +158,7 @@ async function describeStickerWithVision(image) {
     thinking: { type: "disabled" },
     tools: [],
   };
-  const result = await callVisionText(request);
+  const result = await callVisionText(request, options);
   if (!result.ok) throw new Error("视觉模型输出不可用");
   return result.text;
 }

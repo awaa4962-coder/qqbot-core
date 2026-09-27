@@ -10,6 +10,8 @@ export function disposeStickerPreviews() {
 }
 
 export function renderStickers(snapshot, options = {}) {
+  setStickerCatalogAvailability(snapshot?.available !== false);
+  if (snapshot?.available === false) { renderUnavailableStickerCatalog(); return; }
   uiState.stickerSnapshot = snapshot || { entries: [], settings: {}, counts: {}, stats: {} };
   const allEntries = Array.isArray(uiState.stickerSnapshot.entries) ? uiState.stickerSnapshot.entries : [];
   const counts = uiState.stickerSnapshot.counts || {};
@@ -73,6 +75,34 @@ export function renderStickers(snapshot, options = {}) {
   ].join("\n");
   renderStickerCaptureStatus(uiState.stickerSnapshot);
   uiState.stickersLoaded = true;
+}
+
+export function setStickerCatalogAvailability(available = uiState.stickerSnapshot?.available !== false) {
+  const actions = ["analyzeStickers", "syncStickers", "setStickerCaptureMode", "saveStickerSettings", "setStickerMode", "saveSticker", "removeCapturedSticker", "simulateSticker"];
+  for (const action of actions) for (const button of document.querySelectorAll(`[data-action='${action}']`)) {
+    if (!available) {
+      if (button.dataset.stickerUnavailable === undefined) button.dataset.stickerUnavailable = String(button.disabled);
+      button.disabled = true;
+    } else if (button.dataset.stickerUnavailable !== undefined) {
+      button.disabled = button.dataset.stickerUnavailable === "true";
+      delete button.dataset.stickerUnavailable;
+    }
+  }
+}
+
+function renderUnavailableStickerCatalog() {
+  disposeStickerPreviews();
+  uiState.stickerSnapshot = { available: false, entries: [], settings: {}, counts: {}, stats: {} };
+  uiState.selectedStickerId = "";
+  uiState.stickersLoaded = true;
+  $("stickerDetailPanel").hidden = true;
+  $("stickerNavCount").textContent = "?";
+  $("stickerListCount").textContent = "未知";
+  $("stickerSummary").textContent = "表情目录暂不可读";
+  $("stickerGrid").innerHTML = '<div class="empty-state" role="alert"><b>表情目录读取失败</b><span>原文件已保留，写入操作已停止。</span></div>';
+  $("stickerStatus").textContent = "表情目录暂不可读；未按空目录处理。";
+  $("stickerCaptureCapability").textContent = "目录状态未知";
+  $("stickerCaptureStatus").textContent = "目录不可用，采集统计暂不可确认。";
 }
 
 export function fillStickerDetail(entry) {
@@ -288,7 +318,7 @@ export function renderStickerCaptureStatus(snapshot) {
     `采集：${captureModeLabel(snapshot.settings?.captureMode)} · 队列 ${queue.queued || 0}/${queue.maxSize || 0}${queue.processing ? "，正在处理" : ""}`,
     `今日已收录 ${quota.todayAdded || 0}/${quota.dailyLimit ?? 0} · 采集库 ${quota.capturedTotal || 0}/${quota.catalogLimit ?? 0}`,
     `观察 ${capture.observed || 0} 张 · 已收录 ${capture.promoted || 0} 张 · 已拒绝 ${capture.rejected || 0} 张`,
-    capture.lastError ? `最近问题：${capture.lastError}` : "发送者 QQ 只做不可逆哈希去重，图片上传后不留本地文件",
+    capture.lastError ? `最近问题：${capture.lastError === "privacy_changed" ? "资料已更新，旧任务已停止" : capture.lastError}` : "发送者关联使用加盐哈希，忘记我可清除；共用云表情不自动删除",
   ].join("\n");
 }
 

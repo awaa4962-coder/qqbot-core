@@ -1,5 +1,5 @@
 import { CFG } from "../../config.mjs";
-import { getStickerSettings } from "./catalog-store.mjs";
+import { getStickerSettings, stickerCatalogAvailable } from "./catalog-store.mjs";
 import { resolveStickerAllowedGroups } from "./scope.mjs";
 import { monotonicNow } from "../../runtime-clock.mjs";
 
@@ -33,6 +33,7 @@ function blocked(reason, mode, chance = 0) {
 
 function evaluatePreflight(context, mode) {
   if (!CFG.stickerEnabled || mode === "off") return blocked("功能已关闭", mode);
+  if (!stickerCatalogAvailable()) return blocked("表情目录暂不可读", mode);
   if (!String(context.assistantText || "").trim()) return blocked("没有文字回复", mode);
   const fullText = String(context.userMessage || "") + " " + String(context.assistantText || "");
   return SERIOUS_RE.test(fullText) ? blocked("严肃或系统场景", mode) : null;

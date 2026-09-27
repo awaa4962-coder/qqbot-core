@@ -1,5 +1,6 @@
 import { log, logE } from "../../logger.mjs";
 import { chatRunStopReason } from "../../cognition/chat-run.mjs";
+import { createStickerPrivacyGuard } from "./privacy.mjs";
 import {
   buildStickerCatalogSnapshot,
   flushStickerCatalogSync,
@@ -100,11 +101,13 @@ export {
 } from "./sync-service.mjs";
 
 export async function maybeSendStickerAfterReply(context = {}, options = {}) {
+  const check = createStickerPrivacyGuard(context.userId);
   try {
     if (chatRunStopReason()) return { ok: false, stage: "cancelled", reason: chatRunStopReason() };
     const policy = evaluateStickerPolicy(context, options.policyOptions);
     if (!policy.ok) return { ok: false, stage: "policy", reason: policy.reason };
     const decision = await (options.select || selectSticker)(context, options.selectorOptions);
+    check();
     if (chatRunStopReason()) return { ok: false, stage: "cancelled", reason: chatRunStopReason() };
     if (decision.action !== "send") {
       return { ok: false, stage: "selection", reason: decision.reason, decision };
@@ -114,6 +117,7 @@ export async function maybeSendStickerAfterReply(context = {}, options = {}) {
       return { ok: true, sent: false, stage: "shadow", decision };
     }
     const outbound = await (options.send || sendStickerDecision)(decision, context, options.senderOptions);
+    check();
     if (chatRunStopReason()) return { ok: false, stage: "cancelled", reason: chatRunStopReason() };
     recordStickerSend(decision.stickerId, outbound.ok, { error: outbound.error });
     if (!outbound.ok) {
@@ -137,6 +141,7 @@ export function getStickerRuntimeStatus() {
   const snapshot = buildStickerCatalogSnapshot();
   const sync = getStickerSyncStatus();
   const degradedReasons = [];
+  if (snapshot.available === false) degradedReasons.push("catalog_unavailable");
   if (snapshot.counts.pending > 0 && Number(sync.lastAnalysis?.failed || 0) > 0) {
     degradedReasons.push("analysis_failures");
   }

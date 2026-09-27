@@ -3,7 +3,7 @@ import { $ } from "./dom.js";
 import { beginAction, endAction, finishActivity, showActivity } from "./activity.js";
 import { ACTION_LABELS } from "./metadata.js";
 import { taskPhaseLabel } from "./tasks.js";
-import { renderStickers } from "../pages/stickers.js";
+import { renderStickers, setStickerCatalogAvailability } from "../pages/stickers.js";
 
 const ACTIONS = { sync: "syncStickers", analyze: "analyzeStickers", capabilities: "refreshStickerCapabilities", cleanup: "cleanupStickerTemp" };
 
@@ -35,12 +35,15 @@ async function handle({ type, task }) {
       return;
     }
     if (type === "error" || task.phase !== "done") throw new Error(task.error || taskPhaseLabel(task.phase));
-    renderStickers(await host.call("getStickers"));
+    const snapshot = await host.call("getStickers");
+    renderStickers(snapshot);
+    if (snapshot.available === false) throw new Error("表情目录暂不可读，原文件已保留");
     finishActivity("后台任务已完成，页面已同步");
   } catch (error) {
     status.textContent = error.message;
     finishActivity(error.message, "error");
   } finally {
     endAction(action);
+    setStickerCatalogAvailability();
   }
 }

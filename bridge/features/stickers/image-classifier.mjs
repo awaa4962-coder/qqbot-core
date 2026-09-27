@@ -5,14 +5,19 @@ import { callVisionText } from "../../vision-provider.mjs";
 import { callTaskApi } from "../../api-providers/gateway.mjs";
 import { inferStickerTags } from "./analyzer.mjs";
 import { normalizeStickerTags } from "./schema.mjs";
+import { createStickerPrivacyGuard } from "./privacy.mjs";
 
 const KINDS = new Set(["sticker", "photo", "screenshot", "other", "unknown"]);
 
 export async function classifyStickerCandidate(image = {}, options = {}) {
+  const privacyGuard = createStickerPrivacyGuard();
+  const ensureAllowed = () => { privacyGuard(); options.ensureAllowed?.(); };
+  ensureAllowed();
   const buffer = Buffer.isBuffer(image.buffer) ? image.buffer : null;
   if (!buffer?.length) throw new Error("候选图片为空");
   const metadata = await sharp(buffer, { animated: true }).metadata();
   const fingerprint = await perceptualImageHash(buffer);
+  ensureAllowed();
   const md5 = crypto.createHash("md5").update(buffer).digest("hex");
   const hardReject = hardRejectReason(metadata);
   if (hardReject) {
@@ -28,13 +33,14 @@ export async function classifyStickerCandidate(image = {}, options = {}) {
   }
 
   try {
-    options.ensureAllowed?.();
-    const classify = options.classify || (input => classifyWithVision(input, options));
+    ensureAllowed();
+    const classify = options.classify || (input => classifyWithVision(input, { ...options, ensureAllowed }));
     const model = normalizeClassification(await classify({
       buffer,
       mimeType: image.mimeType,
       metadata,
     }));
+    ensureAllowed();
     return {
       ...model,
       fingerprint,
@@ -42,6 +48,7 @@ export async function classifyStickerCandidate(image = {}, options = {}) {
       metadata: publicMetadata(metadata),
     };
   } catch {
+    privacyGuard();
     return {
       ...heuristicClassification(metadata, buffer.length),
       fingerprint,
@@ -97,6 +104,7 @@ async function classifyWithVision(image, options) {
     tools: [],
   };
   const result = await callVisionText(request, {
+    assertCurrent: options.ensureAllowed,
     callSlot: (...args) => {
       options.ensureAllowed?.();
       return (options.callSlot || callTaskApi)(...args);

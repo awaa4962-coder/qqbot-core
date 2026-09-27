@@ -4,21 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.26-memory-lifecycle";
-export const VERSION_NAME = "memory-lifecycle";
+export const VERSION = "1.4.27-derived-privacy";
+export const VERSION_NAME = "derived-privacy";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "忘记我在聊天与画像文件确认落盘后才报成功；写入失败保留清理状态并提示重试。",
-  "纠正、删除和到期的旧记忆及显式关联回复不再绕回上下文；失效回合的旧话题一并移除。",
-  "提及对象的话题线索与后台画像也排除失效来源；新增记忆不额外增加关系分数。",
+  "忘记我也会清除表情采集的发送者关联；只由本人贡献的自动采集项停用，共用或人工收藏不自动删除。",
+  "旧表情采集、分析和选择结果在资料变化后停止回填，不继续调用备用模型或发送旧结果。",
+  "表情目录损坏时保留原文件并显示未知；取消的分析不再显示完成，清理落盘失败可明确重试。",
   "JM、模型主备、思考档位与关系评分保持不变；Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Forget confirms chat and profile persistence before reporting success. Failed writes retain cleared in-memory state and request a retry.",
-  "Corrected, removed and expired note sources and explicitly linked replies stay out of context; stale thread topics are discarded too.",
-  "Mention topic hints and background profiles exclude invalid sources. Explicit note records do not add relationship points.",
+  "Forget also clears sticker sender associations. Sole-source automatic captures are disabled; shared and manual favorites are not automatically deleted.",
+  "Stale sticker capture, analysis and selection results cannot write back, start fallback calls or send after a privacy change.",
+  "Unreadable catalogs preserve their files and show unknown. Cancelled analyses do not report completion, and failed erase writes can be retried.",
   "JM, model routes, reasoning modes and relationship scoring remain unchanged. Windows stays frozen.",
 ]);
 

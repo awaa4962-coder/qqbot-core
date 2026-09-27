@@ -9,6 +9,8 @@ import { invalidateUserMemoryGeneration } from "./memory-profile/generation.mjs"
 import { chatDeliveryLedger } from "./cognition/delivery-ledger.mjs";
 import { memoryNoteService } from "./memory-profile/notes.mjs";
 import { flushMemoryProfilesSync } from "./memory-profile/store.mjs";
+import { forgetStickerSender } from "./features/stickers/catalog-store.mjs";
+import { forgetStickerCaptureUser } from "./features/stickers/capture-service.mjs";
 
 const DEFAULT_STYLE = Object.freeze({
   length: "normal",
@@ -184,6 +186,7 @@ export function buildPrivacyText() {
     "9. 明确记忆按群或私聊分别保存，默认 30 天、最长 90 天；私聊只有你主动使用记忆命令才保存条目，不自动保存私聊原文。管理员可在控制台查看、纠正或删除，备注标明管理员来源。删除条目不删除原群消息；完整清理请用“忘记我”。",
     "10. 聊天的只读工具只能查询你在当前会话范围的资料，入选内容会交给配置的模型；公开搜索只能使用本条消息明写的公开词，不能携带记忆或附件内容。工具不会替你保存或修改任何资料。",
     "11. 看图会把规范化图片交给配置的模型；文字脱敏无法抹掉图片里的隐私，请勿上传含凭据的截图。客观描述只在同用户/会话的内存中缓存最多10分钟，遗忘或重启清空；本模块不落盘原图、不缓存语境回复，遗忘不能撤回已交给模型的图片。",
+    "12. 忘记我会清除表情采集中的发送者关联，停止旧采集结果继续使用；只由你提供且非人工维护的采集项会停用。共用或人工收藏的素材、已上传QQ的云表情不自动删除，需管理员另行处理。",
   ].join("\n");
 }
 
@@ -220,8 +223,15 @@ export function forgetUserData(uid, options = {}) {
   clearConversationThreads(id, { userStore, save: false });
   const usageCleared = options.skipSave || clearUserCacheUsage(id, options.cacheUsageOptions || {});
   const storesCleared = options.skipSave || persistForgottenMemory();
+  const stickersCleared = clearStickerPersonalData(id, options);
   const result = finishForgetDelivery(id, options);
-  return combineForgetResult(result, notesCleared, usageCleared, storesCleared);
+  return combineForgetResult(result, notesCleared, usageCleared, storesCleared, stickersCleared);
+}
+
+function clearStickerPersonalData(id, options) {
+  forgetStickerCaptureUser(id);
+  try { forgetStickerSender(id, { persist: !options.skipSave }); return true; }
+  catch { return false; }
 }
 
 function persistForgottenMemory() {
@@ -233,10 +243,11 @@ function persistForgottenMemory() {
   return chatsSaved && profilesSaved;
 }
 
-function combineForgetResult(result, notesCleared, usageCleared, storesCleared) {
+function combineForgetResult(result, notesCleared, usageCleared, storesCleared, stickersCleared) {
   if (!notesCleared) return { ok: false, text: "已清理原聊天记忆，但明确记忆文件清理未能确认，请管理员检查存储后重试。" };
   if (!usageCleared) return { ok: false, text: "已处理聊天记忆清理，但个人用量统计清除未能确认，请管理员检查存储后重试。" };
   if (!storesCleared) return { ok: false, text: "已停止使用旧记忆，但聊天或画像文件清理未能确认落盘，请管理员检查存储后重试。" };
+  if (!stickersCleared) return { ok: false, text: "已清理聊天记忆，但表情采集的发送者关联清理未能确认，请管理员检查表情目录后重试。" };
   return result;
 }
 

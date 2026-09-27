@@ -66,6 +66,7 @@ describe("group summary commands", () => {
   it("previews summary without sending to group", async () => {
     let sent = false;
     const reply = await buildGroupSummaryCommandReply("日报预览 2000000002 2026-06-26 short", {
+      summaryRoot,
       userId: 42,
       admins: ["42"],
       groupWhitelist: [2000000002],
@@ -126,6 +127,7 @@ describe("group summary commands", () => {
     assert.match(blocked, /白名单/);
 
     const noMessages = await buildGroupSummaryCommandReply("日报预览 2000000002 2026-06-26", {
+      summaryRoot,
       userId: 42,
       admins: ["42"],
       groupWhitelist: [2000000002],
@@ -137,6 +139,7 @@ describe("group summary commands", () => {
   it("keeps excluded groups out of the default summary whitelist", async () => {
     for (const groupId of [2000000004, 2000000005]) {
       const result = await previewGroupSummary({
+        root: summaryRoot,
         groupId,
         dateText: "2026-06-26",
         messages: sampleMessages(8),
@@ -154,6 +157,7 @@ describe("group summary commands", () => {
       user_id: 42,
       group_id: 2000000002,
     }, {
+      summaryRoot,
       admins: ["42"],
       groupWhitelist: [2000000002],
       summaryMessages: sampleMessages(1),

@@ -9,12 +9,14 @@ import {
   markStickerCaptureRejected,
   removeStickerEntry,
   retireStaleCapturedStickers,
+  stickerCatalogAvailable,
   upsertCapturedSticker,
 } from "./catalog-store.mjs";
 import { addBufferToCloudFavorites } from "./cloud-favorites.mjs";
 import { createCandidateQueue } from "./candidate-queue.mjs";
 import { classifyStickerCandidate } from "./image-classifier.mjs";
 import { resolveStickerAllowedGroups } from "./scope.mjs";
+import { createStickerPrivacyGuard } from "./privacy.mjs";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const SAME_SENDER_WINDOW_MS = 10 * 60 * 1000;
@@ -62,7 +64,9 @@ export function observeGroupStickerCandidates(ctx = {}, options = {}) {
 
 export async function processCandidate(candidate, options = {}) {
   const generation = captureGeneration;
+  const privacyGuard = options.privacyGuard || createStickerPrivacyGuard(candidate.userId);
   const ensureAllowed = () => {
+    privacyGuard();
     const reason = generation !== captureGeneration ? "capture_stopped"
       : captureGate(options.settings || getStickerSettings(), candidate.groupId, candidate.userId);
     if (reason) throw new Error(reason);
@@ -78,7 +82,7 @@ export async function processCandidate(candidate, options = {}) {
     if (prepared.rejected) return prepared.result;
     ensureAllowed();
     const settings = options.settings || getStickerSettings();
-    return await promotePreparedCandidate(prepared, candidate, settings, options, ensureAllowed);
+    return await promotePreparedCandidate(prepared, candidate, settings, { ...options, privacyGuard }, ensureAllowed);
   } catch (error) {
     status.lastError = error.message;
     logE("group sticker capture failed:", error.message);
@@ -130,7 +134,10 @@ async function promotePreparedCandidate(prepared, candidate, settings, options, 
     mimeType: image.mimeType,
     url: candidate.image.url,
   }, { ...options.cloudOptions, ensureAllowed });
-  return finalizePromotion(observed.entry, cloud, candidate, options);
+  // An already committed cloud add still needs its receipt recorded; it cannot be undone by a local cancellation.
+  const result = finalizePromotion(observed.entry, cloud, candidate, options);
+  options.privacyGuard();
+  return result;
 }
 
 function enforceCaptureQuota(observed, quota) {
@@ -195,6 +202,7 @@ function normalizeIncomingImages(ctx) {
 
 function captureGate(settings, groupId, userId) {
   if (!CFG.stickerEnabled || settings.mode === "off") return "sticker_off";
+  if (!stickerCatalogAvailable()) return "catalog_unavailable";
   if (settings.captureMode === "off") return "capture_off";
   if (!resolveStickerAllowedGroups(settings).includes(groupId)) return "group_not_allowed";
   if (!userId || userId === CFG.selfUin) return "self_or_unknown";
@@ -205,9 +213,17 @@ function enqueueIncomingImage(candidate, options) {
   if (candidate.image.isFlash || candidate.image.type === "flash" || !candidate.image.url) return 0;
   if (isRecentSameSender(candidate.groupId, candidate.userId, candidate.image.url, options.now)) return 0;
   const key = crypto.createHash("sha256").update(candidate.image.url).digest("hex");
+  const privacyGuard = createStickerPrivacyGuard(candidate.userId);
   return queue.enqueue(key, async () => {
-    await processCandidate(candidate, options);
+    await processCandidate(candidate, { ...options, privacyGuard });
   }).accepted ? 1 : 0;
+}
+
+export function forgetStickerCaptureUser(userId) {
+  const id = String(userId);
+  for (const key of recentSenderImages.keys()) {
+    if (key.split(":")[1] === id) recentSenderImages.delete(key);
+  }
 }
 
 function isRecentSameSender(groupId, userId, url, nowValue) {
