@@ -7,6 +7,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { URL } from "node:url";
 
+import { CFG } from "../bridge/config.mjs";
 import {
   buildEditableConfigSnapshot,
   handleAdminApiRequest,
@@ -35,6 +36,7 @@ test("editable admin config snapshot excludes unsafe fields", () => {
   assert.ok(snapshot.unsafeFieldsExcluded.includes("mimoKey"));
   assert.equal(snapshot.files.botNames.status, "editable-create-on-save");
   assert.equal(snapshot.files.botNames.writable, true);
+  assert.match(snapshot.revision, /^[a-f0-9]{64}$/);
   assert.ok(snapshot.fileStatusLegend["editable-create-on-save"]);
   assert.equal(JSON.stringify(snapshot).includes("raw"), false);
 });
@@ -102,6 +104,66 @@ test("admin config route validates POST body", async () => {
   assert.equal(handled, true);
   assert.equal(writes[0].statusCode, 400);
   assert.match(writes[0].payload.error, /unsupported config field/);
+});
+
+test("stale config revision rejects a full-form save before changing any file", t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-config-revision-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const options = { root, cfg: editableConfigFixture(), longGroups: [], env: {}, requireRevision: true };
+  const first = buildEditableConfigSnapshot(options);
+  const firstSave = saveEditableConfig({ revision: first.revision,
+    editable: { groupWhitelist: [123456], friendWhitelist: [456789] } }, options);
+  assert.equal(firstSave.ok, true);
+  assert.notEqual(firstSave.revision, first.revision);
+
+  const before = fs.readFileSync(path.join(root, ".env_groups"));
+  assert.throws(() => saveEditableConfig({ revision: first.revision,
+    editable: { groupWhitelist: [999999], friendWhitelist: [888888] } }, options),
+  error => error.code === "config_conflict");
+  assert.deepEqual(fs.readFileSync(path.join(root, ".env_groups")), before);
+  assert.equal(fs.readFileSync(path.join(root, ".env_friends"), "utf8"), "456789\n");
+
+  const refreshed = buildEditableConfigSnapshot(options);
+  fs.writeFileSync(path.join(root, ".env_groups"), "777777\n");
+  assert.throws(() => saveEditableConfig({ revision: refreshed.revision,
+    editable: { groupWhitelist: [999999] } }, options), error => error.code === "config_conflict");
+  assert.equal(fs.readFileSync(path.join(root, ".env_groups"), "utf8"), "777777\n");
+});
+
+test("admin config route reports a missing revision as conflict", async () => {
+  const writes = [];
+  const file = path.join(CFG.configRoot, ".env_bot_names");
+  const before = fs.existsSync(file) ? fs.readFileSync(file) : null;
+  const req = Readable.from([Buffer.from(JSON.stringify({ editable: { botNames: ["SyntheticBot"] } }))]);
+  Object.assign(req, { method: "POST", url: "/admin/config", socket: { remoteAddress: "127.0.0.1" }, headers: {} });
+  const handled = await handleAdminApiRequest(req, {}, {
+    pathname: "/admin/config", url: new URL("http://localhost/admin/config"),
+    sendJson(_res, statusCode, payload) { writes.push({ statusCode, payload }); },
+  });
+  assert.equal(handled, true);
+  assert.equal(writes[0].statusCode, 409);
+  assert.match(writes[0].payload.error, /重新读取/);
+  assert.deepEqual(fs.existsSync(file) ? fs.readFileSync(file) : null, before);
+});
+
+test("admin config route accepts a fresh revision and returns the next one", async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-config-route-revision-"));
+  const priorRoot = CFG.configRoot;
+  CFG.configRoot = root;
+  t.after(() => { CFG.configRoot = priorRoot; fs.rmSync(root, { recursive: true, force: true }); });
+  const snapshot = buildEditableConfigSnapshot();
+  const writes = [];
+  const req = Readable.from([Buffer.from(JSON.stringify({ revision: snapshot.revision,
+    editable: { groupWhitelist: [123456789] } }))]);
+  Object.assign(req, { method: "POST", url: "/admin/config", socket: { remoteAddress: "127.0.0.1" }, headers: {} });
+  await handleAdminApiRequest(req, {}, {
+    pathname: "/admin/config", url: new URL("http://localhost/admin/config"),
+    sendJson(_res, statusCode, payload) { writes.push({ statusCode, payload }); },
+  });
+  assert.equal(writes[0].statusCode, 200);
+  assert.equal(fs.readFileSync(path.join(root, ".env_groups"), "utf8"), "123456789\n");
+  assert.match(writes[0].payload.revision, /^[a-f0-9]{64}$/);
+  assert.notEqual(writes[0].payload.revision, snapshot.revision);
 });
 
 test("saved config survives refresh and a second full-form save before restart", t => {

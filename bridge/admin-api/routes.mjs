@@ -215,9 +215,9 @@ async function handleConfigSaveRoute(req, res, context) {
   const { sendJson } = context;
   try {
     const payload = await readJsonRequestBody(req);
-    sendJson(res, 200, saveEditableConfig(payload), 2);
+    sendJson(res, 200, saveEditableConfig(payload, { requireRevision: true }), 2);
   } catch (error) {
-    sendJson(res, 400, { error: error.message });
+    sendJson(res, error.code === "config_conflict" ? 409 : 400, { error: error.message });
   }
 }
 

@@ -314,14 +314,49 @@ if (!vm.SourceTextModule) {
     editor.querySelector = selector => selector === ".list-editor-chips" ? chips : input;
     editor.querySelectorAll = () => [input, add]; h.editors.push(editor);
     const [config] = await h.imports(["pages/configuration.js"]);
-    config.renderConfigEditor({ editable: { botNames: ["saved-name"], groupWhitelist: ["123456"] }, effective: { botNames: ["old-name"] }, pendingRestart: true, files: { groupWhitelist: { writable: false, envName: "QQBOT_GROUPS" } } });
+    config.renderConfigEditor({ revision: "a".repeat(64), editable: { botNames: ["saved-name"], groupWhitelist: ["123456"] }, effective: { botNames: ["old-name"] }, pendingRestart: true, files: { groupWhitelist: { writable: false, envName: "QQBOT_GROUPS" } } });
     assert.equal(h.element("cfgBotNames").value, "saved-name");
     assert.equal(input.disabled, true); assert.equal(add.disabled, true);
     assert.equal(config.configPayload().editable.groupWhitelist, undefined);
     assert.equal(config.configPayload().editable.botNames[0], "saved-name");
+    assert.equal(config.configPayload().revision, "a".repeat(64));
     assert.match(h.element("configDirtyState").textContent, /待重启/);
     assert.match(h.element("configStatus").textContent, /当前运行配置不同/);
     input.value = "999999"; config.commitListEditor(editor);
     assert.equal(h.element("cfgGroupWhitelist").value, "123456");
+  });
+
+  test("config conflict keeps edits and successful save with failed refresh is not reported as unsaved", async () => {
+    for (const outcome of ["conflict", "refresh-failed"]) {
+      const h = harness(); const calls = [];
+      h.host.call = async (action, payload) => {
+        calls.push({ action, payload });
+        if (action === "saveConfig" && outcome === "conflict") throw Object.assign(new Error("stale"), { status: 409 });
+        if (action === "getConfig") throw new Error("refresh unavailable");
+        return { ok: true, message: "配置已保存" };
+      };
+      const [actions, config, state] = await h.imports(["ui/actions.js", "pages/configuration.js", "ui/state.js"]);
+      config.renderConfigEditor({ revision: "b".repeat(64), editable: { botNames: ["Night"] }, files: {}, pendingRestart: false });
+      h.element("cfgBotNames").value = "Night New";
+      config.updateConfigDirty();
+      await actions.runAction("saveConfig", null, { silent: true });
+      assert.equal(h.element("cfgBotNames").value, "Night New");
+      assert.equal(state.uiState.configDirty, true);
+      assert.equal(calls.filter(call => call.action === "saveConfig").length, 1);
+      assert.equal(calls[0].payload.revision, "b".repeat(64));
+      assert.match(h.element("configStatus").textContent, outcome === "conflict" ? /别处更新/ : /已保存，但重新读取失败/);
+      assert.equal(calls.some(call => call.action === "getConfig"), outcome === "refresh-failed");
+    }
+  });
+
+  test("background refresh cannot advance a dirty config form's revision", async () => {
+    const h = harness();
+    const [config, overview] = await h.imports(["pages/configuration.js", "pages/overview.js"]);
+    config.renderConfigEditor({ revision: "c".repeat(64), editable: { botNames: ["Old"] }, files: {}, pendingRestart: false });
+    h.element("cfgBotNames").value = "Local edit";
+    config.updateConfigDirty();
+    overview.renderSnapshot({ config: { revision: "d".repeat(64), editable: { botNames: ["Remote edit"] }, files: {}, pendingRestart: false } });
+    assert.equal(h.element("cfgBotNames").value, "Local edit");
+    assert.equal(config.configPayload().revision, "c".repeat(64));
   });
 }

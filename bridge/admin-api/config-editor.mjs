@@ -2,7 +2,10 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { createHmac, randomBytes } from "node:crypto";
 import { CFG, LONG_GROUPS } from "../config.mjs";
+
+const REVISION_KEY = randomBytes(32);
 
 const EDITABLE_FILES = Object.freeze({
   botNames: { file: ".env_bot_names", env: "QQBOT_NAMES" },
@@ -38,6 +41,7 @@ export function buildEditableConfigSnapshot(options = {}) {
   const longGroups = options.longGroups || LONG_GROUPS;
   const root = options.root || CFG.configRoot;
   const env = options.env || process.env;
+  const revision = configRevision(root, env);
   const effective = Object.fromEntries(Object.keys(EDITABLE_FILES).map(field => [field,
     [...(field === "longGroups" ? longGroups : cfg[field] || [])],
   ]));
@@ -59,7 +63,9 @@ export function buildEditableConfigSnapshot(options = {}) {
       pendingRestart: !sameList(editable[field], effective[field]),
     };
   }
+  assertUnchangedConfigRevision(root, env, revision);
   return {
+    revision,
     editable,
     effective,
     files,
@@ -86,6 +92,7 @@ export function saveEditableConfig(payload, options = {}) {
   const root = options.root || CFG.configRoot;
   const normalized = normalizeEditablePayload(payload);
   const env = options.env || process.env;
+  assertCurrentConfigRevision(payload, root, env, options.requireRevision);
   // Validate all environment-owned fields before writing any sidecar.
   for (const [field, values] of Object.entries(normalized)) {
     const envName = EDITABLE_FILES[field].env;
@@ -109,7 +116,33 @@ export function saveEditableConfig(payload, options = {}) {
     ok: true,
     saved,
     restartRequired: saved.length > 0,
+    revision: configRevision(root, env),
   };
+}
+
+function assertUnchangedConfigRevision(root, env, revision) {
+  if (revision !== configRevision(root, env)) throw new Error("config changed while reading; refresh and retry");
+}
+
+function assertCurrentConfigRevision(payload, root, env, required) {
+  if (!required) return;
+  if (/^[a-f0-9]{64}$/.test(payload?.revision || "") && payload.revision === configRevision(root, env)) return;
+  throw Object.assign(new Error("配置已在别处更新，请重新读取后再保存"), { code: "config_conflict" });
+}
+
+function configRevision(root, env) {
+  const entries = Object.entries(EDITABLE_FILES).map(([field, definition]) => {
+    if (Object.hasOwn(env, definition.env)) return [field, "environment", String(env[definition.env])];
+    try {
+      const raw = fs.readFileSync(path.join(root, definition.file));
+      if (raw.length > 64 * 1024) throw new Error("config file too large");
+      return [field, "file", raw.toString("base64")];
+    } catch (error) {
+      if (error.code === "ENOENT") return [field, "missing"];
+      throw new Error("cannot read config list " + definition.file + " (" + (error.code || "read_error") + ")");
+    }
+  });
+  return createHmac("sha256", REVISION_KEY).update(JSON.stringify(entries)).digest("hex");
 }
 
 function readSavedList(root, file, field) {

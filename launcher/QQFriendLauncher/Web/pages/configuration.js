@@ -91,6 +91,7 @@ export function updateConfigDirty() {
 
 export function configPayload() {
   return {
+    revision: uiState.lastConfigSnapshot.revision,
     editable: Object.fromEntries(Object.entries(CONFIG_FIELDS)
       .filter(([, field]) => uiState.lastConfigSnapshot.files?.[field]?.writable !== false)
       .map(([id, field]) => [field, splitList($(id).value)])),

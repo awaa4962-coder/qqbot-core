@@ -17,6 +17,7 @@ export const VERSION_NOTES_ZH = Object.freeze([
   "词云渲染和关系短评也进入有界命令槽，生成期间不会堵住本群后续消息；命令忙碌提示不会取消正在生成的明确 @ 回复。",
   "发送仍走持久账本，后台结束后才结案；不确定预览回执不再触发第二份小程序预览或短时重复链接发送。",
   "已确认发送的群聊回答记录 QQ 消息号，引用夜星较早的回复时先按编号关联原轮次，避免只靠相似词接错话题。",
+  "Linux 管理页保存白名单等配置时会检查编辑版本；内容已被别处修改就拒绝覆盖并保留本页输入。",
   "JM、模型主备、思考档位与关系评分不变；只更新 Linux，Windows 继续冻结。",
 ]);
 
@@ -29,6 +30,7 @@ export const VERSION_NOTES_EN = Object.freeze([
   "Wordcloud rendering and relationship comments now use bounded command slots, and their busy notices cannot cancel an in-flight explicit mention reply.",
   "Actual sends remain in the durable ledger and finish diagnostics only on completion. Uncertain preview delivery no longer triggers a second mini-app payload or immediate same-URL retry.",
   "Confirmed group replies retain their QQ message IDs, so quoting an older bot reply can select that exact turn before lexical fallback.",
+  "Linux admin config saves now reject stale edits without overwriting newer changes, while the page keeps unsaved input visible.",
   "Only Linux is updated; Windows stays frozen. JM, model routes, reasoning modes and relationship scoring remain unchanged.",
 ]);
 

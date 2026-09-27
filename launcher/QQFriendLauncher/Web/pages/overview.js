@@ -94,7 +94,6 @@ export function renderStatus(status) {
 export function renderSnapshot(snapshot) {
   if (!snapshot || typeof snapshot !== "object") return;
   if (snapshot.config) {
-    uiState.lastConfigSnapshot = snapshot.config;
     renderConfigEditor(snapshot.config);
   }
   if (snapshot.status) renderStatus(snapshot.status);

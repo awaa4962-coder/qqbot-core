@@ -252,7 +252,9 @@ export async function runAction(action, button = null, options = {}) {
       renderConfigEditor(result, { force: true });
       renderConfig(uiState.lastStatus, uiState.lastConfigSnapshot);
     } else if (action === "saveConfig") {
-      const snapshot = await host.call("getConfig");
+      let snapshot;
+      try { snapshot = await host.call("getConfig"); }
+      catch { throw new Error("配置已保存，但重新读取失败；请刷新确认，暂勿重复提交。"); }
       uiState.lastConfigSnapshot = snapshot;
       renderConfigEditor(snapshot, { force: true });
       renderConfig(uiState.lastStatus, snapshot);
@@ -322,6 +324,10 @@ export function showActionError(action, error) {
     return;
   }
   if (actionGroup(action) === "config") {
+    if (action === "saveConfig" && error.status === 409) {
+      setOutput("configStatus", "配置已在别处更新，本页修改未被覆盖。请先核对当前输入，再重新读取配置。", true);
+      return;
+    }
     setOutput("configStatus", message.startsWith("配置已保存") ? message : `配置操作失败：${message}`, true);
     return;
   }
