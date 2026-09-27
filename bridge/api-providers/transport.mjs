@@ -7,6 +7,7 @@ import { chatRunSignal, chatRunStopReason } from "../cognition/chat-run.mjs";
 import { normalizeUsage } from "./usage-values.mjs";
 
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const MAX_PROVIDER_RESPONSE_BYTES = 1024 * 1024;
 
 export async function postProviderJson(provider, key, body, options = {}) {
   const endpoint = validateProviderEndpoint(provider);
@@ -108,7 +109,8 @@ export function buildProviderHeaders(provider, key) {
 
 async function readResponseJson(response, maxBytes) {
   try {
-    const limit = Number.isSafeInteger(maxBytes) && maxBytes > 0 ? maxBytes : 0;
+    const limit = Number.isSafeInteger(maxBytes) && maxBytes > 0
+      ? Math.min(maxBytes, MAX_PROVIDER_RESPONSE_BYTES) : MAX_PROVIDER_RESPONSE_BYTES;
     const data = await readResponseData(response, limit);
     if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("invalid response shape");
     return data;

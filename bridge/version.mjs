@@ -18,6 +18,7 @@ export const VERSION_NOTES_ZH = Object.freeze([
   "发送仍走持久账本，后台结束后才结案；不确定预览回执不再触发第二份小程序预览或短时重复链接发送。",
   "已确认发送的群聊回答记录 QQ 消息号，引用夜星较早的回复时先按编号关联原轮次，避免只靠相似词接错话题。",
   "Linux 管理页保存白名单等配置时会检查编辑版本；内容已被别处修改就拒绝覆盖并保留本页输入。",
+  "模型接口响应现在限制接收大小，异常超大返回不会被当成有效回复或自动重试。",
   "JM、模型主备、思考档位与关系评分不变；只更新 Linux，Windows 继续冻结。",
 ]);
 
@@ -31,6 +32,7 @@ export const VERSION_NOTES_EN = Object.freeze([
   "Actual sends remain in the durable ledger and finish diagnostics only on completion. Uncertain preview delivery no longer triggers a second mini-app payload or immediate same-URL retry.",
   "Confirmed group replies retain their QQ message IDs, so quoting an older bot reply can select that exact turn before lexical fallback.",
   "Linux admin config saves now reject stale edits without overwriting newer changes, while the page keeps unsaved input visible.",
+  "Oversized provider responses are bounded and rejected without automatic retry or treating partial content as a reply.",
   "Only Linux is updated; Windows stays frozen. JM, model routes, reasoning modes and relationship scoring remain unchanged.",
 ]);
 

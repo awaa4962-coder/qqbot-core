@@ -104,6 +104,26 @@ test("provider receive cap cancels a stream early and does not retry oversized d
   assert.equal(result.data, undefined);
 });
 
+test("provider responses remain bounded when a task omits or raises its receive cap", async t => {
+  for (const maxResponseBytes of [undefined, 0, 2 * 1024 * 1024]) {
+    let requests = 0; let chunks = 0; let cancelled = false;
+    t.mock.method(globalThis, "fetch", async () => {
+      requests++;
+      return new globalThis.Response(new globalThis.ReadableStream({
+        pull(controller) { chunks++; controller.enqueue(new Uint8Array(65536)); if (chunks === 64) controller.close(); },
+        cancel() { cancelled = true; },
+      }), { status: 200 });
+    });
+    const result = await postProviderJson(provider, "test-key", {}, { maxResponseBytes, retryDelayMs: 0 });
+    assert.equal(result.ok, false);
+    assert.equal(result.responseTooLarge, true);
+    assert.equal(requests, 1);
+    assert.equal(cancelled, true);
+    assert.ok(chunks < 32);
+    t.mock.restoreAll();
+  }
+});
+
 test("provider receive cap counts UTF-8 bytes for text and JSON-only transports", async t => {
   for (const type of ["text", "json"]) {
     let calls = 0;
