@@ -42,5 +42,5 @@ function slotReadiness(task, id, config, options) {
   } catch {
     return { ready: false, reason: "configuration_invalid" };
   }
-  return { ready: true, reason: "configured" };
+  return { ready: true, reason: "configured", visionReady: provider.capabilities?.includes("vision") === true };
 }

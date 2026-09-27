@@ -7,6 +7,7 @@ export function buildCommandCatalog() {
     count: COMMAND_DEFINITIONS.length,
     commands: COMMAND_DEFINITIONS.map(command => ({
       id: command.id,
+      capabilityId: command.capabilityId || null,
       permission: command.permission,
       aliases: command.aliases || [],
       helpPage: command.helpPage || null,

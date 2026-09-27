@@ -4,21 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.31-source-lineage";
-export const VERSION_NAME = "source-lineage";
+export const VERSION = "1.4.32-capability-facts";
+export const VERSION_NAME = "capability-facts";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "关系标签、话题和回复建议不再从过期或撤销的聊天重新推导，原关系分数不变。",
-  "引用链保留有上限的来源编号，中间历史被截断后仍能识别后续纠正、删除和到期。",
-  "图片引用与文字引用共用来源保护；失效来源下已确认发送的回复保留回执，但不再成为后续记忆。",
+  "帮助、控制台和机器人自身信息使用同一能力编号与命令权限，普通用户不会看到管理员专属命令。",
+  "能力页区分是否安装、是否开启、当前会话权限与服务状态；主备模型配置分别显示，不把未探测的网络说成在线。",
+  "看图同时识别聊天模型直接看图和专用视觉路由；日报与成员总结分别说明降级及模型不可用情况。",
   "JM、模型主备、思考档位与关系评分保持不变；Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Relationship prose no longer reconstructs topics or preferences from expired or retracted chat text. Numerical scores are unchanged.",
-  "Bounded source ids preserve known reply ancestry across buffer eviction, later corrections, deletions and expiry.",
-  "Image-only and text quotes share source guards. Confirmed replies to excluded sources retain receipts without becoming later memory.",
+  "Help, the console and bot self-description share capability IDs and command permissions; ordinary users cannot see admin-only commands.",
+  "Capability views separate installation, enablement, caller access and service state. Primary and fallback configuration is shown without claiming connectivity.",
+  "Image understanding recognizes direct multimodal chat and the dedicated vision route. Daily and member summaries report their different degraded modes.",
   "JM, model routes, reasoning modes and relationship scoring remain unchanged. Windows stays frozen.",
 ]);
 

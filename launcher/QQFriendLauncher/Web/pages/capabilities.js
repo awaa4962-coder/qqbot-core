@@ -81,9 +81,10 @@ export function capabilityScopeLabel(scope) {
 
 export function capabilityStateLabel(state) {
   if (!state) return "状态待刷新";
+  const installed = state.installed === true ? "已安装" : state.installed === false ? "未安装" : "安装状态待确认";
   const enabled = state.enabled ? "已启用" : "未启用";
   const permission = state.permitted === null ? "权限按实际会话判断" : state.permitted ? "会话已许可" : "当前会话受限";
   const health = ({ ready: "依赖检查通过", configured: "模型已配置，连通性未探测", partially_configured: "部分会话模型配置不可用",
-    configuration_error: "模型配置不可用", degraded: "依赖异常", unknown: "检查中", not_checked: "未做运行探测" })[state.health] || "状态待确认";
-  return [enabled, permission, health].join(" · ");
+    configuration_error: "模型配置不可用", degraded: "依赖异常", disabled: "当前未运行", unknown: "检查中", not_checked: "未做运行探测" })[state.health] || "状态待确认";
+  return [installed, enabled, permission, health].join(" · ");
 }

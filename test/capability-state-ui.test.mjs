@@ -13,10 +13,12 @@ test("capability page separates configured model state, permission and dependenc
   globalThis.document = { getElementById: element };
   try {
     const { renderCapabilities, capabilityStateLabel } = await import("../launcher/QQFriendLauncher/Web/pages/capabilities.js");
-    const state = { enabled: true, permitted: null, health: "configured" };
+    const state = { installed: true, enabled: true, permitted: null, health: "configured" };
     renderCapabilities({ categories: [], capabilities: [{ id: "chat.reply", name: "聊天", status: "available", statusLabel: "已配置", state }] });
     assert.match(element("capabilityList").innerHTML, /连通性未探测/);
     assert.match(element("capabilityList").innerHTML, /权限按实际会话判断/);
+    assert.match(element("capabilityList").innerHTML, /已安装/);
+    assert.match(capabilityStateLabel({ installed: false, enabled: false, permitted: false, health: "disabled" }), /未安装.*未启用.*当前会话受限/);
     assert.match(capabilityStateLabel({ enabled: true, permitted: false, health: "unknown" }), /当前会话受限.*检查中/);
     assert.match(capabilityStateLabel({ enabled: true, permitted: true, health: "ready" }), /依赖检查通过/);
   } finally {

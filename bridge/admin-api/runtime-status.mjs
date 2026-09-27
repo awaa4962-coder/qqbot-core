@@ -13,6 +13,7 @@ import { getVisionDescriptionCacheStatus as getImageContextCacheStatus } from ".
 import { getStickerRuntimeStatus } from "../features/stickers/index.mjs";
 import { getJmRuntimeHealth } from "../jm-provider.mjs";
 import { readApiProviderHealth } from "../api-providers/health.mjs";
+import { memoryProfilesAvailable } from "../memory-profile/store.mjs";
 
 export function buildRuntimeStatus(options = {}) {
   const now = options.now || new Date();
@@ -61,7 +62,7 @@ function buildRuntimeModules(now) {
     relationship: { enabled: true, health: "ready", exportReserved: true },
     memory: {
       enabled: true,
-      health: "ready",
+      health: memoryProfilesAvailable() ? "ready" : "degraded",
       legacyRefreshEnabled: CFG.legacyProfileRefreshEnabled,
     },
     cognition: { ...getCognitionStatus({ now: nowMs }), health: "ready" },

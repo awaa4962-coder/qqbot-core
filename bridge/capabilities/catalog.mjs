@@ -2,7 +2,9 @@
 
 import { CFG } from "../config.mjs";
 import { COMMAND_DEFINITIONS } from "../commands/manifest.mjs";
-import { getStickerSettings } from "../features/stickers/catalog-store.mjs";
+import { MODULE_DEFINITIONS } from "../modules/manifest.mjs";
+import { getStickerSettings, stickerCatalogAvailable } from "../features/stickers/catalog-store.mjs";
+import { memoryProfilesAvailable } from "../memory-profile/store.mjs";
 import { isAdminUser, canUsePrivateChat } from "../commands/permissions.mjs";
 import { messageRouteRejection } from "../event-admission.mjs";
 import { readApiProviderHealth } from "../api-providers/health.mjs";
@@ -21,6 +23,7 @@ export const CAPABILITY_CATEGORIES = Object.freeze([
 export const CAPABILITY_DEFINITIONS = Object.freeze([
   capability({
     id: "chat.reply",
+    moduleId: "api-providers",
     category: "chat",
     name: "聊天回复",
     summary: "结合最近对话、明确记忆与来源资料回复；接口支持工具时可按需查询本人当前会话记录和权限内状态，只读不代替管理命令。",
@@ -31,6 +34,7 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
   }),
   capability({
     id: "vision.context",
+    moduleId: "api-providers",
     category: "chat",
     name: "图片与表情包理解",
     summary: "识别图片，并结合回复引用和最近聊天理解语境。",
@@ -41,17 +45,19 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
   }),
   capability({
     id: "group.summary",
+    moduleId: "group-summary",
     category: "group",
     name: "每日群报",
     summary: "为已启用的群生成每日摘要；预览和手动发送需要管理员权限。",
     interaction: "automatic",
     scopes: ["group"],
-    examples: ["@夜星 日报帮助"],
+    examples: [],
     keywords: ["日报", "群报", "每日总结", "总结"],
     access: "summary-groups",
   }),
   capability({
     id: "group.wordcloud",
+    moduleId: "wordcloud",
     category: "group",
     name: "群词云",
     summary: "按今天、昨天或最近若干天生成群聊热词图。",
@@ -61,13 +67,14 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
     access: "feature-groups",
   }),
   capability({
-    id: "group.conversation-summary", category: "group", name: "成员聊天总结",
+    id: "group.conversation-summary", moduleId: "conversation-summary", category: "group", name: "成员聊天总结",
     summary: "选一人或多人，用自然的话讲清他们在本群聊了什么；默认最近两小时。",
     scopes: ["group"], examples: ["@夜星 总结我", "@夜星 总结 @某人 昨天", "@夜星 分别总结 @甲 @乙 今天"],
     keywords: ["总结", "总结我", "成员总结", "分别总结", "聊天总结"], access: "conversation-summary-groups",
   }),
   capability({
     id: "group.link-preview",
+    moduleId: "link-preview",
     category: "group",
     name: "链接预览",
     summary: "智能读取单个公开网页；B站和 GitHub 仓库提供专用摘要，重复或低价值链接会安静跳过。",
@@ -78,6 +85,7 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
   }),
   capability({
     id: "resources.jm",
+    moduleId: "jm",
     category: "resources",
     name: "JM 下载转发",
     summary: "通过作品编号下载、压缩并转发，临时文件会定时清理。",
@@ -88,6 +96,7 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
   }),
   capability({
     id: "resources.transfer",
+    moduleId: "resource-transfer",
     category: "resources",
     name: "公开资源转发",
     summary: "从经过安全检查的公开链接下载并转发文件。",
@@ -98,6 +107,7 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
   }),
   capability({
     id: "personal.relationship",
+    moduleId: "relationship",
     category: "personal",
     name: "互动熟悉度",
     summary: "根据已有互动记录展示关系摘要，不代表恋爱含义。",
@@ -107,6 +117,7 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
   }),
   capability({
     id: "personal.profile",
+    moduleId: "memory",
     category: "personal",
     name: "我的档案与隐私",
     summary: "查看安全画像摘要、隐私说明，或清理自己的个人记忆。",
@@ -116,6 +127,7 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
   }),
   capability({
     id: "personal.memory",
+    moduleId: "memory",
     category: "personal",
     name: "我的记忆",
     summary: "查看、记录、更新事项状态、纠正或删除当前会话中自己的记忆；各群与私聊隔离，私聊只保存明确提交的单条内容，不自动保存私聊历史。",
@@ -125,6 +137,7 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
   }),
   capability({
     id: "personal.style",
+    moduleId: "memory",
     category: "personal",
     name: "称呼与回复风格",
     summary: "保存你的称呼和偏好的回复表达方式。",
@@ -134,6 +147,7 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
   }),
   capability({
     id: "memes.stickers",
+    moduleId: "stickers",
     category: "memes",
     name: "收藏表情回复与群聊采集",
     summary: "文字回复后可补发匹配表情；白名单群可匿名去重采集候选并按阈值加入 QQ 云收藏。",
@@ -145,6 +159,7 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
   }),
   capability({
     id: "system.health",
+    moduleId: "commands",
     category: "system",
     name: "在线状态",
     summary: "查看机器人是否在线以及当前版本。",
@@ -154,6 +169,7 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
   }),
   capability({
     id: "system.cache",
+    moduleId: "api-providers",
     category: "system",
     name: "我的缓存命中",
     summary: "查看由自己触发的模型请求在供应商 Prompt Cache 中的命中率。",
@@ -163,6 +179,7 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
   }),
   capability({
     id: "system.changelog",
+    moduleId: "commands",
     category: "system",
     name: "版本更新",
     summary: "查看最新、指定版本或与关键词相关的更新记录。",
@@ -172,6 +189,7 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
   }),
   capability({
     id: "admin.operations",
+    moduleId: "commands",
     category: "system",
     name: "管理员运行工具",
     summary: "查看运行、画像和日报管理命令，仅管理员可见。",
@@ -182,6 +200,7 @@ export const CAPABILITY_DEFINITIONS = Object.freeze([
   }),
   capability({
     id: "admin.relationship-export",
+    moduleId: "relationship",
     category: "system",
     name: "关系数据导出",
     summary: "仅保留命令入口，当前不会生成或导出关系表。",
@@ -305,7 +324,7 @@ export function buildUnknownCommandSuggestion(commandText, options = {}) {
 }
 
 export function commandCapabilityIds() {
-  return new Set(COMMAND_DEFINITIONS.map(item => item.id));
+  return new Set(COMMAND_DEFINITIONS.map(item => item.capabilityId).filter(Boolean));
 }
 
 function capability(input) {
@@ -321,16 +340,19 @@ function capability(input) {
 }
 
 function buildCapabilityView(item, options, cfg) {
+  const permission = capabilityPermission(item);
+  const module = MODULE_DEFINITIONS.find(entry => entry.id === item.moduleId);
+  const runtime = options.moduleStates?.find(entry => entry.id === item.moduleId) || localModuleHealth(item.moduleId);
   const denial = capabilityScopeDenial(item, options, cfg);
   const available = resolveAvailability(item, options, cfg);
-  const resolved = denial ? { ...denial, enabled: available.enabled } : available;
+  const resolved = availabilityWithRuntime(denial ? { ...denial, enabled: available.enabled } : available, module, runtime, item);
   return {
     id: item.id,
     category: item.category,
     name: item.name,
     summary: item.summary,
     interaction: item.interaction,
-    permission: item.permission,
+    permission,
     access: item.access,
     scopes: [...item.scopes],
     examples: item.examples.map(example => formatExample(example, options)),
@@ -339,13 +361,37 @@ function buildCapabilityView(item, options, cfg) {
     statusLabel: resolved.label,
     statusDetail: resolved.detail,
     state: {
-      installed: true,
+      installed: Boolean(module) && !item.reserved,
       enabled: resolved.enabled,
-      permitted: options.surface === "console" || !options.surface ? null : resolved.permitted,
+      permitted: options.surface === "console" || !options.surface || (options.surface === "group" && !options.userId && resolved.permitted !== false)
+        ? null : resolved.permitted,
       health: resolved.health,
       checkedAt: resolved.checkedAt || null,
     },
   };
+}
+
+function localModuleHealth(moduleId) {
+  if (moduleId === "memory") return { health: memoryProfilesAvailable() ? "ready" : "degraded" };
+  if (moduleId === "stickers") return { health: stickerCatalogAvailable() ? "ready" : "degraded" };
+  return null;
+}
+
+function capabilityPermission(item) {
+  const linked = COMMAND_DEFINITIONS.filter(command => command.capabilityId === item.id && !command.retired);
+  return linked.length ? linked.some(command => command.permission === "admin") ? "admin" : "user" : item.permission;
+}
+
+function availabilityWithRuntime(state, module, runtime, item) {
+  if (item.reserved) return state;
+  if (!module || !module.enabled || runtime?.enabled === false || runtime?.health === "disabled") {
+    return makeAvailability("unavailable", "未启用", "此能力当前未启用", { enabled: false, permitted: state.permitted, health: "disabled" });
+  }
+  if (runtime?.health === "degraded" && state.status === "available") {
+    if (item.moduleId === "api-providers") return state;
+    return makeAvailability("limited", "需检查", "服务运行状态异常，请管理员检查", { enabled: state.enabled, permitted: state.permitted, health: "degraded" });
+  }
+  return runtime?.health === "degraded" && item.moduleId !== "api-providers" ? { ...state, health: "degraded" } : state;
 }
 
 function resolveAvailability(item, options, cfg) {
@@ -354,7 +400,7 @@ function resolveAvailability(item, options, cfg) {
     return chatModelAvailability(options);
   }
   if (item.id === "vision.context") {
-    return modelAvailability("vision", options);
+    return visionAvailability(options);
   }
   if (item.access === "sticker-mode") return stickerAvailability(options, cfg);
   return resolveAccessAvailability(item, options, cfg);
@@ -367,12 +413,24 @@ function resolveAccessAvailability(item, options, cfg) {
       : makeAvailability("unavailable", "已关闭", "链接预览当前已关闭", { enabled: false });
   }
   if (item.access === "summary-groups") {
-    return whitelistAvailability(cfg.summaryGroupWhitelist, options, "群报", false);
+    const access = whitelistAvailability(cfg.summaryGroupWhitelist, options, "群报", false);
+    if (access.status !== "available") return access;
+    const model = modelAvailability("group_summary", options);
+    if (model.status === "unavailable") return makeAvailability("limited", "仅可降级", "日报模型当前不可用，只有低数据量或兼容模式的本地提要可能生成", { health: "configuration_error" });
+    if (model.status === "limited") return makeAvailability("limited", "模型部分可用", model.detail, { health: model.health });
+    return access;
   }
   if (item.access === "feature-groups") {
     return whitelistAvailability(cfg.featureGroupWhitelist, options, "词云", false);
   }
-  if (item.access === "conversation-summary-groups") return whitelistAvailability(cfg.conversationSummaryGroupWhitelist, options, "成员聊天总结", false);
+  if (item.access === "conversation-summary-groups") {
+    const access = whitelistAvailability(cfg.conversationSummaryGroupWhitelist, options, "成员聊天总结", false);
+    if (access.status !== "available") return access;
+    const model = modelAvailability("conversation_summary", options);
+    if (model.status === "unavailable") return makeAvailability("unavailable", "模型不可用", "成员聊天总结没有可调用的模型", { health: "configuration_error" });
+    if (model.status === "limited") return makeAvailability("limited", "模型部分可用", model.detail, { health: model.health });
+    return access;
+  }
   if (item.access === "resource-groups") {
     return whitelistAvailability(cfg.resourceGroupWhitelist, options, "资源转发", false);
   }
@@ -400,17 +458,17 @@ function stickerAvailability(options, cfg) {
 
 function whitelistAvailability(whitelist, options, label, privateAllowed) {
   const values = Array.isArray(whitelist) ? whitelist.map(Number) : [];
-  if (options.surface === "group" && options.groupId) {
-    return values.includes(Number(options.groupId))
-      ? makeAvailability("available", "本群可用", label + "已为当前群启用")
-      : makeAvailability("limited", "本群未开放", label + "仅在已配置群使用", { permitted: false });
-  }
   if (options.surface === "private") {
     return privateAllowed
       ? makeAvailability("available", "私聊可用", label + "已为当前私聊启用")
       : makeAvailability("limited", "仅限群聊", label + "不在私聊中运行", { permitted: false });
   }
-  if (!values.length) return makeAvailability("unavailable", "未配置", "尚未配置可用群");
+  if (!values.length) return makeAvailability("unavailable", "未配置", "尚未配置可用群", { enabled: false, permitted: false });
+  if (options.surface === "group" && options.groupId) {
+    return values.includes(Number(options.groupId))
+      ? makeAvailability("available", "本群可用", label + "已为当前群启用")
+      : makeAvailability("limited", "本群未开放", label + "仅在已配置群使用", { permitted: false });
+  }
   return makeAvailability("available", "已启用", values.length + " 个群已开放");
 }
 
@@ -445,9 +503,28 @@ function jmScopeAvailability(options, cfg) {
 
 function modelAvailability(task, options) {
   const state = options.modelHealth.tasks?.[task];
-  if (!state?.ready) return makeAvailability("unavailable", "配置不可用", "当前任务没有配置可调用的模型，请管理员检查 API 设置", { health: "configuration_error" });
-  const detail = state.primary.ready ? "按当前任务配置调用；接口连通状态以实际请求为准" : "主模型配置不可用，当前仅备用配置可调用";
+  if (!state?.ready || !(state.primary?.ready || state.fallback?.ready)) {
+    return makeAvailability("unavailable", "配置不可用", "当前任务没有配置可调用的模型，请管理员检查 API 设置", { health: "configuration_error" });
+  }
+  if (!state.primary?.ready) return makeAvailability("limited", "仅备用配置", "主模型配置不可用，当前仅备用配置可调用", { health: "partially_configured" });
+  if (state.fallback && !state.fallback.ready) return makeAvailability("limited", "备用不可用", "主模型已配置，备用模型当前不可用", { health: "partially_configured" });
+  const detail = "按当前任务配置调用；接口连通状态以实际请求为准";
   return makeAvailability("available", "已配置", detail, { health: "configured" });
+}
+
+function visionAvailability(options) {
+  const tasks = options.modelHealth.tasks || {};
+  const chatTasks = options.surface === "console" ? ["group_chat", "private_chat"]
+    : [options.surface === "private" ? "private_chat" : "group_chat"];
+  const available = chatTasks.map(task => {
+    const route = tasks[task];
+    if (!route?.ready || !(route.primary?.ready || route.fallback?.ready) || !(tasks.vision?.ready || [route.primary, route.fallback]
+      .some(slot => slot?.ready && slot.visionReady))) return "unavailable";
+    return route.primary?.ready && (!route.fallback || route.fallback.ready) ? "available" : "limited";
+  });
+  if (available.every(status => status === "unavailable")) return makeAvailability("unavailable", "配置不可用", "当前聊天路由没有可用的图片理解路径", { health: "configuration_error" });
+  if (available.some(status => status !== "available")) return makeAvailability("limited", "部分配置", "部分会话的图片理解路径不可用", { health: "partially_configured" });
+  return makeAvailability("available", "已配置", "图片理解路径已配置，接口连通状态以实际请求为准", { health: "configured" });
 }
 
 function chatModelAvailability(options) {
@@ -482,7 +559,7 @@ function makeAvailability(status, label, detail, state = {}) {
 }
 
 function isVisibleToUser(item, options, cfg) {
-  if (item.permission !== "admin") return true;
+  if (capabilityPermission(item) !== "admin") return true;
   if (options.surface === "console") return true;
   return isAdminUser(options.userId || "", options.admins || cfg.adminUins || []);
 }

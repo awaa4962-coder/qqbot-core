@@ -152,6 +152,7 @@ function handleCommandsRoute(_req, res, context) {
 function handleCapabilitiesRoute(_req, res, context) {
   context.sendJson(res, 200, buildCapabilityCatalog({
     surface: "console",
+    moduleStates: buildModuleCatalog().modules,
   }), 2);
 }
 

@@ -1045,6 +1045,11 @@ img[data-sticker-preview][data-state="loading"] { opacity: 0; }
   .meme-source-row button { grid-column: 2; grid-row: 1 / span 3; }
 }
 
+@media (max-width: 360px) {
+  [data-view-panel="capabilities"] .section-head { flex-direction: column; align-items: stretch; gap: 8px; }
+  [data-view-panel="capabilities"] .section-head > button { align-self: flex-start; }
+}
+
 .memory-workspace { min-width: 0; }
 .memory-query { display: grid; grid-template-columns: 100px minmax(120px, 220px) minmax(120px, 220px) auto 36px; gap: 10px; align-items: end; justify-content: start; }
 .memory-query > *, .memory-workbench > *, .memory-context > * { min-width: 0; }
