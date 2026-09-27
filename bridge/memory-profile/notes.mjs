@@ -5,6 +5,7 @@ import { containsSensitiveText, redactSensitiveText } from "../privacy.mjs";
 import { summaryPrivacy } from "../group-summary/state.mjs";
 import { users, groupChats } from "../storage.mjs";
 import { MEMORY_SEMANTICS, assertNoteTransition, buildNoteSemantics, projectNoteSemantics, validNoteSemantics } from "./semantics.mjs";
+import { expandMemorySourceExclusions } from "./source-exclusions.mjs";
 
 const DAY = 86400000;
 const MAX_ITEMS = 32;
@@ -75,7 +76,9 @@ export function createMemoryNoteService(options = {}) {
   function prune(time = now()) {
     const previous = root();
     const items = previous.items.filter(item => item.expiresAt + 7 * DAY > time);
-    const retractions = previous.retractions.filter(item => time - item.at < DAY || (options.hasSource || hasStoredSource)(item));
+    const next = { retractions: [...previous.retractions] };
+    for (const item of previous.items) if (item.expiresAt + 7 * DAY <= time) retainRetraction(next, item, time);
+    const retractions = next.retractions.filter(item => time - item.at < DAY || (options.hasSource || hasStoredSource)(item));
     if (items.length === previous.items.length && retractions.length === previous.retractions.length) return false;
     profiles.notes = { schema: 1, revision: previous.revision + 1, items, retractions };
     invalidate();
@@ -84,10 +87,16 @@ export function createMemoryNoteService(options = {}) {
   function corrections(scope) {
     const normalized = normalizeNoteScope(scope);
     const value = root();
-    const own = projectSnapshot(value, normalized, now(), privacyCutoff(normalized, readPrivacy)).items.filter(item => item.state === "active");
+    const time = now();
+    const own = projectSnapshot(value, normalized, time, privacyCutoff(normalized, readPrivacy)).items.filter(item => item.state === "active");
     const excluded = value.retractions.filter(item => item.groupId === normalized.groupId &&
       (normalized.groupId !== "private" || item.userId === normalized.userId));
-    return { excludedMessageIds: new Set(excluded.map(item => item.messageId)),
+    const expired = value.items.filter(item => item.expiresAt <= time && item.groupId === normalized.groupId &&
+      (normalized.groupId !== "private" || item.userId === normalized.userId));
+    const ids = new Set([...excluded.map(item => item.messageId), ...expired.flatMap(item => [...item.replacedSources, item.source.messageId]).filter(Boolean)]);
+    const history = [...(groupChats[normalized.groupId] || []),
+      ...(users[normalized.userId]?.chats || []).filter(item => String(item.group) === normalized.groupId)];
+    return { excludedMessageIds: expandMemorySourceExclusions(history, ids),
       replacedSources: excluded.filter(item => item.userId === normalized.userId),
       revisions: new Map(own.map(item => [item.id, item.revision])), correctedAt: Math.max(0, ...own.filter(item => item.revision > 1).map(item => item.updatedAt)) };
   }
@@ -111,6 +120,7 @@ function applyAction(root, index, scope, payload, context, now) {
   }
   if (previous) { retainRetraction(root, previous, now); root.items[index] = entry; }
   else {
+    for (const item of root.items) if (item.expiresAt <= now) retainRetraction(root, item, now);
     root.items = root.items.filter(item => item.expiresAt > now);
     if (root.items.length >= MAX_TOTAL || root.items.filter(item => sameScope(item, scope)).length >= MAX_ITEMS) {
       throw memoryError("记忆数量已达上限，请先删除或整理旧条目。", 409);

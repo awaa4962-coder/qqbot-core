@@ -1,4 +1,4 @@
-import { groupChats, saveGroupChats, saveUsers, users } from "./storage.mjs";
+import { flushSavesSync, groupChats, saveGroupChats, saveUsers, users } from "./storage.mjs";
 import { clearConversationThreads } from "./cognition/index.mjs";
 import { clearUserMemoryProfile, getActiveMemoryContext } from "./memory-profile.mjs";
 import { clearUserCacheUsage } from "./api-providers/usage-metrics.mjs";
@@ -8,6 +8,7 @@ import { containsSensitiveText, redactSensitiveText } from "./privacy.mjs";
 import { invalidateUserMemoryGeneration } from "./memory-profile/generation.mjs";
 import { chatDeliveryLedger } from "./cognition/delivery-ledger.mjs";
 import { memoryNoteService } from "./memory-profile/notes.mjs";
+import { flushMemoryProfilesSync } from "./memory-profile/store.mjs";
 
 const DEFAULT_STYLE = Object.freeze({
   length: "normal",
@@ -189,6 +190,8 @@ export function buildPrivacyText() {
 export function forgetUserData(uid, options = {}) {
   const id = String(uid || "");
   if (!id) return { ok: false, text: "没有找到可清理的用户。" };
+  // Even a partially failed erase must stop older asynchronous results from returning.
+  invalidateUserMemoryGeneration(id);
   const notesCleared = clearAdditionalUserRecords(id, options);
   const userStore = options.users || users;
   const chatStore = options.groupChats || groupChats;
@@ -216,17 +219,24 @@ export function forgetUserData(uid, options = {}) {
   clearUserMemoryProfile(id);
   clearConversationThreads(id, { userStore, save: false });
   const usageCleared = options.skipSave || clearUserCacheUsage(id, options.cacheUsageOptions || {});
-  if (!options.skipSave) {
-    saveUsers();
-    saveGroupChats();
-  }
+  const storesCleared = options.skipSave || persistForgottenMemory();
   const result = finishForgetDelivery(id, options);
-  return combineForgetResult(result, notesCleared, usageCleared);
+  return combineForgetResult(result, notesCleared, usageCleared, storesCleared);
 }
 
-function combineForgetResult(result, notesCleared, usageCleared) {
+function persistForgottenMemory() {
+  saveUsers();
+  saveGroupChats();
+  // Use the saver epoch barrier, not a parallel writer that a stale snapshot can overwrite.
+  const chatsSaved = flushSavesSync({ durable: true });
+  const profilesSaved = flushMemoryProfilesSync();
+  return chatsSaved && profilesSaved;
+}
+
+function combineForgetResult(result, notesCleared, usageCleared, storesCleared) {
   if (!notesCleared) return { ok: false, text: "已清理原聊天记忆，但明确记忆文件清理未能确认，请管理员检查存储后重试。" };
   if (!usageCleared) return { ok: false, text: "已处理聊天记忆清理，但个人用量统计清除未能确认，请管理员检查存储后重试。" };
+  if (!storesCleared) return { ok: false, text: "已停止使用旧记忆，但聊天或画像文件清理未能确认落盘，请管理员检查存储后重试。" };
   return result;
 }
 

@@ -81,9 +81,11 @@ function activeMemoryEvidence(options) {
 function afterMemoryCorrection(thread, corrections) {
   if (!thread || !corrections) return null;
   // Older turns may omit inherited dependencies even when they contain an empty array.
-  const turns = thread.turns.filter(turn => turn.memoryDependencyVersion === 1 && Array.isArray(turn.memorySources) &&
+  const turns = thread.turns.filter(turn => !hasExcludedMessageId(turn, corrections.excludedMessageIds) &&
+    turn.memoryDependencyVersion === 1 && Array.isArray(turn.memorySources) &&
     turn.memorySources.every(source => corrections.revisions.get(source.noteId) === source.revision));
-  return turns.length ? { ...thread, turns, turnCount: turns.length } : null;
+  return turns.length ? { ...thread, turns, turnCount: turns.length,
+    topic: turns.length === thread.turns.length ? thread.topic : "" } : null;
 }
 
 function appendInterjectionGroupLayer(layers, groupId, options) {
@@ -345,7 +347,9 @@ function interjectionExclusions(groupId, options) {
   catch { return null; }
 }
 
-function excludedInterjectionSource(message, excluded) { return excluded.has(String(message?.messageId)) || message?.memoryCommand; }
+function excludedInterjectionSource(message, excluded) {
+  return Boolean(message?.memoryCommand || message?.deleted || message?.recalled || message?.retracted) || hasExcludedMessageId(message, excluded);
+}
 
 function isUsableInterjectionMessage(message, options) {
   if (isExcludedInterjectionAuthor(message)) return false;

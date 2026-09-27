@@ -48,6 +48,18 @@ test("JSON saver batches updates and leaves no staged file after commit", async 
   assert.deepEqual(fs.readdirSync(path.dirname(file)), ["state.json"]);
 });
 
+test("an explicit privacy flush opts into durability without changing ordinary save policy", t => {
+  const file = fixture(t);
+  let syncs = 0;
+  const saver = createJsonSaver(file, () => ({ cleared: true }), {
+    debounceMs: 60000, io: { ...fs, fsyncSync(fd) { syncs++; fs.fsyncSync(fd); } },
+  });
+  t.after(saver.dispose);
+  saver.markDirty(); assert.equal(saver.flushSync(), true); assert.equal(syncs, 0);
+  saver.markDirty(); assert.equal(saver.flushSync({ durable: true }), true);
+  assert.equal(syncs, process.platform === "win32" ? 1 : 2);
+});
+
 test("sync shutdown save cannot be overwritten by an older async snapshot", async t => {
   const file = fixture(t);
   let value = { count: 1 };

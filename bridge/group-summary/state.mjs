@@ -24,8 +24,8 @@ export function readSummaryJson(filename, fallback = null, maxBytes = 8 * 1024 *
   }
 }
 
-export function writeSummaryJson(filename, value) {
-  writeJsonFileSync(filename, value);
+export function writeSummaryJson(filename, value, options = {}) {
+  writeJsonFileSync(filename, value, { durable: options.durable === true });
 }
 
 // This lock covers synchronous file mutations only, never a model/network call.

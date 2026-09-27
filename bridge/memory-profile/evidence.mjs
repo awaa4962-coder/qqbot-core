@@ -5,6 +5,7 @@ import { compareRelevance, messageFeatures, retrievalFeatures } from "../context
 import { safeContextExcerpt } from "../context/messages.mjs";
 import { memoryNotesSnapshot, memoryCorrectionSnapshot } from "./notes.mjs";
 import { noteSemanticText, noteSemanticQueryScore } from "./semantics.mjs";
+import { excludedMemorySource } from "./source-exclusions.mjs";
 
 const WINDOW_MS = 7 * 86400000;
 
@@ -16,14 +17,19 @@ export function recentTopicEvidence(uid, groupId, options = {}) {
   const cutoff = privacy.users[String(uid)] || 0;
   if (!Number.isFinite(cutoff) || cutoff < 0) return [];
   const chats = (options.users || users)[String(uid)]?.chats || [];
-  return collectTopics(chats, groupId, now, cutoff, options.excludeMessageIds);
+  const excluded = topicExclusions(uid, groupId, options);
+  return collectTopics(chats, groupId, now, cutoff, excluded);
+}
+
+function topicExclusions(uid, groupId, options) {
+  return options.excludeMessageIds || memoryCorrectionSnapshot({ userId: String(uid), groupId: String(groupId) }).excludedMessageIds;
 }
 
 function collectTopics(chats, groupId, now, cutoff, excluded) {
   const topics = new Map();
   const seen = new Set();
   for (const chat of chats.slice(-100).reverse()) {
-    if (!sourceUsable(chat, groupId, now, cutoff) || excluded?.has(String(chat.messageId))) continue;
+    if (!sourceUsable(chat, groupId, now, cutoff) || excludedMemorySource(chat, excluded)) continue;
     const text = safeContextExcerpt(chat.text, 500);
     const normalized = text.normalize("NFKC").replace(/[\p{P}\p{S}\s]+/gu, "").toLowerCase();
     if (!normalized || seen.has(normalized) || seen.has("id:" + chat.messageId)) continue;
@@ -46,6 +52,7 @@ function addTopicEvidence(topics, text, chat) {
 function sourceUsable(chat, groupId, now, cutoff) {
   if (!chat || String(chat.group) !== String(groupId) || !/^-?\d{1,20}$/.test(String(chat.messageId ?? ""))) return false;
   if (!Number.isFinite(chat.ts) || chat.ts <= cutoff || chat.ts > now || now - chat.ts > WINDOW_MS) return false;
+  if (chat.memoryCommand || chat.deleted || chat.recalled || chat.retracted) return false;
   return typeof chat.text === "string" && !/^(?:\[已按用户请求清除\]|\[command\]|记住\s|记事\s|事项状态\s|纠正记忆\s|删除记忆\s)/.test(chat.text);
 }
 

@@ -85,12 +85,13 @@ export function createJsonSaver(filename, getValue, options = {}) {
     return !dirty;
   }
 
-  function flushSync() {
+  function flushSync(settings = {}) {
     cancelTimer();
     if (!dirty || disposed) return !dirty;
     revision++; flushEpoch++;
     try {
-      writeJsonFileSync(destination(), getValue(), { ...options, io, spacing: options.spacing ?? 2 });
+      writeJsonFileSync(destination(), getValue(), { ...options, io, spacing: options.spacing ?? 2,
+        durable: options.durable === true || settings.durable === true });
       dirty = false;
     } catch (error) { reportError(error); schedule(); }
     return !dirty;

@@ -135,13 +135,13 @@ test("legacy missing ids and turnId alone never imply a reply edge", () => {
   assert.equal(selected.items.filter(item => item.reason === "reply_chain").length, 0);
 });
 
-test("excluded corrected parents are not recalled and leave the child unlinked", () => {
+test("excluded corrected parents and their dependent child are not recalled", () => {
   const selected = selectGroupConversation([
     row("8251", "12", "显卡更新后黑屏"),
     row("8252", "13", "显卡还是黑屏", { replyToMessageId: "8251" }),
   ], { userMsg: "显卡还是黑屏", excludeMessageIds: new Set(["8251"]), limit: 2, now });
-  assert.deepEqual(selected.items.map(item => item.message.messageId), ["8252"]);
-  assert.notEqual(selected.items[0].reason, "reply_chain");
+  assert.deepEqual(selected.items.map(item => item.message.messageId), []);
+  assert.equal(selected.items.some(item => item.reason === "reply_chain"), false);
 });
 
 test("identical text with distinct linked message identities keeps its parent frame", () => {

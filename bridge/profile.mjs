@@ -5,6 +5,9 @@ import { buildOutputPacket } from "./output-pipeline.mjs";
 import { redactSensitiveText } from "./privacy.mjs";
 import { getUserMemoryGeneration, getMemoryPrivacyGeneration } from "./memory-profile/generation.mjs";
 import { chatRunStopReason } from "./cognition/chat-run.mjs";
+import { memoryCorrectionSnapshot } from "./memory-profile/notes.mjs";
+import { excludedMemorySource } from "./memory-profile/source-exclusions.mjs";
+import { summaryPrivacy } from "./group-summary/state.mjs";
 
 async function generateProfileVia(prompt, position) {
   const result = await callTaskApi("profile", position, {
@@ -28,7 +31,7 @@ export async function generateProfile(uid, options = {}) {
   const privacyGeneration = getMemoryPrivacyGeneration();
   const isCurrent = () => users[uid] === u && generation === getUserMemoryGeneration(uid) &&
     privacyGeneration === getMemoryPrivacyGeneration() && !chatRunStopReason();
-  const recent = u.chats.slice(-20);
+  const recent = profileHistory(uid, u.chats);
   if (!recent.length) return '';
 
   const chatLog = recent.map(function(c) {
@@ -50,4 +53,19 @@ export async function generateProfile(uid, options = {}) {
     } catch {}
   }
   return '';
+}
+
+function profileHistory(uid, chats) {
+  try {
+    const privacy = summaryPrivacy();
+    const cutoff = privacy?.users?.[String(uid)] ?? 0;
+    if (!privacy?.users || Array.isArray(privacy.users) || !Number.isFinite(cutoff) || cutoff < 0) return [];
+    const exclusions = new Map();
+    return (Array.isArray(chats) ? chats : []).slice(-20).filter(chat => {
+      if (!chat || chat.memoryCommand || chat.deleted || chat.recalled || chat.retracted || !Number.isFinite(chat.ts) || chat.ts <= cutoff) return false;
+      const groupId = String(chat.group);
+      if (!exclusions.has(groupId)) exclusions.set(groupId, memoryCorrectionSnapshot({ userId: String(uid), groupId }).excludedMessageIds);
+      return !excludedMemorySource(chat, exclusions.get(groupId));
+    });
+  } catch { return []; }
 }

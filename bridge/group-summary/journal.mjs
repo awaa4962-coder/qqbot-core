@@ -130,7 +130,7 @@ export function forgetSummaryUser(uid, options = {}) {
     const privacy = summaryPrivacy(options);
     privacy.epoch++;
     privacy.users[String(uid)] = options.now ?? Date.now();
-    writeSummaryJson(path.join(root, "privacy.json"), privacy);
+    writeSummaryJson(path.join(root, "privacy.json"), privacy, { durable: true });
     for (const filename of listFiles(path.join(root, "journal"), /\.jsonl$/)) {
       const rows = readJournalFile(filename).messages.filter(item => String(item.uid) !== String(uid));
       const temporary = filename + ".tmp." + process.pid;

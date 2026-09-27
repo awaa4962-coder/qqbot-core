@@ -142,10 +142,10 @@ function usableMessage(message, options) {
 }
 
 function excludedMessage(message, options) {
-  if (message.memoryCommand) return true;
+  if (message.memoryCommand || message.deleted || message.recalled || message.retracted) return true;
   if (message.group && options.groupId && String(message.group) !== String(options.groupId)) return true;
   if (String(message.messageId || "") === String(options.currentMessageId || "") && options.currentMessageId) return true;
-  if ([message.messageId, message.turnId].some(id => id && options.excludeMessageIds?.has(String(id)))) return true;
+  if ([message.messageId, message.replyToMessageId, message.turnId].some(id => id && options.excludeMessageIds?.has(String(id)))) return true;
   return message.role === "assistant" || Boolean(options.selfUin && String(message.uid) === String(options.selfUin));
 }
 

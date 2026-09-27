@@ -4,21 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.25-context-groups";
-export const VERSION_NAME = "context-groups";
+export const VERSION = "1.4.26-memory-lifecycle";
+export const VERSION_NAME = "memory-lifecycle";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "上下文按完整来源组取舍，引用与回复不再被预算拆开；存档完整性明确区分完整、截短和未知。",
-  "私聊文本附件单独提供正文，保留当前问题；超出数量或篇幅时明确提示，未读文件不冒充已读。",
-  "工具续问只移除可舍弃的旧背景，保留原生工具配对；诊断区分初选和发送前选择，不额外调用模型压缩。",
+  "忘记我在聊天与画像文件确认落盘后才报成功；写入失败保留清理状态并提示重试。",
+  "纠正、删除和到期的旧记忆及显式关联回复不再绕回上下文；失效回合的旧话题一并移除。",
+  "提及对象的话题线索与后台画像也排除失效来源；新增记忆不额外增加关系分数。",
   "JM、模型主备、思考档位与关系评分保持不变；Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Context budgets select whole source groups. Reply links stay together, and archive completeness is complete, truncated or unknown.",
-  "Private text attachments retain their own evidence and the current question; unread and omitted files are reported explicitly.",
-  "Tool continuations preserve native call/result pairs while evicting optional history. Diagnostics separate initial and pre-send selection without paid compression.",
+  "Forget confirms chat and profile persistence before reporting success. Failed writes retain cleared in-memory state and request a retry.",
+  "Corrected, removed and expired note sources and explicitly linked replies stay out of context; stale thread topics are discarded too.",
+  "Mention topic hints and background profiles exclude invalid sources. Explicit note records do not add relationship points.",
   "JM, model routes, reasoning modes and relationship scoring remain unchanged. Windows stays frozen.",
 ]);
 

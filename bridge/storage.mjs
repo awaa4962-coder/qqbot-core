@@ -48,9 +48,10 @@ export function saveGroupChats() {
 }
 
 // 立即存档（进程退出前调用）
-export function flushSavesSync() {
-  usersSaver.flushSync();
-  chatsSaver.flushSync();
+export function flushSavesSync(options = {}) {
+  const usersSaved = usersSaver.flushSync(options);
+  const chatsSaved = chatsSaver.flushSync(options);
+  return usersSaved && chatsSaved;
 }
 
 if (_usersNeedTimestampRepair) saveUsers();
