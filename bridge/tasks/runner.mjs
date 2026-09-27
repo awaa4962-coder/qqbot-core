@@ -1,7 +1,14 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readJsonFile, writeJsonFileSync } from "../persistence/json-file.mjs";
 
 const TERMINAL = new Set(["done", "failed", "interrupted"]);
+
+export function taskEventKey(surface, scopeId, messageId) {
+  const scope = String(scopeId || "");
+  const message = String(messageId || "");
+  if (!["group", "private"].includes(surface) || !/^\d{1,20}$/.test(scope) || !/^\d{1,20}$/.test(message)) return "";
+  return createHash("sha256").update(`${surface}:${scope}:${message}`).digest("hex").slice(0, 32);
+}
 
 export function createTaskRunner(options) {
   const bootId = randomUUID();
@@ -87,6 +94,7 @@ export function createTaskRunner(options) {
     if (!job) throw new Error("任务不存在或已过期");
     return { ...job, resultAvailable: results.has(id), result: results.get(id)?.value };
   }
+  function hasEvent(eventKey) { return Boolean(eventKey && list().some(job => job.eventKey === eventKey)); }
   async function wait() { while (running.size) await Promise.all([...running.values()].map(item => item.task)); }
-  return { start, list, inspect, wait };
+  return { start, list, inspect, hasEvent, wait };
 }

@@ -215,6 +215,21 @@ test("confirmed partial failure resumes only remaining chunks of the identical r
   assert.equal(sent.filter(text => text.startsWith("乙")).length, 2);
 });
 
+test("revoked summary group stops later chunks and keeps the partial attempt unconfirmed", async t => {
+  const allowed = [101];
+  let sends = 0;
+  const options = sandbox(t, { groupWhitelist: allowed, sendGroupMessage: async () => {
+    sends++; allowed.splice(0); return { status: "ok" };
+  } });
+  const report = prepared(options, "甲".repeat(900) + "乙".repeat(900));
+  await assert.rejects(publishSummary(report, options), /该群未启用日报/);
+  assert.equal(sends, 1);
+  assert.equal(readSummaryDelivery(day, 101, options).status, "unconfirmed");
+  allowed.push(101);
+  assert.equal((await publishSummary(report, options)).skipped, true);
+  assert.equal(sends, 1);
+});
+
 test("ambiguous network failure requires explicit verification before any retry", async t => {
   const options = sandbox(t, { sendGroupMessage: async () => null });
   const report = prepared(options);

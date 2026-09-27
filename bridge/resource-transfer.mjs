@@ -7,7 +7,8 @@ import { prepareCommandText } from "./commands/normalize.mjs";
 import { fetchSafeResponse, validateSafeUrl } from "./safe-url.mjs";
 import { sendMsg, uploadGroupFile } from "./napcat.mjs";
 import { log, logE } from "./logger.mjs";
-import { isDefiniteOneBotRejection, isOneBotResponseSuccessful } from "./onebot-receipt.mjs";
+import { classifyOneBotReceipt, isDefiniteOneBotRejection, isOneBotResponseSuccessful } from "./onebot-receipt.mjs";
+import { createTaskRunner, taskEventKey } from "./tasks/runner.mjs";
 
 const COMMAND_RE = /^(download|dl|fetch|下载)\s*(.*)$/i;
 const DEFAULT_TIMEOUT_MS = 120000;
@@ -15,6 +16,12 @@ const RESOURCE_TEMP_PREFIX = "qqfriend-resource-";
 const DEFAULT_TEMP_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const FUTURE_SKEW_MS = 5 * 60 * 1000;
 const activeResourceTempDirs = new Set();
+const resourceTasks = createTaskRunner({ filename: path.join(CFG.dataRoot, ".qqfriend", "tasks",
+  process.env.NODE_ENV === "test" ? `resource-transfers-${process.pid}.json` : "resource-transfers.json"),
+  maxConcurrent: 1, historyLimit: 256, busyMessage: "已有资源转发任务在运行，请稍后再试。" });
+
+export function waitResourceTasks() { return resourceTasks.wait(); }
+export function listResourceTasks() { return resourceTasks.list(); }
 
 export function isResourceGroupAllowed(groupId, whitelist = CFG.resourceGroupWhitelist) {
   return whitelist.map(Number).includes(Number(groupId));
@@ -53,15 +60,47 @@ export async function handleResourceTransferCommand(ctx, options = {}) {
     return true;
   }
 
-  await transferResourceToGroup({
-    groupId: ctx.group_id,
-    url: parsed.url,
-    replyToId: options.replyToId,
-    sender,
-    uploader: options.uploader || uploadGroupFile,
-    maxBytes: options.maxBytes || CFG.resourceMaxBytes,
-  });
+  await launchResourceTask(ctx, parsed, options, sender);
   return true;
+}
+
+async function launchResourceTask(ctx, parsed, options, sender) {
+  const eventKey = taskEventKey("group", ctx.group_id, ctx.message_id);
+  try {
+    if (resourceTasks.hasEvent(eventKey)) {
+      await notifyResource(sender, ctx.group_id, "这条资源任务已经受理过，请先核实原任务结果，不会自动重做。", options.replyToId);
+      return;
+    }
+  } catch {
+    await notifyResource(sender, ctx.group_id, "资源任务没能启动，请稍后检查运行状态。", options.replyToId);
+    return;
+  }
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  try {
+    resourceTasks.start({ scope: "resource", action: "transfer", meta: { kind: "group", eventKey }, run: async ({ signal }) => {
+      await gate;
+      return transferResourceToGroup({
+        groupId: ctx.group_id, url: parsed.url, replyToId: options.replyToId, sender, signal,
+        uploader: options.uploader || uploadGroupFile, maxBytes: options.maxBytes || CFG.resourceMaxBytes,
+        assertAllowed: () => {
+          signal.throwIfAborted();
+          if (!isResourceGroupAllowed(ctx.group_id, options.groupWhitelist || CFG.resourceGroupWhitelist)) throw new Error("permission_changed");
+        },
+      });
+    } });
+  } catch (error) {
+    const busy = error.message === "已有资源转发任务在运行，请稍后再试。" || error.message === "后台任务已满，请稍后再试";
+    await notifyResource(sender, ctx.group_id, busy ? "已有资源转发任务在运行，请稍后再试。" :
+      "资源任务没能启动，请稍后检查运行状态。", options.replyToId);
+    return;
+  }
+  try { await notifyResource(sender, ctx.group_id, "资源下载已开始，完成后会转发到群。", options.replyToId); }
+  finally { release(); }
+}
+
+async function notifyResource(sender, groupId, text, replyTo) {
+  try { await sender(groupId, text, replyTo); } catch {}
 }
 
 export async function transferResourceToGroup(options) {
@@ -69,30 +108,38 @@ export async function transferResourceToGroup(options) {
   const uploader = options.uploader || uploadGroupFile;
   let downloaded = null;
   try {
+    options.assertAllowed?.();
     downloaded = await downloadResourceToTemp(options.url, {
       maxBytes: options.maxBytes || CFG.resourceMaxBytes,
       timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS,
+      signal: options.signal,
     });
+    options.assertAllowed?.();
     const uploadResult = await uploader(options.groupId, downloaded.filePath, downloaded.fileName);
     if (!isOneBotResponseSuccessful(uploadResult)) throw new Error(isDefiniteOneBotRejection(uploadResult) ? "upload_failed" : "upload_unconfirmed");
-    await sender(
-      options.groupId,
-      "资源已转发，大小 " + formatBytes(downloaded.bytes) + "。临时文件已清理。",
-      options.replyToId,
-    );
-    return { ok: true, bytes: downloaded.bytes, fileName: downloaded.fileName };
+    const noticeConfirmed = await sendResourceSuccessNotice(options, sender, downloaded.bytes);
+    return { ok: true, bytes: downloaded.bytes, fileName: downloaded.fileName, noticeConfirmed };
   } catch (error) {
     logE("resource transfer failed:", error.message);
-    await sender(options.groupId, resourceErrorText(error.message), options.replyToId);
+    if (error.message !== "permission_changed" && !options.signal?.aborted) await sender(options.groupId, resourceErrorText(error.message), options.replyToId);
     return { ok: false, reason: error.message };
   } finally {
     if (downloaded?.tempDir) await cleanupTempDir(downloaded.tempDir);
   }
 }
 
+async function sendResourceSuccessNotice(options, sender, bytes) {
+  try {
+    options.assertAllowed?.();
+    options.signal?.throwIfAborted();
+    const receipt = await sender(options.groupId, "资源已转发，大小 " + formatBytes(bytes) + "。临时文件已清理。", options.replyToId);
+    return classifyOneBotReceipt(receipt) === "sent";
+  } catch { return false; }
+}
+
 export async function downloadResourceToTemp(url, options = {}) {
   const maxBytes = options.maxBytes || CFG.resourceMaxBytes;
-  const result = await fetchSafeResponse(url, { timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS });
+  const result = await fetchSafeResponse(url, { timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS, signal: options.signal });
   const response = await validateDownloadResponse(result, maxBytes);
 
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), RESOURCE_TEMP_PREFIX));
@@ -101,7 +148,7 @@ export async function downloadResourceToTemp(url, options = {}) {
   const filePath = path.join(tempDir, fileName);
   let bytes;
   try {
-    bytes = await writeBodyToFile(response.body, filePath, maxBytes);
+    bytes = await writeBodyToFile(response.body, filePath, maxBytes, options.signal);
   } catch (error) {
     await cleanupTempDir(tempDir);
     throw error;
@@ -128,11 +175,12 @@ async function validateDownloadResponse(result, maxBytes) {
   return result.response;
 }
 
-async function writeBodyToFile(body, filePath, maxBytes) {
+async function writeBodyToFile(body, filePath, maxBytes, signal) {
   let bytes = 0;
   const handle = await fs.open(filePath, "w");
   try {
     for await (const chunk of body) {
+      signal?.throwIfAborted();
       const buffer = Buffer.from(chunk);
       bytes += buffer.length;
       if (bytes > maxBytes) throw new Error("size_limit");

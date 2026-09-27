@@ -24,7 +24,7 @@ export function readSummaryDelivery(dateText, groupId, options = {}) {
 }
 
 export async function publishSummary(result, options = {}) {
-  if (!(options.groupWhitelist || CFG.summaryGroupWhitelist).map(String).includes(String(result.groupId))) throw new Error("该群未启用日报");
+  assertSummaryDeliveryAllowed(result.groupId, options);
   const hash = createHash("sha256").update(normalizeOutboundText(result.summary)).digest("hex");
   const previous = readSummaryDelivery(result.dateText, result.groupId, options);
   if (!options.resume && ["partial", "unconfirmed", "invalid_marker"].includes(previous.status)) return summarySkipResult("previous_attempt_unconfirmed", { ...result, publicationManaged: true });
@@ -73,6 +73,8 @@ async function sendReportChunks(result, options) {
   if (options.beforeSend) await options.beforeSend({ dateText: result.dateText, groupId: result.groupId, messages: result.messages, revisionId: result.revisionId });
   for (let index = record.completed; index < chunks.length; index++) {
     assertSummaryEpoch(result.privacyEpoch, options);
+    assertSummaryDeliveryAllowed(result.groupId, options);
+    await options.beforeChunk?.();
     options.guard.markAttempt?.({ revisionId: result.revisionId, hash: options.hash, nextIndex: index });
     persist();
     let receipt;
@@ -93,6 +95,10 @@ async function sendReportChunks(result, options) {
   record.status = "sent";
   persist();
   return { ...result, sent: true, publicationManaged: true, delivery: record };
+}
+
+function assertSummaryDeliveryAllowed(groupId, options) {
+  if (!(options.groupWhitelist || CFG.summaryGroupWhitelist).map(String).includes(String(groupId))) throw new Error("该群未启用日报");
 }
 
 function initialDelivery(result, options, total) {

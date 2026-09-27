@@ -34,6 +34,7 @@ export async function transferJmToPrivate(options) {
 async function transferJm(options, destination) {
   const runner = options.runner || runJmDownload;
   const zipper = options.zipper || zipDirectory;
+  const assertAllowed = options.assertAllowed || (() => {});
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), JM_TEMP_PREFIX));
   activeJmTempDirs.add(path.resolve(tempDir));
   const downloadDir = path.join(tempDir, "download");
@@ -41,10 +42,12 @@ async function transferJm(options, destination) {
 
   try {
     await fs.mkdir(downloadDir, { recursive: true });
-    await destination.send("JM " + options.jmId + " " + destination.started);
+    assertAllowed();
+    await sendStartedNotice(options, destination);
 
     const result = await runner(options.jmId, downloadDir, {
       timeoutMs: options.timeoutMs || CFG.jmTimeoutMs,
+      signal: options.signal,
     });
     if (!result.ok) {
       const error = new Error(result.reason || "download_failed");
@@ -52,6 +55,7 @@ async function transferJm(options, destination) {
       error.missing = result.missing || [];
       throw error;
     }
+    assertAllowed();
 
     const summary = await summarizeDirectory(downloadDir);
     if (summary.files <= 0) throw new Error("empty_result");
@@ -62,19 +66,36 @@ async function transferJm(options, destination) {
       sevenZipPath: options.sevenZipPath ?? CFG.jmSevenZipPath,
       timeoutMs: options.zipTimeoutMs,
     });
+    assertAllowed();
     const uploadResult = await destination.upload(zipPath, "jm-" + options.jmId + ".zip");
     if (!uploadOk(uploadResult)) throw new Error(classifyOneBotReceipt(uploadResult) === "failed" ? "upload_failed" : "upload_unconfirmed");
 
-    await destination.send(buildJmTransferSuccessText(options.jmId, summary, zipPassword));
-    return { ok: true, jmId: options.jmId, files: summary.files, bytes: summary.bytes };
+    const noticeConfirmed = await sendJmSuccessNotice(options, destination, buildJmTransferSuccessText(options.jmId, summary, zipPassword));
+    return { ok: true, jmId: options.jmId, files: summary.files, bytes: summary.bytes, noticeConfirmed };
   } catch (error) {
-    logE(destination.errorPrefix, error.message, formatJmErrorDetail(error));
-    await destination.send(jmErrorText(error.message));
-    return { ok: false, reason: error.message };
+    return reportJmFailure(error, destination, options);
   } finally {
     activeJmTempDirs.delete(path.resolve(tempDir));
     scheduleJmTempCleanup(tempDir, options.cleanupDelayMs ?? JM_CLEANUP_DELAY_MS);
   }
+}
+
+function sendStartedNotice(options, destination) {
+  return options.startedNotice === false ? Promise.resolve() : destination.send("JM " + options.jmId + " " + destination.started);
+}
+
+async function reportJmFailure(error, destination, options) {
+  logE(destination.errorPrefix, error.message, formatJmErrorDetail(error));
+  if (error.message !== "permission_changed" && !options.signal?.aborted) await destination.send(jmErrorText(error.message));
+  return { ok: false, reason: error.message };
+}
+
+async function sendJmSuccessNotice(options, destination, text) {
+  try {
+    options.assertAllowed?.();
+    options.signal?.throwIfAborted();
+    return classifyOneBotReceipt(await destination.send(text)) === "sent";
+  } catch { return false; }
 }
 
 export function formatJmErrorDetail(error) {

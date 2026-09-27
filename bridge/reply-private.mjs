@@ -19,6 +19,7 @@ import { createMemoryCommandGuard, isSelfMemoryCommand } from "./commands/module
 import { normalizeCommand } from "./commands/normalize.mjs";
 import { earliestMemoryExpiry } from "./context/memory-dependencies.mjs";
 import { createPersonalReadGuard, isPersonalReadCommand } from "./commands/read-guard.mjs";
+import { isGroupSummaryCommand, queueGroupSummaryCommand } from "./group-summary/commands.mjs";
 
 export async function handlePrivateMessage(ctx, runtime = {}) {
   ctx.contextPrivacyGeneration ??= getMemoryPrivacyGeneration();
@@ -26,7 +27,7 @@ export async function handlePrivateMessage(ctx, runtime = {}) {
     traceStage("route", { status: "ok", route: "jm" });
     return;
   }
-  if (isAdminUser(ctx.user_id) && await trySendPrivateCommand(ctx)) return;
+  if (isAdminUser(ctx.user_id) && await trySendPrivateCommand(ctx, runtime)) return;
 
   if (!canUsePrivateChat(ctx.user_id)) {
     traceStage("route", { status: "skipped", reason: "private_not_whitelisted" });
@@ -34,7 +35,7 @@ export async function handlePrivateMessage(ctx, runtime = {}) {
     return;
   }
 
-  if (await trySendPrivateCommand(ctx)) return;
+  if (await trySendPrivateCommand(ctx, runtime)) return;
   if (ctx.files.length) {
     await withChatRun(privateRunScope(ctx), () => handlePrivateFileMessage(ctx, runtime));
     return;
@@ -209,8 +210,13 @@ function recordPrivateTurn(ctx, userText, assistantText, outcome = {}) {
   });
 }
 
-async function trySendPrivateCommand(ctx) {
+async function trySendPrivateCommand(ctx, runtime = {}) {
   const command = normalizeCommand(ctx.text);
+  if (isGroupSummaryCommand(command)) {
+    traceStage("route", { status: "ok", route: "command" });
+    return queueGroupSummaryCommand(command, { ...runtime, userId: ctx.user_id, surface: "private", messageId: ctx.message_id,
+      sendReply: text => (runtime.sendPrivateMsg || sendPrivateMsg)(ctx.user_id, text) });
+  }
   const create = isSelfMemoryCommand(command) ? createMemoryCommandGuard : isPersonalReadCommand(command) ? createPersonalReadGuard : null;
   const memoryGuard = create ? create({ commandText: command, userId: ctx.user_id, surface: "private", contextPrivacyGeneration: ctx.contextPrivacyGeneration }) : null;
   const reply = await buildPrivateCommandReplyAsync(ctx, { users, groupChats, memoryGuard });

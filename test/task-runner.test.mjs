@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { setTimeout } from "node:timers";
-import { createTaskRunner } from "../bridge/tasks/runner.mjs";
+import { createTaskRunner, taskEventKey } from "../bridge/tasks/runner.mjs";
 import { createAdminTaskManager } from "../bridge/admin-api/task-manager.mjs";
 import { handleAdminApiRequest } from "../bridge/admin-api/routes.mjs";
 import { Readable } from "node:stream";
@@ -55,6 +55,22 @@ test("task errors are sanitized and process replacement never replays abandoned 
   const replacement = createTaskRunner(options);
   assert.equal(replacement.inspect(pending.jobId).phase, "interrupted");
   hold.resolve({ ok: true }); await first.wait();
+});
+
+test("a bounded event fingerprint survives restart without storing sender or message IDs", async t => {
+  const options = sandbox(t);
+  const key = taskEventKey("group", 601001, 901001);
+  assert.match(key, /^[a-f0-9]{32}$/);
+  assert.equal(taskEventKey("group", 601001, "not-a-number"), "");
+  const tasks = createTaskRunner(options);
+  const hold = deferred();
+  tasks.start({ scope: "transfer", action: "download", meta: { eventKey: key }, run: () => hold.promise });
+  assert.equal(tasks.hasEvent(key), true);
+  const replacement = createTaskRunner(options);
+  assert.equal(replacement.hasEvent(key), true);
+  assert.equal(replacement.list()[0].phase, "interrupted");
+  assert.doesNotMatch(fs.readFileSync(options.filename, "utf8"), /601001|901001/);
+  hold.resolve({ ok: true }); await tasks.wait();
 });
 
 test("active tasks survive history trimming and result payloads expire", async t => {

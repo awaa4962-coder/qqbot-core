@@ -4,22 +4,22 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.34-prompt-provenance";
-export const VERSION_NAME = "prompt-provenance";
+export const VERSION = "1.4.35-background-commands";
+export const VERSION_NAME = "background-commands";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "聊天、群报、成员总结、识图和辅助模型任务记录各自提示词版本；摘要路由不再丢失版本元数据。",
-  "诊断按当前输入、历史和实际模型请求的角色统计长度，并汇总引用、承接等来源原因，不保存正文或完整提示词。",
-  "前端能对照初选与发送前来源、稳定前缀和请求组成；私有推理仍只允许记录长度，不展示内容。",
-  "JM、模型主备、思考档位与关系评分不变；只更新 Linux，Windows 继续冻结。",
+  "JM 群聊/私聊、普通资源转发和管理员日报改为有界后台任务，接单后可继续处理同会话消息。",
+  "同一消息的重复投递不会自动重做；上传前复查白名单，任务中止后不再开始上传或后续日报分段。",
+  "文件上传已确认时，即使完成提示未送达，也不会把转发误报为失败；JM 大写 FS 和一天清理保持。",
+  "普通聊天与其他短任务的队列治理仍在推进；只更新 Linux，Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Chat, summary, vision and auxiliary model tasks now record prompt versions; summary routing preserves that metadata.",
-  "Diagnostics compare current input, selected history and final request sizes by role, plus bounded source-reason counts, without retaining prompt bodies.",
-  "The console shows selected versus final sources, stable-prefix fingerprints and request composition. Private reasoning text remains excluded.",
-  "Only Linux is updated; Windows stays frozen. JM, model routes, reasoning modes and relationship scoring remain unchanged.",
+  "JM group/private transfers, resource forwarding and admin daily reports now use bounded background tasks, releasing the message queue after acknowledgement.",
+  "Duplicate message events do not auto-replay work. Permission and task state are rechecked before uploads and later report segments.",
+  "A confirmed file upload remains successful even when its follow-up notice is unconfirmed. JM's uppercase FS password and one-day cleanup remain.",
+  "Ordinary chat queue work continues. Only Linux is updated; Windows stays frozen.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

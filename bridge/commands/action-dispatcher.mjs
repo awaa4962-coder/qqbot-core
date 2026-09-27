@@ -13,6 +13,7 @@ import { traceStage } from "../diagnostics/message-trace.mjs";
 import { handleConversationSummaryCommand, parseConversationSummaryCommand } from "../features/conversation-summary/index.mjs";
 import { createMemoryCommandGuard, isSelfMemoryCommand } from "./modules/memory.mjs";
 import { createPersonalReadGuard, isPersonalReadCommand } from "./read-guard.mjs";
+import { isGroupSummaryCommand, queueGroupSummaryCommand } from "../group-summary/commands.mjs";
 
 const SPECIAL_GROUP_ACTIONS = Object.freeze([
   { id: "conversation-summary", parse: parseConversationSummaryCommand, handle: handleConversationSummaryCommand },
@@ -45,7 +46,26 @@ export async function dispatchGroupCommand(ctx, options = {}) {
 
   const action = matchSpecialGroupAction(commandText);
   if (action) return await executeSpecialGroupAction(action, ctx, commandText, options);
+  if (isGroupSummaryCommand(commandText)) return dispatchQueuedSummary(ctx, commandText, options);
   return await dispatchCatalogCommand(ctx, commandText, options);
+}
+
+async function dispatchQueuedSummary(ctx, commandText, options) {
+  traceStage("route", { status: "ok", route: "command" });
+  const sender = options.sender || sendMsg;
+  const recordCommand = options.recordCommand || logGroupMsg;
+  let recorded = false;
+  return queueGroupSummaryCommand(commandText, { ...options, userId: ctx.user_id, groupId: ctx.group_id,
+    surface: "group", messageId: ctx.message_id,
+    sendReply: async text => {
+      const receipt = await sender(ctx.group_id, text, options.replyToId ?? ctx.message_id);
+      if (!recorded && isSuccessfulOutbound(receipt)) {
+        recordCommand(ctx.group_id, "夜星", "[command]", CFG.selfUin, "assistant");
+        recorded = true;
+      }
+      return receipt;
+    },
+  });
 }
 
 function commandTextFromContext(ctx, options) {

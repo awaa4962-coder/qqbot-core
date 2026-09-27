@@ -27,6 +27,7 @@ export function runJmDownload(jmId, outputDir, options = {}) {
     args: [script, "--id", String(jmId), "--out", outputDir],
     env: buildJmDownloadEnv(),
     timeoutMs: options.timeoutMs || CFG.jmTimeoutMs,
+    signal: options.signal,
   });
 }
 
@@ -175,33 +176,35 @@ export function resetJmRuntimeHealthCache() {
   jmHealthPromise = null;
 }
 
-export async function runPythonJson({ command, args, env, timeoutMs }) {
+export async function runPythonJson({ command, args, env, timeoutMs, signal }) {
+  if (signal?.aborted) return { ok: false, reason: "timeout" };
   return await new Promise(resolve => {
     const child = spawn(command, args, { env, windowsHide: true });
     let stdout = "";
     let stderr = "";
     let settled = false;
-    const timer = setTimeout(() => {
+    const finish = result => {
       if (settled) return;
       settled = true;
-      child.kill("SIGKILL");
-      resolve({ ok: false, reason: "timeout" });
-    }, timeoutMs);
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+      resolve(result);
+    };
+    const abort = () => {
+      try { child.kill("SIGKILL"); } catch {}
+      finish({ ok: false, reason: "timeout" });
+    };
+    const timer = setTimeout(abort, timeoutMs);
     timer.unref?.();
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
 
     child.stdout.on("data", chunk => { stdout += chunk.toString("utf8"); });
     child.stderr.on("data", chunk => { stderr += chunk.toString("utf8"); });
-    child.on("error", error => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve({ ok: false, reason: error.code === "ENOENT" ? "missing_dependency" : error.message });
-    });
+    child.on("error", error => finish({ ok: false, reason: error.code === "ENOENT" ? "missing_dependency" : error.message }));
     child.on("close", code => {
       if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(parseRunnerResult(stdout, stderr, code));
+      finish(parseRunnerResult(stdout, stderr, code));
     });
   });
 }

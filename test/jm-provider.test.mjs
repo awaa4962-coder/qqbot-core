@@ -13,6 +13,7 @@ import {
   cleanupExpiredJmTempDirs,
   handleJmTransferCommand,
   handlePrivateJmTransferCommand,
+  waitJmTasks,
   getJmRuntimeHealth,
   isJmUserAllowed,
   jmErrorText,
@@ -159,6 +160,7 @@ describe("jm provider", () => {
     });
 
     assert.equal(handled, true);
+    await waitJmTasks();
     assert.equal(runnerCalled, true);
     assert.ok(sent.some(item => item.userId === 1000000002));
   });
@@ -185,6 +187,7 @@ describe("jm provider", () => {
     });
 
     assert.equal(handled, true);
+    await waitJmTasks();
     assert.equal(runnerCalled, true);
   });
 

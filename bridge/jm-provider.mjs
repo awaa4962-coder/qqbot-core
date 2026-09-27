@@ -1,6 +1,7 @@
 // Stable public entrypoint; implementation is separated by responsibility.
 export { parseJmCommand } from "./jm/commands.mjs";
 export { handleJmTransferCommand } from "./jm/commands.mjs";
+export { waitJmTasks, listJmTasks } from "./jm/commands.mjs";
 export { transferJmToGroup } from "./jm/transfer.mjs";
 export { isJmUserAllowed } from "./jm/commands.mjs";
 export { handlePrivateJmTransferCommand } from "./jm/commands.mjs";

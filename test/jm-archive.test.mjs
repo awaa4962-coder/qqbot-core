@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, test } from "node:test";
 import { runZipCommand, zipDirectory } from "../bridge/jm/archive.mjs";
-import { activeJmTask, handleJmTransferCommand } from "../bridge/jm/commands.mjs";
+import { activeJmTask, handleJmTransferCommand, waitJmTasks } from "../bridge/jm/commands.mjs";
 
 const roots = [];
 afterEach(async () => {
@@ -58,6 +58,7 @@ test("JM archive timeout releases the global task lock and retains the one-day t
     uploader: async () => { uploads++; return { status: "ok" }; },
   });
   assert.equal(handled, true);
+  await waitJmTasks();
   assert.equal(activeJmTask, null);
   assert.equal(uploads, 0);
   assert.equal(child.signal, "SIGKILL");

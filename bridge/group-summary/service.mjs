@@ -113,9 +113,14 @@ async function buildSummaryServiceResult(options, persist = true) {
     return { ...result, outputFile: undefined, dryRun: true };
   }
   options.onProgress?.("saving");
-  const revision = saveReportRevision(result, options);
+  const revision = await saveGeneratedRevision(result, options);
   result.revisionId = revision.id;
   return result;
+}
+
+async function saveGeneratedRevision(result, options) {
+  await options.beforeSave?.();
+  return saveReportRevision(result, options);
 }
 
 function collectSummaryCapture(dateText, groupId, options) {
