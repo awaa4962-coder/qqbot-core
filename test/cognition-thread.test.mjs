@@ -164,6 +164,19 @@ describe("cognition conversation threads", () => {
     assert.notEqual(expired?.id, legacy.id);
   });
 
+  it("keeps legacy threads without topic readable until their next confirmed write", () => {
+    users["42"] = { cognition: { schemaVersion: 1, threads: { "100": {
+      schemaVersion: 1, scope: "100", createdAt: 1000, updatedAt: 1000,
+      expiresAt: 1000 + 90 * 60 * 1000,
+      turns: [{ messageId: "m1", userSummary: "JM 下载失败", assistantSummary: "检查文件。" }],
+    } } } };
+    const prior = getConversationThread("42", "100", { userStore: users, now: 2000 });
+    assert.equal(prior.schemaVersion, 1);
+    recordConversationTurn({ uid: "42", groupId: "100", threadId: prior.id, messageId: "m2",
+      userText: "还是不行", assistantText: "检查权限。", now: 2000 }, { userStore: users, save: false });
+    assert.equal(getConversationThread("42", "100", { userStore: users, now: 2500 }).turns.length, 2);
+  });
+
   it("does not attach a new named topic merely because both messages say bot", () => {
     recordConversationTurn({ uid: "42", groupId: "100", threadId: null, messageId: "m1",
       userText: "机器人 JM 下载失败", assistantText: "检查下载日志。", now: 1000 }, { userStore: users, save: false });
@@ -198,5 +211,40 @@ describe("cognition conversation threads", () => {
     assert.equal(old.updatedAt, 7000);
     assert.equal(getConversationThread("42", "100", { userStore: users, now: 7000 + 91 * 60 * 1000,
       forMessage: { uid: "42", userMsg: "JM 下载失败" } })?.id === id, false);
+  });
+
+  it("rejects foreign, oversized and malformed persisted branches without overwriting them", () => {
+    const base = { uid: "42", groupId: "100", threadId: null };
+    recordConversationTurn({ ...base, messageId: "m1", userText: "JM 下载失败",
+      assistantText: "检查文件。", now: 1000 }, { userStore: users, save: false });
+    recordConversationTurn({ ...base, messageId: "m2", userText: "日报没生成",
+      assistantText: "检查计划。", now: 2000 }, { userStore: users, save: false });
+    const stored = users["42"].cognition.threads["100"];
+    let saves = 0;
+    function assertRejected() {
+      const before = JSON.stringify(users);
+      assert.equal(getConversationThread("42", "100", { userStore: users, now: 2500 }), null);
+      assert.equal(getCognitionStatus({ userStore: users, now: 2500 }).invalidThreads, 1);
+      assert.throws(() => recordConversationTurn({ ...base, messageId: "m3", userText: "继续",
+        assistantText: "不应写入", now: 2500 }, { userStore: users, saveUsers: () => { saves++; } }),
+      /conversation_thread_invalid/);
+      assert.equal(JSON.stringify(users), before);
+      assert.equal(saves, 0);
+    }
+    stored.branches[0].scope = "private";
+    stored.branches[0].turns[0].userSummary = "PRIVATE_SCOPE_MARKER";
+    assertRejected();
+    stored.branches[0].scope = "100";
+    stored.branches.push({ ...stored.branches[0], id: "msg:other" }, { ...stored.branches[0], id: "msg:third" });
+    assertRejected();
+    stored.branches.length = 1;
+    stored.branches[0].turns[0].assistantMessageIds = { bad: true };
+    assertRejected();
+    delete stored.branches[0].turns[0].assistantMessageIds;
+    stored.scope = "private";
+    assertRejected();
+    stored.updatedAt = 0;
+    stored.expiresAt = 1;
+    assertRejected();
   });
 });

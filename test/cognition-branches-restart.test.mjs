@@ -11,6 +11,7 @@ const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const threadUrl = pathToFileURL(path.join(project, "bridge", "cognition", "thread-manager.mjs")).href;
 const storageUrl = pathToFileURL(path.join(project, "bridge", "storage.mjs")).href;
 const preferencesUrl = pathToFileURL(path.join(project, "bridge", "user-preferences.mjs")).href;
+const contextUrl = pathToFileURL(path.join(project, "bridge", "context", "assemble.mjs")).href;
 
 test("group topic branches survive a fresh process and full forget removes them durably", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-topic-restart-"));
@@ -21,7 +22,7 @@ test("group topic branches survive a fresh process and full forget removes them 
     const env = { ...process.env, NODE_ENV: "test", QQBOT_CONFIG_ROOT: path.join(root, "config"),
       QQBOT_DATA_DIR: path.join(root, "data"), QQBOT_LOG_DIR: path.join(root, "logs"),
       QQBOT_TEMP_DIR: path.join(root, "tmp"), THREAD_URL: threadUrl, STORAGE_URL: storageUrl,
-      PREFERENCES_URL: preferencesUrl };
+      PREFERENCES_URL: preferencesUrl, CONTEXT_URL: contextUrl };
 
     const writer = runChild(`
       const { recordConversationTurn } = await import(process.env.THREAD_URL);
@@ -48,6 +49,28 @@ test("group topic branches survive a fresh process and full forget removes them 
     `, env);
     assert.deepEqual(reader.messages, ["70341"]);
     assert.deepEqual(reader.active, ["70342"]);
+
+    const memoryFile = path.join(root, "data", "user_memory.json");
+    const cleanBytes = fs.readFileSync(memoryFile);
+    const corrupt = JSON.parse(cleanBytes.toString("utf8"));
+    corrupt["60341"].cognition.threads["50341"].branches[0].scope = "private";
+    corrupt["60341"].cognition.threads["50341"].branches[0].turns[0].assistantSummary = "PRIVATE_BRANCH_MARKER";
+    fs.writeFileSync(memoryFile, JSON.stringify(corrupt));
+    const corruptedBytes = fs.readFileSync(memoryFile);
+    const rejected = runChild(`
+      const { getConversationThread, getCognitionStatus } = await import(process.env.THREAD_URL);
+      const { buildReplyContextPacket } = await import(process.env.CONTEXT_URL);
+      const thread = getConversationThread("60341", "50341", { forMessage: {
+        uid: "60341", userMsg: "JM 压缩包继续", replyToMessageId: "80341", replyUserId: "1000000001", selfUin: "1000000001" } });
+      const packet = buildReplyContextPacket({ uid: "60341", groupId: "50341", userName: "合成用户",
+        userMsg: "JM 压缩包继续", currentMessageId: "70343" });
+      console.log("RESULT:" + JSON.stringify({ thread, leaked: JSON.stringify(packet.messages).includes("PRIVATE_BRANCH_MARKER"),
+        invalidThreads: getCognitionStatus().invalidThreads }));
+    `, env);
+    assert.equal(rejected.thread, null);
+    assert.equal(rejected.leaked, false);
+    assert.equal(rejected.invalidThreads, 1);
+    assert.deepEqual(fs.readFileSync(memoryFile), corruptedBytes);
 
     const forgotten = runChild(`
       const { forgetUserData } = await import(process.env.PREFERENCES_URL);

@@ -54,6 +54,7 @@ export function buildRuntimeStatus(options = {}) {
 
 function buildRuntimeModules(now) {
   const nowMs = now.getTime();
+  const cognition = getCognitionStatus({ now: nowMs });
   return {
     commands: { enabled: true, health: "ready" },
     jm: buildJmModule(nowMs),
@@ -65,7 +66,7 @@ function buildRuntimeModules(now) {
       health: memoryProfilesAvailable() ? "ready" : "degraded",
       legacyRefreshEnabled: CFG.legacyProfileRefreshEnabled,
     },
-    cognition: { ...getCognitionStatus({ now: nowMs }), health: "ready" },
+    cognition: { ...cognition, health: cognition.invalidThreads ? "degraded" : "ready" },
     imageContext: { ...getImageContextCacheStatus({ now: nowMs }), health: "ready" },
     linkPreview: buildLinkPreviewModule(),
     wordcloud: buildWordcloudModule(),

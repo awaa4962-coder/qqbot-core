@@ -13,6 +13,7 @@ import { resolveReplyContext, pullRecentImages } from "../bridge/reply-handlers.
 import { createTraceRecorder, traceStage, withMessageTrace } from "../bridge/diagnostics/message-trace.mjs";
 import { processEvent } from "../bridge/reply.mjs";
 import { CFG } from "../bridge/config.mjs";
+import { buildRuntimeStatus } from "../bridge/admin-api/runtime-status.mjs";
 
 const now = Date.now();
 const row = (messageId, uid, text, rest = {}) => ({ messageId, uid, text, nickname: "user-" + uid, role: "member", ts: now - 1000, ...rest });
@@ -135,6 +136,26 @@ test("an expired older topic branch cannot enter a quoted follow-up context", ()
     quoteEvidence: { state: "verified", messageId: "811", userId: String(CFG.selfUin), groupId: "22", at: Date.now() } });
   assert.doesNotMatch(JSON.stringify(packet.messages), /STALE_BRANCH_ASSISTANT_MARKER/);
   assert.equal(packet.thread, null);
+});
+
+test("foreign-scope branch text is excluded from the model and anonymous runtime diagnostics", () => {
+  const now = Date.now();
+  users["11"] = { cognition: { schemaVersion: 2, threads: { "22": {
+    schemaVersion: 2, id: "msg:711", scope: "22", topic: "日报", createdAt: now - 2000,
+    updatedAt: now - 1000, expiresAt: now + 90 * 60 * 1000, lastOutcome: "sent",
+    turns: [{ messageId: "711", userSummary: "日报没生成", assistantSummary: "检查计划" }],
+    branches: [{ schemaVersion: 2, id: "msg:712", scope: "private", topic: "JM 下载",
+      createdAt: now - 3000, updatedAt: now - 2000, expiresAt: now + 90 * 60 * 1000,
+      lastOutcome: "sent", turns: [{ messageId: "712", userSummary: "JM 压缩包 PRIVATE_SCOPE_MARKER",
+        assistantSummary: "PRIVATE_SCOPE_MARKER" }] }],
+  } } } };
+  const packet = buildReplyContextPacket({ uid: "11", groupId: "22", userName: "合成用户",
+    userMsg: "JM 压缩包继续", currentMessageId: "713" });
+  assert.doesNotMatch(JSON.stringify(packet.messages), /PRIVATE_SCOPE_MARKER/);
+  const status = buildRuntimeStatus({ now: new Date(now) });
+  assert.equal(status.modules.cognition.health, "degraded");
+  assert.equal(status.modules.cognition.invalidThreads, 1);
+  assert.doesNotMatch(JSON.stringify(status.modules.cognition), /PRIVATE_SCOPE_MARKER/);
 });
 
 test("quoting someone else does not attach the sender's old conversation", () => {

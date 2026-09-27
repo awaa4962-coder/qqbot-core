@@ -72,6 +72,7 @@ export function getConversationThread(uid, groupId, options = {}) {
     ? PRIVATE_THREADS.get(privateKey(id))
     : (options.userStore || users)[id]?.cognition?.threads?.[scope];
   if (!isActiveThread(thread, now)) return null;
+  if (scope !== "private" && !validStoredGroupThread(thread, scope)) return null;
   const selected = scope === "private" ? thread : selectReadableBranch(thread, options.forMessage, now);
   return selected ? snapshotThread(selected, scope) : null;
 }
@@ -123,9 +124,11 @@ export function getCognitionStatus(options = {}) {
   const userStore = options.userStore || users;
   let groupThreads = 0;
   let topicBranches = 0;
+  let invalidThreads = 0;
   let turns = 0;
   for (const user of Object.values(userStore)) {
-    for (const thread of Object.values(user?.cognition?.threads || {})) {
+    for (const [scope, thread] of Object.entries(user?.cognition?.threads || {})) {
+      if (!validStoredGroupThread(thread, scope)) { invalidThreads++; continue; }
       if (!isActiveThread(thread, now)) continue;
       groupThreads++;
       turns += Array.isArray(thread.turns) ? thread.turns.length : 0;
@@ -143,6 +146,7 @@ export function getCognitionStatus(options = {}) {
     schemaVersion: 2,
     groupThreads,
     topicBranches,
+    invalidThreads,
     privateThreads,
     completedTurns: turns,
     privatePersistence: false,
@@ -170,22 +174,58 @@ function getOrCreatePrivateThread(uid, now) {
 
 function getOrCreateGroupThread(uid, scope, now, userStore) {
   const user = userStore[uid] || (userStore[uid] = { uid, nicknames: [], chats: [] });
-  if (!user.cognition || typeof user.cognition !== "object") {
+  if (user.cognition === undefined) {
     user.cognition = { schemaVersion: 1, threads: {} };
-  }
-  if (!user.cognition.threads || typeof user.cognition.threads !== "object") {
+  } else if (!plainObject(user.cognition)) throw new Error("conversation_thread_invalid");
+  if (user.cognition.threads === undefined) {
     user.cognition.threads = {};
-  }
+  } else if (!plainObject(user.cognition.threads)) throw new Error("conversation_thread_invalid");
   let thread = user.cognition.threads[scope];
+  if (thread !== undefined && !validStoredGroupThread(thread, scope)) throw new Error("conversation_thread_invalid");
   if (!isActiveThread(thread, now)) {
     thread = createThread(scope, now);
     user.cognition.threads[scope] = thread;
   }
   thread.schemaVersion = 2;
   thread.id ||= branchId(thread);
-  thread.branches = Array.isArray(thread.branches) ? thread.branches : [];
+  thread.branches ||= [];
   user.cognition.schemaVersion = 2;
   return thread;
+}
+
+function validStoredGroupThread(thread, scope) {
+  if (thread?.scope !== scope || !validRootTopic(thread) || !validTurns(thread.turns, MAX_TURNS)) return false;
+  if (thread.branches === undefined) return true;
+  if (!Array.isArray(thread.branches) || thread.branches.length > MAX_INACTIVE_BRANCHES) return false;
+  const ids = new Set([branchId(thread)]);
+  for (const branch of thread.branches) {
+    if (!validStoredBranch(branch, scope, ids)) return false;
+    ids.add(branch.id);
+  }
+  return true;
+}
+
+function validRootTopic(thread) {
+  return typeof thread.topic === "string" ||
+    (thread.schemaVersion !== 2 && (thread.topic === undefined || thread.topic === null));
+}
+
+function validStoredBranch(branch, scope, ids) {
+  return branch?.scope === scope && typeof branch.id === "string" && Boolean(branch.id) && branch.id.length <= 128 &&
+    typeof branch.topic === "string" && !ids.has(branch.id) &&
+    validTurns(branch.turns, MAX_INACTIVE_TURNS) && branch.turns.length > 0;
+}
+
+function validTurns(turns, limit) {
+  return Array.isArray(turns) && turns.length <= limit && turns.every(turn =>
+    plainObject(turn) && typeof turn.userSummary === "string" && typeof turn.assistantSummary === "string" &&
+    (turn.assistantMessageIds === undefined || (Array.isArray(turn.assistantMessageIds) &&
+      turn.assistantMessageIds.length <= 16 && turn.assistantMessageIds.every(id =>
+        typeof id === "string" && /^-?\d{1,20}$/.test(id)))));
+}
+
+function plainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function selectWritableBranch(thread, event, now) {
