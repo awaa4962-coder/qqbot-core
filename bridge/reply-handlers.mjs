@@ -145,8 +145,10 @@ export async function handleLinkPreview(gid, rawText, isLongGroup, options = {})
 
   const delivery = await attemptPreviewSend(() => sendPreview(gid, preview, options));
   const sent = delivery === "sent";
-  if (sent) {
+  if (["sent", "partial", "unknown"].includes(delivery)) {
     markAutoPreviewSent(gid, decision.candidate, options);
+  }
+  if (sent) {
     log(preview.bvid ? "bili preview sent" : "generic link preview sent", decision.candidate.host);
   }
   return previewResult(sent, Boolean(preview.bvid), true, delivery === "sent" ? "sent" : `send_${delivery}`);
@@ -198,6 +200,10 @@ export async function handleMiniAppResult(message, gid, isLongGroup, options = {
     return { found: true, delivery, reason: delivery === "sent" ? "sent" : `send_${delivery}` };
   }
   return { found: false, delivery: "not_attempted", reason: "not_miniapp" };
+}
+
+export function hasMiniAppPayload(message) {
+  return parseMiniAppPayloads(message).length > 0;
 }
 
 function parseMiniAppPayloads(message) {

@@ -9,8 +9,11 @@ import {
   pullRecentImages,
   handleLinkPreview,
   handleMiniAppResult,
+  hasMiniAppPayload,
+  parseExplicitLinkPreviewCommand,
   buildInterjectionDecision,
 } from "./reply-handlers.mjs";
+import { inspectAutoPreview } from "./services/link-preview/index.mjs";
 import { dispatchGroupCommand } from "./commands/action-dispatcher.mjs";
 import { observeMemoryEvent, getActiveMemoryContext } from "./memory-profile.mjs";
 import { observeGroupDuplicate } from "./duplicate-message.mjs";
@@ -34,11 +37,15 @@ export async function handleGroupMessage(ctx, rawMessage, options = {}) {
   if (!await prepareGroupMessage(ctx)) return null;
 
   const replyState = createPendingReplyState(ctx);
-  if (await dispatchGroupCommand(ctx, { replyToId: replyState.replyToId })) return null;
+  const command = await handleGroupCommand(ctx, replyState, options);
+  if (command) return command;
   if (stopStaleGroupContext(ctx)) return null;
   if (!ctx.isAtMe) observeGroupStickerCandidates(ctx);
 
-  const previewState = await handleGroupPreviews(ctx, rawMessage);
+  const detachedPreview = startDetachedGroupPreview(ctx, rawMessage, options);
+  if (detachedPreview) return detachedPreview;
+
+  const previewState = await handleGroupPreviews(ctx, rawMessage, options.previewOptions);
   if (stopStaleGroupContext(ctx)) return null;
 
   if (previewState.sent && !ctx.isAtMe) {
@@ -49,8 +56,29 @@ export async function handleGroupMessage(ctx, rawMessage, options = {}) {
   if (mentioned) return mentioned === true ? null : mentioned;
   if (await handlePureFileMessage(ctx)) return null;
 
-  await handleRandomInterjection(ctx, previewState.suppressInterjection, replyState);
-  return null;
+  return await handleRandomInterjection(ctx, previewState.suppressInterjection, replyState, options);
+}
+
+async function handleGroupCommand(ctx, replyState, options) {
+  const detachedPreview = await startDetachedExplicitPreview(ctx, replyState, options);
+  if (detachedPreview) return detachedPreview;
+  return await dispatchGroupCommand(ctx, { replyToId: replyState.replyToId }) ? {} : null;
+}
+
+async function startDetachedExplicitPreview(ctx, replyState, options) {
+  if (!options.detachChat || !ctx.isAtMe || !parseExplicitLinkPreviewCommand(ctx.text || ctx.rawText)) return null;
+  traceStage("route", { status: "ok", route: "link-preview" });
+  const run = () => withChatRun({ surface: "group", lane: "preview", groupId: ctx.group_id, userId: ctx.user_id,
+    messageId: ctx.message_id, eventTime: ctx.eventTime,
+    contextPrivacyGeneration: ctx.contextPrivacyGeneration }, async () => {
+    await dispatchGroupCommand(ctx, { replyToId: replyState.replyToId, ...options.previewOptions });
+    noteChatOutcome({ kind: "silence" });
+  });
+  const scheduled = (options.chatScheduler || chatWorkScheduler).start(
+    { groupId: ctx.group_id, userId: ctx.user_id, kind: "preview" }, run);
+  if (scheduled.ok) return { completion: scheduled.completion };
+  await sendChatCapacityNotice(ctx, replyState, scheduled.reason);
+  return {};
 }
 
 async function prepareGroupMessage(ctx) {
@@ -131,16 +159,36 @@ function inheritedSourceExclusion(ctx) {
   }
 }
 
-async function handleGroupPreviews(ctx, rawMessage) {
+async function handleGroupPreviews(ctx, rawMessage, previewOptions = {}) {
   const isLong = requireLongGroup(ctx.group_id);
-  const link = await handleLinkPreview(ctx.group_id, ctx.rawText, isLong, { isAtMe: ctx.isAtMe });
-  const miniApp = !ctx.isAtMe && !link.sent
-    ? await handleMiniAppResult(rawMessage, ctx.group_id, isLong)
+  const link = await handleLinkPreview(ctx.group_id, ctx.rawText, isLong, { ...previewOptions, isAtMe: ctx.isAtMe });
+  const miniApp = !ctx.isAtMe && !link.sent && !link.reason.startsWith("send_")
+    ? await handleMiniAppResult(rawMessage, ctx.group_id, isLong, previewOptions)
     : { found: false, delivery: "not_attempted" };
   return {
     sent: link.sent || miniApp.delivery === "sent",
     suppressInterjection: link.hadLink || miniApp.found,
   };
+}
+
+function startDetachedGroupPreview(ctx, rawMessage, options) {
+  if (!options.detachChat || ctx.isAtMe) return null;
+  const isLong = requireLongGroup(ctx.group_id);
+  const link = inspectAutoPreview(ctx.rawText, { groupId: ctx.group_id, isLongGroup: isLong });
+  if (!link.ok && (isLong || !hasMiniAppPayload(rawMessage))) return null;
+  traceStage("route", { status: "ok", route: "preview" });
+  const run = () => withChatRun({ surface: "group", lane: "preview", groupId: ctx.group_id, userId: ctx.user_id,
+    messageId: ctx.message_id, eventTime: ctx.eventTime,
+    contextPrivacyGeneration: ctx.contextPrivacyGeneration }, async () => {
+    const result = await handleGroupPreviews(ctx, rawMessage, options.previewOptions);
+    noteChatOutcome({ kind: result.sent ? "reply" : "silence" });
+    return result;
+  });
+  const scheduled = (options.chatScheduler || chatWorkScheduler).start(
+    { groupId: ctx.group_id, userId: ctx.user_id, kind: "preview" }, run);
+  if (scheduled.ok) return { completion: scheduled.completion };
+  traceStage("output", { status: "skipped", reason: scheduled.reason });
+  return {};
 }
 
 async function handleMentionedGroupMessage(ctx, replyState, options = {}) {
@@ -199,13 +247,13 @@ async function handlePureFileMessage(ctx) {
   return true;
 }
 
-async function handleRandomInterjection(ctx, previewSent, replyState = {}) {
+async function handleRandomInterjection(ctx, previewSent, replyState = {}, options = {}) {
   if (ctx.duplicateInfo?.duplicate) {
     log("random interjection skipped: duplicate", ctx.duplicateInfo.reason);
-    return;
+    return null;
   }
   const memory = getActiveMemoryContext(ctx.user_id, ctx.group_id, { groupOnly: true });
-  const decision = buildInterjectionDecision(ctx.text, {
+  const decision = (options.interjectionDecision || buildInterjectionDecision)(ctx.text, {
     isAtMe: ctx.isAtMe,
     previewSent,
     groupId: ctx.group_id,
@@ -222,13 +270,20 @@ async function handleRandomInterjection(ctx, previewSent, replyState = {}) {
     if (decision.kind !== "ordinary" || ctx.images.length) {
       log("random interjection skipped:", decision.kind, decision.reason);
     }
-    return;
+    return null;
   }
   log("random interjection triggered:", decision.kind);
   await ensureReplyState(ctx, replyState);
-  if (stopStaleGroupContext(ctx)) return;
+  if (stopStaleGroupContext(ctx)) return null;
+  const run = () => runInterjectionReply(ctx, replyState, options);
+  if (options.detachChat) return startInterjectionWork(ctx, run, options);
+  await run();
+  return null;
+}
+
+function runInterjectionReply(ctx, replyState, options) {
   const text = ctx.text || (ctx.images.length ? "[图片]" : "");
-  await aiReply(
+  return (options.chatReply || aiReply)(
     ctx.group_id,
     ctx.user_id,
     text,
@@ -240,6 +295,14 @@ async function handleRandomInterjection(ctx, previewSent, replyState = {}) {
     ctx.mentions,
     replyRuntime(ctx)
   );
+}
+
+function startInterjectionWork(ctx, run, options) {
+  const scheduled = (options.chatScheduler || chatWorkScheduler).start(
+    { groupId: ctx.group_id, userId: ctx.user_id, kind: "interjection" }, run);
+  if (scheduled.ok) return { completion: scheduled.completion };
+  traceStage("output", { status: "skipped", reason: scheduled.reason });
+  return null;
 }
 
 function createPendingReplyState(ctx) {

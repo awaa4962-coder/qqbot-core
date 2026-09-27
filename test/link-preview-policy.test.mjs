@@ -145,6 +145,19 @@ describe("automatic link preview handling", () => {
     assert.equal(result.sent, true);
     assert.equal(sent.length, 1);
   });
+
+  it("does not retry the same URL after an uncertain send receipt", async () => {
+    let sends = 0;
+    const options = {
+      previewer: async () => ({ title: "合成页面", text: "网页：合成页面" }),
+      sender: async () => { sends++; return { status: "ok", retcode: 1 }; },
+    };
+    const first = await handleLinkPreview("group-a", "https://example.com/uncertain", false, options);
+    const second = await handleLinkPreview("group-a", "https://example.com/uncertain", false, options);
+    assert.equal(first.reason, "send_unknown");
+    assert.equal(second.reason, "duplicate");
+    assert.equal(sends, 1);
+  });
 });
 
 describe("safe link preview assets", () => {

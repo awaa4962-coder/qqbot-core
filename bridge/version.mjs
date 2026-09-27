@@ -4,21 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.36-detached-mentions";
-export const VERSION_NAME = "detached-mentions";
+export const VERSION = "1.4.37-detached-passive";
+export const VERSION_NAME = "detached-passive";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "群聊明确 @ 的模型回复进入有界运行槽，入站存储、引用核验与近期图片选择仍按原消息顺序完成。",
-  "同发言人新轮次仍取消旧轮次；后台回复结束后才更新处理计数与诊断，容量拒绝走持久发送账本。",
-  "关机时停止新聊天并等待进行中任务短暂收尾；私聊、被动插话和链接预览仍沿原队列。",
+  "群聊被动插话、自动链接与小程序预览、明确链接预览命令进入有界后台运行槽；入站存储和触发判断仍按原消息顺序完成。",
+  "被动插话与预览分别限制并发，不挤占全部明确 @ 名额；被动容量满时安静跳过，明确预览命令返回忙碌提示。",
+  "发送仍走持久账本，后台结束后才结案；不确定预览回执不再触发第二份小程序预览或短时重复链接发送。",
   "JM、模型主备、思考档位与关系评分不变；只更新 Linux，Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Explicit group mentions now run in bounded chat slots after ingress, quote validation and recent-image selection preserve message order.",
-  "A newer turn from the same speaker still cancels the older one. Diagnostics and processing counts close only when the background reply finishes.",
-  "Shutdown drains active chat work. Private chat, passive interjections and link previews still use the existing queue.",
+  "Passive group interjections, automatic link and mini-app previews, and explicit link previews now use bounded background slots after ordered ingress.",
+  "Passive work has separate limits so it cannot consume all explicit mention slots. Passive overload stays quiet; an explicit preview command gets a busy notice.",
+  "Actual sends remain in the durable ledger and finish diagnostics only on completion. Uncertain preview delivery no longer triggers a second mini-app payload or immediate same-URL retry.",
   "Only Linux is updated; Windows stays frozen. JM, model routes, reasoning modes and relationship scoring remain unchanged.",
 ]);
 

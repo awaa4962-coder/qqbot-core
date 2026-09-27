@@ -85,7 +85,8 @@ export async function withChatRun(scope, handler, options = {}) {
     traceStage("output", { status: "skipped", reason: "bridge_stopping" });
     return chatCancellation("bridge_stopping");
   }
-  const key = JSON.stringify([scope.surface, String(scope.groupId || "private"), String(scope.userId)]);
+  const lane = scope.lane === "preview" ? "preview" : "chat";
+  const key = JSON.stringify([scope.surface, String(scope.groupId || "private"), String(scope.userId), lane]);
   const previous = active.get(key);
   if (!previous && active.size >= MAX_ACTIVE_RUNS) {
     traceStage("output", { status: "skipped", reason: "reply_capacity" });

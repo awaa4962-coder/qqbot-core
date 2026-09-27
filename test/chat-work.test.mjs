@@ -9,8 +9,10 @@ import { processEvent } from "../bridge/reply.mjs";
 import { getPipelineStatus, resetPipelineStatusForTest } from "../bridge/pipeline-state.mjs";
 import { inspectChatEvent } from "../bridge/cognition/delivery-ledger.mjs";
 import { parseIncomingEvent } from "../bridge/reply-handlers.mjs";
-import { chatRunStopReason, withChatRun } from "../bridge/cognition/chat-run.mjs";
+import { chatRunStopReason, noteChatOutcome, withChatRun } from "../bridge/cognition/chat-run.mjs";
 import { logGroupMsg } from "../bridge/storage.mjs";
+import { invalidateMemoryPrivacyGeneration } from "../bridge/memory-profile/generation.mjs";
+import { sendMsg } from "../bridge/napcat.mjs";
 
 function deferred() {
   let resolve;
@@ -22,12 +24,20 @@ async function bounded(promise) {
   return Promise.race([promise, delay(1500).then(() => { throw new Error("queue remained blocked"); })]);
 }
 
-function groupAtEvent(messageId, userId = 601101) {
+function groupAtEvent(messageId, userId = 601101, content = "今天天气怎么样") {
   return { kind: "chat", post_type: "message", message_type: "group", group_id: CFG.groupWhitelist[0],
     user_id: userId, message_id: messageId, time: Math.floor(Date.now() / 1000), sender: { nickname: "合成用户" },
-    message: [{ type: "at", data: { qq: String(CFG.selfUin) } }, { type: "text", data: { text: "今天天气怎么样" } }],
-    raw_message: `[CQ:at,qq=${CFG.selfUin}] 今天天气怎么样` };
+    message: [{ type: "at", data: { qq: String(CFG.selfUin) } }, { type: "text", data: { text: content } }],
+    raw_message: `[CQ:at,qq=${CFG.selfUin}] ${content}` };
 }
+
+function groupPassiveEvent(messageId, userId = 601109, content = `这段合成群聊说得挺有意思 ${messageId}`) {
+  return { kind: "chat", post_type: "message", message_type: "group", group_id: CFG.groupWhitelist[0],
+    user_id: userId, message_id: messageId, time: Math.floor(Date.now() / 1000), sender: { nickname: "合成群友" },
+    message: [{ type: "text", data: { text: content } }], raw_message: content };
+}
+
+const triggerInterjection = () => ({ ok: true, kind: "question", reason: "triggered", probability: 1 });
 
 test("chat scheduler bounds global, group and speaker slots without queuing excess work", async () => {
   const scheduler = createChatWorkScheduler({ limits: { global: 2, group: 1, speaker: 1 } });
@@ -45,6 +55,280 @@ test("chat scheduler bounds global, group and speaker slots without queuing exce
   assert.equal(scheduler.start({ groupId: 3, userId: 33 }, () => assert.fail()).reason, "bridge_stopping");
   hold.resolve(); await Promise.all([first.completion, second.completion]);
   assert.equal(scheduler.status().active, 0);
+});
+
+test("passive chat has a separate cap and cannot exhaust explicit mention slots", async () => {
+  const scheduler = createChatWorkScheduler({ limits: { global: 3, group: 3, speaker: 3,
+    passiveGlobal: 1, passiveGroup: 1 } });
+  const hold = deferred();
+  const passive = scheduler.start({ groupId: 1, userId: 11, kind: "interjection" }, () => hold.promise);
+  assert.equal(passive.ok, true);
+  assert.equal(scheduler.status().passiveActive, 1);
+  assert.equal(scheduler.start({ groupId: 2, userId: 22, kind: "interjection" }, () => assert.fail()).reason, "reply_capacity");
+  const mentioned = scheduler.start({ groupId: 1, userId: 11 }, () => hold.promise);
+  assert.equal(mentioned.ok, true);
+  hold.resolve(); await Promise.all([passive.completion, mentioned.completion]);
+  await Promise.resolve();
+  assert.equal(scheduler.status().passiveActive, 0);
+  await scheduler.stop({ drainMs: 1000 });
+});
+
+test("preview work has a separate per-group cap and leaves explicit mention slots available", async () => {
+  const scheduler = createChatWorkScheduler({ limits: { global: 3, group: 3, speaker: 3,
+    previewGlobal: 1, previewGroup: 1 } });
+  const hold = deferred();
+  const preview = scheduler.start({ groupId: 1, userId: 11, kind: "preview" }, () => hold.promise);
+  assert.equal(preview.ok, true);
+  assert.equal(scheduler.start({ groupId: 1, userId: 12, kind: "preview" }, () => assert.fail()).reason, "reply_capacity");
+  assert.equal(scheduler.start({ groupId: 2, userId: 22, kind: "preview" }, () => assert.fail()).reason, "reply_capacity");
+  const mentioned = scheduler.start({ groupId: 1, userId: 11 }, () => hold.promise);
+  assert.equal(mentioned.ok, true);
+  hold.resolve(); await Promise.all([preview.completion, mentioned.completion]);
+  await Promise.resolve();
+  assert.equal(scheduler.status().previewActive, 0);
+  await scheduler.stop({ drainMs: 1000 });
+});
+
+test("passive model work releases same-group ingestion but keeps the trace pending", async () => {
+  resetPipelineStatusForTest();
+  const scheduler = createChatWorkScheduler({ limits: { global: 2, group: 2, speaker: 2 } });
+  const hold = deferred(); const started = deferred(); const nextMessage = deferred();
+  const event = groupPassiveEvent(901109);
+  let intake;
+  const link = createOneBotLinkManager({ processor: async value => {
+    if (value.kind === "next") { nextMessage.resolve(); return; }
+    intake = await processEvent(value, { detachChat: true, chatScheduler: scheduler,
+      interjectionDecision: triggerInterjection,
+      chatReply: async () => { started.resolve(); await hold.promise;
+        traceStage("output", { status: "ok" }); traceStage("send", { status: "ok" }); } });
+  } });
+  try {
+    assert.equal(link.enqueue(event), true);
+    assert.equal(link.enqueue({ kind: "next", message_type: "group", group_id: event.group_id }), true);
+    await bounded(started.promise);
+    await bounded(nextMessage.promise);
+    assert.equal(intake.pending, true);
+    assert.equal(getPipelineStatus().counters.processed, 0);
+    assert.equal(listMessageTraces({ messageId: String(event.message_id) }).items[0].status, "processing");
+    hold.resolve(); await intake.completion; await Promise.resolve();
+    assert.equal(getPipelineStatus().counters.processed, 1);
+    assert.equal(listMessageTraces({ messageId: String(event.message_id) }).items[0].status, "sent");
+  } finally { hold.resolve(); await scheduler.stop({ drainMs: 1000 }); await link.stop({ drainMs: 1000 }); }
+});
+
+test("passive capacity exhaustion is silent and makes no provider or QQ call", async t => {
+  const event = groupPassiveEvent(901110, 601110);
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => { calls++; throw new Error("unexpected network call"); });
+  const scheduler = { start: () => ({ ok: false, reason: "reply_capacity" }) };
+  const result = await processEvent(event, { detachChat: true, chatScheduler: scheduler,
+    interjectionDecision: triggerInterjection });
+  assert.equal(result.ok, true);
+  assert.equal(result.pending, undefined);
+  assert.equal(calls, 0);
+  assert.equal(listMessageTraces({ messageId: String(event.message_id) }).items[0].status, "cancelled");
+});
+
+test("real passive route completes only after its confirmed synthetic model send", async t => {
+  const scheduler = createChatWorkScheduler({ limits: { global: 2, group: 2, speaker: 2 } });
+  const event = groupPassiveEvent(901111, 601111);
+  let modelCalls = 0; let sends = 0;
+  t.mock.method(globalThis, "fetch", async url => {
+    if (String(url).includes("/send_group_msg")) {
+      sends++; return { ok: true, json: async () => ({ status: "ok", retcode: 0 }) };
+    }
+    modelCalls++;
+    return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: '{"reply":"合成插话"}' } }] }) };
+  });
+  try {
+    const accepted = await processEvent(event, { detachChat: true, chatScheduler: scheduler,
+      interjectionDecision: triggerInterjection });
+    assert.equal(accepted.pending, true);
+    await accepted.completion;
+    assert.equal(modelCalls, 1);
+    assert.equal(sends, 1);
+    assert.equal(inspectChatEvent(parseIncomingEvent(event)), "reply_duplicate");
+    assert.equal(listMessageTraces({ messageId: String(event.message_id) }).items[0].status, "sent");
+  } finally { await scheduler.stop({ drainMs: 1000 }); }
+});
+
+test("automatic link fetch releases group ingress but keeps one durable pending delivery", async t => {
+  resetPipelineStatusForTest();
+  const scheduler = createChatWorkScheduler({ limits: { global: 3, group: 3, speaker: 3 } });
+  const hold = deferred(); const started = deferred(); const nextMessage = deferred();
+  const event = groupPassiveEvent(901112, 601112, "https://example.com/preview-901112");
+  let sends = 0; let intake;
+  t.mock.method(globalThis, "fetch", async url => {
+    assert.ok(String(url).includes("/send_group_msg"));
+    sends++; return { ok: true, json: async () => ({ status: "ok", retcode: 0 }) };
+  });
+  const link = createOneBotLinkManager({ processor: async value => {
+    if (value.kind === "next") { nextMessage.resolve(); return; }
+    intake = await processEvent(value, { detachChat: true, chatScheduler: scheduler,
+      previewOptions: { previewer: async () => { started.resolve(); await hold.promise;
+        return { title: "合成页面", text: "网页：合成页面", description: "合成页面摘要" }; } } });
+  } });
+  try {
+    assert.equal(link.enqueue(event), true);
+    assert.equal(link.enqueue({ kind: "next", message_type: "group", group_id: event.group_id }), true);
+    await bounded(started.promise);
+    await bounded(nextMessage.promise);
+    assert.equal(intake.pending, true);
+    assert.equal(inspectChatEvent(parseIncomingEvent(event)), "reply_duplicate");
+    assert.equal(getPipelineStatus().counters.processed, 0);
+    assert.equal(listMessageTraces({ messageId: String(event.message_id) }).items[0].status, "processing");
+    hold.resolve(); await intake.completion; await Promise.resolve();
+    assert.equal(sends, 1);
+    assert.equal(getPipelineStatus().counters.processed, 1);
+    assert.equal(listMessageTraces({ messageId: String(event.message_id) }).items[0].status, "sent");
+  } finally { hold.resolve(); await scheduler.stop({ drainMs: 1000 }); await link.stop({ drainMs: 1000 }); }
+});
+
+test("a second same-group preview is skipped while the first fetch occupies its bounded slot", async t => {
+  const scheduler = createChatWorkScheduler({ limits: { global: 3, group: 3, speaker: 3,
+    previewGlobal: 2, previewGroup: 1 } });
+  const hold = deferred(); const started = deferred();
+  const first = groupPassiveEvent(901113, 601113, "https://example.com/preview-901113");
+  const second = groupPassiveEvent(901114, 601114, "https://example.com/preview-901114");
+  let previewCalls = 0; let sends = 0;
+  t.mock.method(globalThis, "fetch", async url => {
+    assert.ok(String(url).includes("/send_group_msg"));
+    sends++; return { ok: true, json: async () => ({ status: "ok", retcode: 0 }) };
+  });
+  const options = { detachChat: true, chatScheduler: scheduler,
+    previewOptions: { previewer: async () => { previewCalls++; started.resolve(); await hold.promise;
+      return { title: "合成页面", text: "网页：合成页面" }; } } };
+  try {
+    const pending = await processEvent(first, options);
+    await bounded(started.promise);
+    const skipped = await processEvent(second, options);
+    assert.equal(pending.pending, true);
+    assert.equal(skipped.pending, undefined);
+    assert.equal(previewCalls, 1);
+    assert.equal(sends, 0);
+    hold.resolve(); await pending.completion;
+    assert.equal(sends, 1);
+    assert.equal(listMessageTraces({ messageId: String(second.message_id) }).items[0].status, "cancelled");
+  } finally { hold.resolve(); await scheduler.stop({ drainMs: 1000 }); }
+});
+
+test("group permission revocation during preview fetch prevents its eventual send", async t => {
+  const scheduler = createChatWorkScheduler({ limits: { global: 2, group: 2, speaker: 2 } });
+  const hold = deferred(); const started = deferred();
+  const event = groupPassiveEvent(901115, 601115, "https://example.com/preview-901115");
+  const originalWhitelist = CFG.groupWhitelist;
+  let sends = 0;
+  t.mock.method(globalThis, "fetch", async () => { sends++; throw new Error("unexpected QQ send"); });
+  try {
+    const pending = await processEvent(event, { detachChat: true, chatScheduler: scheduler,
+      previewOptions: { previewer: async () => { started.resolve(); await hold.promise;
+        return { title: "合成页面", text: "网页：合成页面" }; } } });
+    assert.equal(pending.pending, true);
+    await bounded(started.promise);
+    CFG.groupWhitelist = [];
+    hold.resolve(); await pending.completion;
+    assert.equal(sends, 0);
+    assert.equal(listMessageTraces({ messageId: String(event.message_id) }).items[0].status, "cancelled");
+  } finally { CFG.groupWhitelist = originalWhitelist; hold.resolve(); await scheduler.stop({ drainMs: 1000 }); }
+});
+
+test("privacy invalidation during preview fetch prevents its eventual send", async t => {
+  const scheduler = createChatWorkScheduler({ limits: { global: 2, group: 2, speaker: 2 } });
+  const hold = deferred(); const started = deferred();
+  const event = groupPassiveEvent(901120, 601120, "https://example.com/preview-901120");
+  let sends = 0;
+  t.mock.method(globalThis, "fetch", async () => { sends++; throw new Error("unexpected QQ send"); });
+  try {
+    const pending = await processEvent(event, { detachChat: true, chatScheduler: scheduler,
+      previewOptions: { previewer: async () => { started.resolve(); await hold.promise;
+        return { title: "合成页面", text: "网页：合成页面" }; } } });
+    assert.equal(pending.pending, true);
+    await bounded(started.promise);
+    invalidateMemoryPrivacyGeneration();
+    hold.resolve(); await pending.completion;
+    assert.equal(sends, 0);
+    assert.equal(listMessageTraces({ messageId: String(event.message_id) }).items[0].status, "cancelled");
+  } finally { hold.resolve(); await scheduler.stop({ drainMs: 1000 }); }
+});
+
+test("an uncertain link send does not dispatch a second mini-app preview", async () => {
+  const event = groupPassiveEvent(901116, 601116, "https://example.com/preview-901116");
+  event.message.push({ type: "json", data: { data: JSON.stringify({ app: "com.tencent.miniapp_01",
+    meta: { detail_1: { title: "合成小程序", desc: "同一条消息" } } }) } });
+  let sends = 0;
+  const result = await processEvent(event, { previewOptions: {
+    previewer: async () => ({ title: "合成页面", text: "网页：合成页面" }),
+    sender: async () => { sends++; return { status: "ok", retcode: 1 }; },
+  } });
+  assert.equal(result.ok, true);
+  assert.equal(sends, 1);
+});
+
+test("a mini-app preview uses the same detached receipt boundary", async t => {
+  const scheduler = createChatWorkScheduler({ limits: { global: 2, group: 2, speaker: 2 } });
+  const hold = deferred(); const started = deferred();
+  const event = groupPassiveEvent(901117, 601117, "");
+  event.message = [{ type: "json", data: { data: JSON.stringify({ app: "com.tencent.miniapp_01",
+    meta: { detail_1: { title: "合成小程序", desc: "一条简介" } } }) } }];
+  let sends = 0;
+  t.mock.method(globalThis, "fetch", async url => {
+    assert.ok(String(url).includes("/send_group_msg"));
+    sends++; started.resolve(); await hold.promise;
+    return { ok: true, json: async () => ({ status: "ok", retcode: 0 }) };
+  });
+  try {
+    const pending = await processEvent(event, { detachChat: true, chatScheduler: scheduler });
+    assert.equal(pending.pending, true);
+    await bounded(started.promise);
+    assert.equal(inspectChatEvent(parseIncomingEvent(event)), "reply_duplicate");
+    assert.equal(listMessageTraces({ messageId: String(event.message_id) }).items[0].status, "processing");
+    hold.resolve(); await pending.completion;
+    assert.equal(sends, 1);
+    assert.equal(listMessageTraces({ messageId: String(event.message_id) }).items[0].status, "sent");
+  } finally { hold.resolve(); await scheduler.stop({ drainMs: 1000 }); }
+});
+
+test("explicit link-preview command releases the group queue during its fetch", async t => {
+  const scheduler = createChatWorkScheduler({ limits: { global: 2, group: 2, speaker: 2 } });
+  const hold = deferred(); const started = deferred(); const nextMessage = deferred();
+  const event = groupAtEvent(901118, 601118, "预览 https://example.com/command-901118");
+  let sends = 0; let intake;
+  t.mock.method(globalThis, "fetch", async url => {
+    assert.ok(String(url).includes("/send_group_msg"));
+    sends++; return { ok: true, json: async () => ({ status: "ok", retcode: 0 }) };
+  });
+  const link = createOneBotLinkManager({ processor: async value => {
+    if (value.kind === "next") { nextMessage.resolve(); return; }
+    intake = await processEvent(value, { detachChat: true, chatScheduler: scheduler,
+      previewOptions: { previewer: async () => { started.resolve(); await hold.promise;
+        return { title: "合成页面", text: "网页：合成页面" }; } } });
+  } });
+  try {
+    assert.equal(link.enqueue(event), true);
+    assert.equal(link.enqueue({ kind: "next", message_type: "group", group_id: event.group_id }), true);
+    await bounded(started.promise);
+    await bounded(nextMessage.promise);
+    assert.equal(intake.pending, true);
+    assert.equal(inspectChatEvent(parseIncomingEvent(event)), "reply_duplicate");
+    hold.resolve(); await intake.completion;
+    assert.equal(sends, 1);
+    assert.equal(listMessageTraces({ messageId: String(event.message_id) }).items[0].status, "sent");
+  } finally { hold.resolve(); await scheduler.stop({ drainMs: 1000 }); await link.stop({ drainMs: 1000 }); }
+});
+
+test("explicit preview capacity notice is durable and not sent twice on event replay", async t => {
+  const event = groupAtEvent(901119, 601119, "预览 https://example.com/command-901119");
+  let sends = 0;
+  t.mock.method(globalThis, "fetch", async url => {
+    assert.ok(String(url).includes("/send_group_msg"));
+    sends++; return { ok: true, json: async () => ({ status: "ok", retcode: 0 }) };
+  });
+  const scheduler = { start: () => ({ ok: false, reason: "reply_capacity" }) };
+  const options = { detachChat: true, chatScheduler: scheduler };
+  assert.equal((await processEvent(event, options)).ok, true);
+  assert.equal(inspectChatEvent(parseIncomingEvent(event)), "reply_duplicate");
+  assert.equal((await processEvent(event, options)).reason, "duplicate_event");
+  assert.equal(sends, 1);
 });
 
 test("registered detached work keeps one trace open until its actual send settles", async () => {
@@ -126,6 +410,40 @@ test("a newer mention from the same speaker cancels the older detached reply", a
     assert.equal(newSends, 1);
     assert.equal(listMessageTraces({ messageId: "901105", groupId: String(groupId) }).items[0].status, "cancelled");
   } finally { firstHold.resolve(); await scheduler.stop({ drainMs: 1000 }); }
+});
+
+test("a same-speaker preview cannot supersede an in-flight explicit mention reply", async t => {
+  const scheduler = createChatWorkScheduler({ limits: { global: 3, group: 3, speaker: 2 } });
+  const hold = deferred(); const started = deferred();
+  const mentioned = groupAtEvent(901121, 601121);
+  const preview = groupPassiveEvent(901122, 601121, "https://example.com/preview-901122");
+  let sends = 0; let mentionedSends = 0;
+  t.mock.method(globalThis, "fetch", async url => {
+    assert.ok(String(url).includes("/send_group_msg"));
+    sends++; return { ok: true, json: async () => ({ status: "ok", retcode: 0 }) };
+  });
+  const chatReply = async (group, user, _text, _name, _images, replyTo, _quote, _at, _mentions, runtime) =>
+    withChatRun({ surface: "group", groupId: group, userId: user, messageId: runtime.messageId,
+      eventTime: runtime.eventTime, contextPrivacyGeneration: runtime.contextPrivacyGeneration }, async () => {
+      started.resolve(); await hold.promise;
+      if (chatRunStopReason()) return;
+      traceStage("output", { status: "ok" });
+      await sendMsg(group, "合成明确回复", replyTo);
+      noteChatOutcome({ kind: "reply" });
+      mentionedSends++;
+    });
+  try {
+    const first = await processEvent(mentioned, { detachChat: true, chatScheduler: scheduler, chatReply });
+    await bounded(started.promise);
+    const second = await processEvent(preview, { detachChat: true, chatScheduler: scheduler,
+      previewOptions: { previewer: async () => ({ title: "合成页面", text: "网页：合成页面" }) } });
+    assert.equal(second.pending, true);
+    await second.completion;
+    hold.resolve(); await first.completion;
+    assert.equal(mentionedSends, 1);
+    assert.equal(sends, 2);
+    assert.equal(listMessageTraces({ messageId: String(mentioned.message_id) }).items[0].status, "sent");
+  } finally { hold.resolve(); await scheduler.stop({ drainMs: 1000 }); }
 });
 
 test("real detached group reply records only a confirmed synthetic model answer", async t => {

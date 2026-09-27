@@ -25,7 +25,8 @@ async function main() {
   fs.writeFileSync(path.join(configRoot, ".env_ds"), "test-only-deepseek-key\n", "utf8");
 
   const files = collectTests(path.join(ROOT, "test"));
-  const child = spawn(process.execPath, ["--test", ...files], {
+  // Test files share one temporary data root; serialize files so their privacy and summary locks cannot collide.
+  const child = spawn(process.execPath, ["--test", "--test-concurrency=1", ...files], {
     cwd: ROOT,
     stdio: "inherit",
     windowsHide: true,
