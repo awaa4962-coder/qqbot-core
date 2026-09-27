@@ -10,11 +10,10 @@ import {
   handleLinkPreview,
   handleMiniAppResult,
   hasMiniAppPayload,
-  parseExplicitLinkPreviewCommand,
   buildInterjectionDecision,
 } from "./reply-handlers.mjs";
 import { inspectAutoPreview } from "./services/link-preview/index.mjs";
-import { dispatchGroupCommand } from "./commands/action-dispatcher.mjs";
+import { dispatchGroupCommand, matchSpecialGroupAction } from "./commands/action-dispatcher.mjs";
 import { observeMemoryEvent, getActiveMemoryContext } from "./memory-profile.mjs";
 import { observeGroupDuplicate } from "./duplicate-message.mjs";
 import { interjectionToleranceFactor } from "./context-retriever.mjs";
@@ -25,7 +24,8 @@ import { traceStage } from "./diagnostics/message-trace.mjs";
 import { getMemoryPrivacyGeneration } from "./memory-profile/generation.mjs";
 import { messageRouteRejection } from "./event-admission.mjs";
 import { isSelfMemoryCommand } from "./commands/modules/memory.mjs";
-import { normalizeCommand } from "./commands/normalize.mjs";
+import { normalizeCommand, prepareCommandText } from "./commands/normalize.mjs";
+import { isRelationshipCommand } from "./relationship-commands.mjs";
 import { memoryCorrectionSnapshot } from "./memory-profile/notes.mjs";
 import { storedScopeSourceLinks } from "./memory-profile/retention.mjs";
 import { collectSourceMessageIds } from "./memory-profile/source-exclusions.mjs";
@@ -60,24 +60,34 @@ export async function handleGroupMessage(ctx, rawMessage, options = {}) {
 }
 
 async function handleGroupCommand(ctx, replyState, options) {
-  const detachedPreview = await startDetachedExplicitPreview(ctx, replyState, options);
-  if (detachedPreview) return detachedPreview;
+  const detachedCommand = await startDetachedSlowCommand(ctx, replyState, options);
+  if (detachedCommand) return detachedCommand;
   return await dispatchGroupCommand(ctx, { replyToId: replyState.replyToId }) ? {} : null;
 }
 
-async function startDetachedExplicitPreview(ctx, replyState, options) {
-  if (!options.detachChat || !ctx.isAtMe || !parseExplicitLinkPreviewCommand(ctx.text || ctx.rawText)) return null;
-  traceStage("route", { status: "ok", route: "link-preview" });
-  const run = () => withChatRun({ surface: "group", lane: "preview", groupId: ctx.group_id, userId: ctx.user_id,
+function slowCommandKind(ctx) {
+  const commandText = prepareCommandText(ctx.text || ctx.rawText, { requireMention: true });
+  const special = matchSpecialGroupAction(commandText);
+  if (special?.id === "link-preview") return "preview";
+  if (special?.id === "wordcloud" || isRelationshipCommand(normalizeCommand(commandText))) return "command";
+  return "";
+}
+
+async function startDetachedSlowCommand(ctx, replyState, options) {
+  if (!options.detachChat || !ctx.isAtMe) return null;
+  const kind = slowCommandKind(ctx);
+  if (!kind) return null;
+  const commandOptions = kind === "preview" ? options.previewOptions : options.commandOptions;
+  const run = () => withChatRun({ surface: "group", lane: kind, groupId: ctx.group_id, userId: ctx.user_id,
     messageId: ctx.message_id, eventTime: ctx.eventTime,
     contextPrivacyGeneration: ctx.contextPrivacyGeneration }, async () => {
-    await dispatchGroupCommand(ctx, { replyToId: replyState.replyToId, ...options.previewOptions });
+    await dispatchGroupCommand(ctx, { replyToId: replyState.replyToId, ...commandOptions });
     noteChatOutcome({ kind: "silence" });
   });
   const scheduled = (options.chatScheduler || chatWorkScheduler).start(
-    { groupId: ctx.group_id, userId: ctx.user_id, kind: "preview" }, run);
+    { groupId: ctx.group_id, userId: ctx.user_id, kind }, run);
   if (scheduled.ok) return { completion: scheduled.completion };
-  await sendChatCapacityNotice(ctx, replyState, scheduled.reason);
+  await sendChatCapacityNotice(ctx, replyState, scheduled.reason, kind);
   return {};
 }
 
@@ -221,9 +231,9 @@ async function handleMentionedGroupMessage(ctx, replyState, options = {}) {
   return true;
 }
 
-async function sendChatCapacityNotice(ctx, replyState, reason) {
+async function sendChatCapacityNotice(ctx, replyState, reason, lane = "chat") {
   traceStage("output", { status: "failed", reason });
-  await withChatRun({ surface: "group", groupId: ctx.group_id, userId: ctx.user_id, messageId: ctx.message_id,
+  await withChatRun({ surface: "group", lane, groupId: ctx.group_id, userId: ctx.user_id, messageId: ctx.message_id,
     eventTime: ctx.eventTime, contextPrivacyGeneration: ctx.contextPrivacyGeneration }, async () => {
     noteChatOutcome({ kind: "error" });
     await sendMsg(ctx.group_id, "当前回复任务较多，请稍后再试。", replyState.replyToId);

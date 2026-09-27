@@ -11,6 +11,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const VERSION_NOTES_ZH = Object.freeze([
   "群聊被动插话、自动链接与小程序预览、明确链接预览命令进入有界后台运行槽；入站存储和触发判断仍按原消息顺序完成。",
   "被动插话与预览分别限制并发，不挤占全部明确 @ 名额；被动容量满时安静跳过，明确预览命令返回忙碌提示。",
+  "词云渲染和关系短评也进入有界命令槽，生成期间不会堵住本群后续消息；命令忙碌提示不会取消正在生成的明确 @ 回复。",
   "发送仍走持久账本，后台结束后才结案；不确定预览回执不再触发第二份小程序预览或短时重复链接发送。",
   "JM、模型主备、思考档位与关系评分不变；只更新 Linux，Windows 继续冻结。",
 ]);
@@ -18,6 +19,7 @@ export const VERSION_NOTES_ZH = Object.freeze([
 export const VERSION_NOTES_EN = Object.freeze([
   "Passive group interjections, automatic link and mini-app previews, and explicit link previews now use bounded background slots after ordered ingress.",
   "Passive work has separate limits so it cannot consume all explicit mention slots. Passive overload stays quiet; an explicit preview command gets a busy notice.",
+  "Wordcloud rendering and relationship comments now use bounded command slots, and their busy notices cannot cancel an in-flight explicit mention reply.",
   "Actual sends remain in the durable ledger and finish diagnostics only on completion. Uncertain preview delivery no longer triggers a second mini-app payload or immediate same-URL retry.",
   "Only Linux is updated; Windows stays frozen. JM, model routes, reasoning modes and relationship scoring remain unchanged.",
 ]);

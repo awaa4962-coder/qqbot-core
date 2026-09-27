@@ -89,6 +89,22 @@ test("preview work has a separate per-group cap and leaves explicit mention slot
   await scheduler.stop({ drainMs: 1000 });
 });
 
+test("slow commands share a bounded category without exhausting explicit mention slots", async () => {
+  const scheduler = createChatWorkScheduler({ limits: { global: 3, group: 3, speaker: 3,
+    commandGlobal: 1, commandGroup: 1 } });
+  const hold = deferred();
+  const command = scheduler.start({ groupId: 1, userId: 11, kind: "command" }, () => hold.promise);
+  assert.equal(command.ok, true);
+  assert.equal(scheduler.start({ groupId: 1, userId: 12, kind: "command" }, () => assert.fail()).reason, "reply_capacity");
+  assert.equal(scheduler.start({ groupId: 2, userId: 22, kind: "command" }, () => assert.fail()).reason, "reply_capacity");
+  const mentioned = scheduler.start({ groupId: 1, userId: 11 }, () => hold.promise);
+  assert.equal(mentioned.ok, true);
+  hold.resolve(); await Promise.all([command.completion, mentioned.completion]);
+  await Promise.resolve();
+  assert.equal(scheduler.status().commandActive, 0);
+  await scheduler.stop({ drainMs: 1000 });
+});
+
 test("passive model work releases same-group ingestion but keeps the trace pending", async () => {
   resetPipelineStatusForTest();
   const scheduler = createChatWorkScheduler({ limits: { global: 2, group: 2, speaker: 2 } });
@@ -329,6 +345,123 @@ test("explicit preview capacity notice is durable and not sent twice on event re
   assert.equal(inspectChatEvent(parseIncomingEvent(event)), "reply_duplicate");
   assert.equal((await processEvent(event, options)).reason, "duplicate_event");
   assert.equal(sends, 1);
+});
+
+test("wordcloud rendering releases same-group ingress until its actual send", async t => {
+  const scheduler = createChatWorkScheduler({ limits: { global: 3, group: 3, speaker: 2 } });
+  const hold = deferred(); const started = deferred(); const nextMessage = deferred();
+  const event = groupAtEvent(901123, 601123, "词云");
+  let sends = 0; let intake;
+  t.mock.method(globalThis, "fetch", async url => {
+    assert.ok(String(url).includes("/send_group_msg"));
+    sends++; return { ok: true, json: async () => ({ status: "ok", retcode: 0 }) };
+  });
+  const link = createOneBotLinkManager({ processor: async value => {
+    if (value.kind === "next") { nextMessage.resolve(); return; }
+    intake = await processEvent(value, { detachChat: true, chatScheduler: scheduler,
+      commandOptions: { featureGroupWhitelist: [event.group_id],
+        chats: [{ group: String(event.group_id), role: "member", ts: Date.now(), text: "合成词云 合成词云" }],
+        renderer: async () => { started.resolve(); await hold.promise; return null; } } });
+  } });
+  try {
+    assert.equal(link.enqueue(event), true);
+    assert.equal(link.enqueue({ kind: "next", message_type: "group", group_id: event.group_id }), true);
+    await bounded(started.promise);
+    await bounded(nextMessage.promise);
+    assert.equal(intake.pending, true);
+    assert.equal(inspectChatEvent(parseIncomingEvent(event)), "reply_duplicate");
+    assert.equal(listMessageTraces({ messageId: String(event.message_id) }).items[0].status, "processing");
+    hold.resolve(); await intake.completion;
+    assert.equal(sends, 1);
+    assert.equal(listMessageTraces({ messageId: String(event.message_id) }).items[0].status, "sent");
+  } finally { hold.resolve(); await scheduler.stop({ drainMs: 1000 }); await link.stop({ drainMs: 1000 }); }
+});
+
+test("wordcloud render result is not sent after group permission is revoked", async t => {
+  const scheduler = createChatWorkScheduler({ limits: { global: 2, group: 2, speaker: 2 } });
+  const hold = deferred(); const started = deferred();
+  const event = groupAtEvent(901127, 601127, "词云");
+  const originalWhitelist = CFG.groupWhitelist;
+  let sends = 0;
+  t.mock.method(globalThis, "fetch", async () => { sends++; throw new Error("unexpected QQ send"); });
+  try {
+    const pending = await processEvent(event, { detachChat: true, chatScheduler: scheduler,
+      commandOptions: { featureGroupWhitelist: [event.group_id],
+        chats: [{ group: String(event.group_id), role: "member", ts: Date.now(), text: "合成词云 合成词云" }],
+        renderer: async () => { started.resolve(); await hold.promise; return null; } } });
+    assert.equal(pending.pending, true);
+    await bounded(started.promise);
+    CFG.groupWhitelist = [];
+    hold.resolve(); await pending.completion;
+    assert.equal(sends, 0);
+    assert.equal(listMessageTraces({ messageId: String(event.message_id) }).items[0].status, "cancelled");
+  } finally { CFG.groupWhitelist = originalWhitelist; hold.resolve(); await scheduler.stop({ drainMs: 1000 }); }
+});
+
+test("relationship short-comment generation releases same-group ingress", async t => {
+  const scheduler = createChatWorkScheduler({ limits: { global: 3, group: 3, speaker: 2 } });
+  const hold = deferred(); const started = deferred(); const nextMessage = deferred();
+  const event = groupAtEvent(901124, 601124, "好感度");
+  const now = Date.now();
+  const user = { nicknames: ["合成用户"], firstSeen: new Date(now - 10 * 86400000).toISOString(),
+    chats: ["上下文系统继续改", "自动回复日志看看"].map((text, index) => ({
+      group: String(event.group_id), text, ts: now - index * 1000,
+    })) };
+  let sends = 0; let intake;
+  t.mock.method(globalThis, "fetch", async url => {
+    assert.ok(String(url).includes("/send_group_msg"));
+    sends++; return { ok: true, json: async () => ({ status: "ok", retcode: 0 }) };
+  });
+  const link = createOneBotLinkManager({ processor: async value => {
+    if (value.kind === "next") { nextMessage.resolve(); return; }
+    intake = await processEvent(value, { detachChat: true, chatScheduler: scheduler,
+      commandOptions: { users: { [String(event.user_id)]: user }, groupChats: [], memoryContext: {},
+        callMiMo: async () => { started.resolve(); await hold.promise; return "合成短评：有来有回。"; } } });
+  } });
+  try {
+    assert.equal(link.enqueue(event), true);
+    assert.equal(link.enqueue({ kind: "next", message_type: "group", group_id: event.group_id }), true);
+    await bounded(started.promise);
+    await bounded(nextMessage.promise);
+    assert.equal(intake.pending, true);
+    assert.equal(listMessageTraces({ messageId: String(event.message_id) }).items[0].status, "processing");
+    hold.resolve(); await intake.completion;
+    assert.equal(sends, 1);
+    assert.equal(listMessageTraces({ messageId: String(event.message_id) }).items[0].status, "sent");
+  } finally { hold.resolve(); await scheduler.stop({ drainMs: 1000 }); await link.stop({ drainMs: 1000 }); }
+});
+
+test("preview capacity notice does not cancel an in-flight mention from the same speaker", async t => {
+  const scheduler = createChatWorkScheduler({ limits: { global: 3, group: 3, speaker: 2, previewGlobal: 0 } });
+  const hold = deferred(); const started = deferred();
+  const mentioned = groupAtEvent(901125, 601125);
+  const preview = groupAtEvent(901126, 601125, "预览 https://example.com/preview-901126");
+  let sends = 0; let mentionedSends = 0;
+  t.mock.method(globalThis, "fetch", async url => {
+    assert.ok(String(url).includes("/send_group_msg"));
+    sends++; return { ok: true, json: async () => ({ status: "ok", retcode: 0 }) };
+  });
+  const chatReply = async (group, user, _text, _name, _images, replyTo, _quote, _at, _mentions, runtime) =>
+    withChatRun({ surface: "group", groupId: group, userId: user, messageId: runtime.messageId,
+      eventTime: runtime.eventTime, contextPrivacyGeneration: runtime.contextPrivacyGeneration }, async () => {
+      started.resolve(); await hold.promise;
+      if (chatRunStopReason()) return;
+      traceStage("output", { status: "ok" });
+      await sendMsg(group, "合成明确回复", replyTo);
+      noteChatOutcome({ kind: "reply" });
+      mentionedSends++;
+    });
+  try {
+    const first = await processEvent(mentioned, { detachChat: true, chatScheduler: scheduler, chatReply });
+    await bounded(started.promise);
+    const second = await processEvent(preview, { detachChat: true, chatScheduler: scheduler });
+    assert.equal(second.pending, undefined);
+    assert.equal(sends, 1, "busy notice only");
+    hold.resolve(); await first.completion;
+    assert.equal(mentionedSends, 1);
+    assert.equal(sends, 2);
+    assert.equal(listMessageTraces({ messageId: String(mentioned.message_id) }).items[0].status, "sent");
+  } finally { hold.resolve(); await scheduler.stop({ drainMs: 1000 }); }
 });
 
 test("registered detached work keeps one trace open until its actual send settles", async () => {
