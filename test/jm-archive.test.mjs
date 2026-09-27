@@ -4,6 +4,7 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import process from "node:process";
 import { afterEach, test } from "node:test";
 import { runZipCommand, zipDirectory } from "../bridge/jm/archive.mjs";
 import { activeJmTask, handleJmTransferCommand, waitJmTasks } from "../bridge/jm/commands.mjs";
@@ -16,7 +17,10 @@ afterEach(async () => {
 
 test("real 7-Zip creates a readable JM archive protected by uppercase FS", async t => {
   const sevenZip = findUsableSevenZip();
-  if (!sevenZip) return t.skip("7-Zip is unavailable in this environment");
+  if (!sevenZip) {
+    if (process.platform === "linux") assert.fail("Linux JM archive validation requires working 7-Zip");
+    return t.skip("7-Zip is unavailable in this environment");
+  }
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "qqfriend-jm-real-zip-"));
   roots.push(root);
   const source = path.join(root, "download");
