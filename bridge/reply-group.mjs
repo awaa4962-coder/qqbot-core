@@ -26,37 +26,46 @@ import { normalizeCommand } from "./commands/normalize.mjs";
 import { memoryCorrectionSnapshot } from "./memory-profile/notes.mjs";
 import { storedScopeSourceLinks } from "./memory-profile/retention.mjs";
 import { collectSourceMessageIds } from "./memory-profile/source-exclusions.mjs";
+import { chatWorkScheduler } from "./cognition/chat-work.mjs";
+import { withChatRun, noteChatOutcome } from "./cognition/chat-run.mjs";
 
-export async function handleGroupMessage(ctx, rawMessage) {
+export async function handleGroupMessage(ctx, rawMessage, options = {}) {
   ctx.contextPrivacyGeneration ??= getMemoryPrivacyGeneration();
-  if (stopStaleGroupContext(ctx)) return;
+  if (!await prepareGroupMessage(ctx)) return null;
+
+  const replyState = createPendingReplyState(ctx);
+  if (await dispatchGroupCommand(ctx, { replyToId: replyState.replyToId })) return null;
+  if (stopStaleGroupContext(ctx)) return null;
+  if (!ctx.isAtMe) observeGroupStickerCandidates(ctx);
+
+  const previewState = await handleGroupPreviews(ctx, rawMessage);
+  if (stopStaleGroupContext(ctx)) return null;
+
+  if (previewState.sent && !ctx.isAtMe) {
+    traceStage("route", { status: "ok", route: "preview" });
+    return null;
+  }
+  const mentioned = await handleMentionedGroupMessage(ctx, replyState, options);
+  if (mentioned) return mentioned === true ? null : mentioned;
+  if (await handlePureFileMessage(ctx)) return null;
+
+  await handleRandomInterjection(ctx, previewState.suppressInterjection, replyState);
+  return null;
+}
+
+async function prepareGroupMessage(ctx) {
+  if (stopStaleGroupContext(ctx)) return false;
   captureGroupSummary(ctx);
 
   await hydrateMentions(ctx.mentions, { groupId: ctx.group_id, getGroupMemberInfo });
-  if (stopStaleGroupContext(ctx)) return;
+  if (stopStaleGroupContext(ctx)) return false;
   logGroupAttachments(ctx);
   ctx.duplicateInfo = logGroupMemberMessage(ctx);
   if (ctx.duplicateInfo?.duplicate && !ctx.isAtMe) {
     traceStage("route", { status: "skipped", reason: "duplicate_text" });
-    return;
+    return false;
   }
-
-  const replyState = createPendingReplyState(ctx);
-  if (await dispatchGroupCommand(ctx, { replyToId: replyState.replyToId })) return;
-  if (stopStaleGroupContext(ctx)) return;
-  if (!ctx.isAtMe) observeGroupStickerCandidates(ctx);
-
-  const previewState = await handleGroupPreviews(ctx, rawMessage);
-  if (stopStaleGroupContext(ctx)) return;
-
-  if (previewState.sent && !ctx.isAtMe) {
-    traceStage("route", { status: "ok", route: "preview" });
-    return;
-  }
-  if (await handleMentionedGroupMessage(ctx, replyState)) return;
-  if (await handlePureFileMessage(ctx)) return;
-
-  await handleRandomInterjection(ctx, previewState.suppressInterjection, replyState);
+  return true;
 }
 
 function captureGroupSummary(ctx) {
@@ -134,7 +143,7 @@ async function handleGroupPreviews(ctx, rawMessage) {
   };
 }
 
-async function handleMentionedGroupMessage(ctx, replyState) {
+async function handleMentionedGroupMessage(ctx, replyState, options = {}) {
   if (!ctx.isAtMe) return false;
   traceStage("route", { status: "ok", route: "group_at" });
   await ensureReplyState(ctx, replyState);
@@ -142,7 +151,7 @@ async function handleMentionedGroupMessage(ctx, replyState) {
   pullRecentImagesIntoContext(ctx);
 
   log("at detected, processing AI reply...");
-  await aiReply(
+  const run = () => (options.chatReply || aiReply)(
     ctx.group_id,
     ctx.user_id,
     ctx.text,
@@ -154,7 +163,23 @@ async function handleMentionedGroupMessage(ctx, replyState) {
     ctx.mentions,
     replyRuntime(ctx)
   );
+  if (options.detachChat) {
+    const scheduled = (options.chatScheduler || chatWorkScheduler).start({ groupId: ctx.group_id, userId: ctx.user_id }, run);
+    if (scheduled.ok) return { completion: scheduled.completion };
+    await sendChatCapacityNotice(ctx, replyState, scheduled.reason);
+    return true;
+  }
+  await run();
   return true;
+}
+
+async function sendChatCapacityNotice(ctx, replyState, reason) {
+  traceStage("output", { status: "failed", reason });
+  await withChatRun({ surface: "group", groupId: ctx.group_id, userId: ctx.user_id, messageId: ctx.message_id,
+    eventTime: ctx.eventTime, contextPrivacyGeneration: ctx.contextPrivacyGeneration }, async () => {
+    noteChatOutcome({ kind: "error" });
+    await sendMsg(ctx.group_id, "当前回复任务较多，请稍后再试。", replyState.replyToId);
+  });
 }
 
 function pullRecentImagesIntoContext(ctx) {

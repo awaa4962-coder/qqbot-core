@@ -210,7 +210,9 @@ export async function withMessageTrace(ctx, handler, target = recorder) {
   return await storage.run({ record, recorder: target }, async () => {
     try {
       const result = await handler();
-      target.finish(record);
+      if (result?.completion && typeof result.completion.then === "function") {
+        result.completion.then(() => target.finish(record), () => target.finish(record, true));
+      } else target.finish(record);
       return result;
     } catch (error) {
       target.finish(record, true);

@@ -5,6 +5,7 @@ import { WebSocketServer } from "ws";
 import { CFG } from "./config.mjs";
 import { log, logE, cleanupLogger, getStormStatus } from "./logger.mjs";
 import { stopChatRuns } from "./cognition/chat-run.mjs";
+import { chatWorkScheduler } from "./cognition/chat-work.mjs";
 import { users, groupChats, flushSavesSync, persistLoadedStorageRepairs } from "./storage.mjs";
 import { persistLoadedProfileRepairs } from "./memory-profile/store.mjs";
 import { sendMsg, getImages, getFiles, getReplyData } from "./napcat.mjs";
@@ -81,6 +82,7 @@ function handleHealth(res) {
     memory: process.memoryUsage().rss,
     storm: getStormStatus(),
     pipeline: getPipelineStatus(),
+    chatWork: chatWorkScheduler.status(),
     napcat: getCachedNapCatReadiness(),
   });
 }
@@ -95,6 +97,7 @@ async function handleReady(res) {
     napcat,
     admission: getAdmissionStatus(),
     pipeline: getPipelineStatus(),
+    chatWork: chatWorkScheduler.status(),
   });
 }
 
@@ -225,7 +228,7 @@ server.on('upgrade', (req, socket, head) => {
   }
   wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req));
 });
-const oneBotLink = createOneBotLinkManager({ processor: processEvent, log, logError: logE });
+const oneBotLink = createOneBotLinkManager({ processor: ev => processEvent(ev, { detachChat: true }), log, logError: logE });
 const dailySummaryCatchUp = createDailySummaryCatchUp({
   isReady: () => oneBotLink.status().ready && getCachedNapCatReadiness().ready,
   log: (event, detail) => log('summary catch-up', event, JSON.stringify(detail || {})),
@@ -254,7 +257,9 @@ async function shutdown(signal) {
   shuttingDown = true;
   stopChatRuns();
   log('shutdown requested:', signal);
+  const workDrain = chatWorkScheduler.stop({ drainMs: 10000 });
   await oneBotLink.stop({ drainMs: 10000 });
+  await workDrain;
   await new Promise(resolve => server.close(resolve));
   flushRuntimeState();
   process.exit(0);

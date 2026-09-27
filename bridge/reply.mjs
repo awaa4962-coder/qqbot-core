@@ -1,6 +1,6 @@
 // bridge/reply.mjs - thin event router for group/private reply modules.
 import { admitMessageContext } from "./event-admission.mjs";
-import { incProcessingCount, decProcessingCount } from "./logger.mjs";
+import { incProcessingCount, decProcessingCount, logE } from "./logger.mjs";
 import { markEventFailed, markEventProcessed } from "./pipeline-state.mjs";
 import { parseIncomingEvent } from "./reply-handlers.mjs";
 import { handleGroupMessage } from "./reply-group.mjs";
@@ -23,15 +23,15 @@ export {
   tryDeepSeekFriend,
 } from "./reply-private.mjs";
 
-export async function processEvent(ev) {
+export async function processEvent(ev, options = {}) {
   if (!ev) return { ok: false, reason: "empty_event" };
 
   const ctx = parseIncomingEvent(ev);
   if (!isMessageEvent(ctx)) return { ok: false, reason: "not_message_event" };
-  return await withMessageTrace(ctx, () => processMessageContext(ctx, ev));
+  return await withMessageTrace(ctx, () => processMessageContext(ctx, ev, options));
 }
 
-async function processMessageContext(ctx, ev) {
+async function processMessageContext(ctx, ev, options) {
   const admission = admitMessageContext(ctx);
   traceStage("admission", { status: admission.ok ? "ok" : "skipped", reason: admission.reason });
   if (!admission.ok) return admission;
@@ -44,6 +44,7 @@ async function processMessageContext(ctx, ev) {
   }
 
   incProcessingCount();
+  let detached = false;
   try {
     // ── 私聊 ──
     if (ctx.message_type === "private") {
@@ -54,7 +55,15 @@ async function processMessageContext(ctx, ev) {
 
     // ── 群消息 ──
     if (ctx.message_type === "group") {
-      await handleGroupMessage(ctx, ev.message);
+      const groupResult = await handleGroupMessage(ctx, ev.message, options);
+      if (groupResult?.completion) {
+        detached = true;
+        groupResult.completion.then(
+          () => { markEventProcessed(); decProcessingCount(); },
+          () => { markEventFailed(); decProcessingCount(); logE("detached group reply failed"); },
+        );
+        return { ...admission, route: "group", pending: true, completion: groupResult.completion };
+      }
       markEventProcessed();
       return { ...admission, route: "group" };
     }
@@ -62,7 +71,7 @@ async function processMessageContext(ctx, ev) {
     markEventFailed();
     throw error;
   } finally {
-    decProcessingCount();
+    if (!detached) decProcessingCount();
   }
   return { ok: false, reason: "unsupported_message_type" };
 }
