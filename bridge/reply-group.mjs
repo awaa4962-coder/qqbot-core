@@ -23,6 +23,9 @@ import { getMemoryPrivacyGeneration } from "./memory-profile/generation.mjs";
 import { messageRouteRejection } from "./event-admission.mjs";
 import { isSelfMemoryCommand } from "./commands/modules/memory.mjs";
 import { normalizeCommand } from "./commands/normalize.mjs";
+import { memoryCorrectionSnapshot } from "./memory-profile/notes.mjs";
+import { storedScopeSourceLinks } from "./memory-profile/retention.mjs";
+import { collectSourceMessageIds } from "./memory-profile/source-exclusions.mjs";
 
 export async function handleGroupMessage(ctx, rawMessage) {
   ctx.contextPrivacyGeneration ??= getMemoryPrivacyGeneration();
@@ -73,6 +76,9 @@ function logGroupAttachments(ctx) {
 }
 
 function logGroupMemberMessage(ctx) {
+  const source = inheritedSourceExclusion(ctx);
+  ctx.memorySourceExcluded = source.retracted;
+  ctx.memorySourceIds = source.ids;
   const duplicateInfo = observeGroupDuplicate({
     uid: ctx.user_id,
     groupId: ctx.group_id,
@@ -91,6 +97,8 @@ function logGroupMemberMessage(ctx) {
       messageId: ctx.message_id,
       replyToMessageId: ctx.replyData?.id,
       memoryCommand: ctx.isAtMe && isSelfMemoryCommand(normalizeCommand(ctx.text)),
+      retracted: ctx.memorySourceExcluded,
+      memorySourceIds: ctx.memorySourceIds,
     });
   observeMemoryEvent({
     uid: ctx.user_id,
@@ -99,6 +107,19 @@ function logGroupMemberMessage(ctx) {
     text: ctx.text,
   });
   return duplicateInfo;
+}
+
+function inheritedSourceExclusion(ctx) {
+  if (!ctx.replyData?.id) return { retracted: false, ids: [] };
+  try {
+    const scope = { userId: String(ctx.user_id), groupId: String(ctx.group_id) };
+    const { excludedMessageIds } = memoryCorrectionSnapshot(scope);
+    const ids = collectSourceMessageIds(storedScopeSourceLinks(scope), [String(ctx.replyData.id)]);
+    return { retracted: !ids || ids.some(id => excludedMessageIds.has(id)), ids: ids || [] };
+  } catch {
+    // Unverifiable quote ancestry must not become evidence after its parent leaves the buffer.
+    return { retracted: true, ids: [] };
+  }
 }
 
 async function handleGroupPreviews(ctx, rawMessage) {
@@ -206,6 +227,8 @@ function createPendingReplyState(ctx) {
 
 function replyRuntime(ctx) {
   return { messageId: ctx.message_id, eventTime: ctx.eventTime, replyToMessageId: ctx.replyData?.id,
+    memorySourceExcluded: ctx.memorySourceExcluded === true,
+    memorySourceIds: ctx.memorySourceIds,
     replySpeaker: ctx.replySpeaker, replyUserId: ctx.replyUserId, quoteEvidence: ctx.quoteEvidence, contextPrivacyGeneration: ctx.contextPrivacyGeneration,
     imageSources: ctx.imageSources, imageAnchor: ctx.imageAnchor };
 }

@@ -2,6 +2,7 @@ import { compareRelevance, currentTopicText, isContinuation, messageFeatures, no
 import { wallAgeMs } from "../runtime-clock.mjs";
 import { replyWindow } from "./source-groups.mjs";
 import { archivedTextCompleteness } from "./messages.mjs";
+import { excludedMemorySource } from "../memory-profile/source-exclusions.mjs";
 
 const MAX_SCAN = 120;
 const GROUP_MAX_AGE_MS = 30 * 60 * 1000;
@@ -142,7 +143,7 @@ function usableMessage(message, options) {
 }
 
 function excludedMessage(message, options) {
-  if (message.memoryCommand || message.deleted || message.recalled || message.retracted) return true;
+  if (excludedMemorySource(message, options.excludeMessageIds)) return true;
   if (message.group && options.groupId && String(message.group) !== String(options.groupId)) return true;
   if (String(message.messageId || "") === String(options.currentMessageId || "") && options.currentMessageId) return true;
   if ([message.messageId, message.replyToMessageId, message.turnId].some(id => id && options.excludeMessageIds?.has(String(id)))) return true;

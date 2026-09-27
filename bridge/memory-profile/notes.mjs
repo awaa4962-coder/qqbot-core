@@ -3,10 +3,9 @@ import { memoryProfiles, memoryProfilesAvailable, saveMemoryProfiles, flushMemor
 import { invalidateMemoryPrivacyGeneration } from "./generation.mjs";
 import { containsSensitiveText, redactSensitiveText } from "../privacy.mjs";
 import { summaryPrivacy } from "../group-summary/state.mjs";
-import { users, groupChats } from "../storage.mjs";
 import { MEMORY_SEMANTICS, assertNoteTransition, buildNoteSemantics, projectNoteSemantics, validNoteSemantics } from "./semantics.mjs";
 import { expandMemorySourceExclusions } from "./source-exclusions.mjs";
-import { storedMemorySourceIndex } from "./retention.mjs";
+import { storedMemorySourceIndex, storedScopeSourceLinks } from "./retention.mjs";
 
 const DAY = 86400000;
 const MAX_ITEMS = 32;
@@ -106,8 +105,7 @@ export function createMemoryNoteService(options = {}) {
     const expired = value.items.filter(item => item.expiresAt <= time && item.groupId === normalized.groupId &&
       (normalized.groupId !== "private" || item.userId === normalized.userId));
     const ids = new Set([...excluded.map(item => item.messageId), ...expired.flatMap(item => [...item.replacedSources, item.source.messageId]).filter(Boolean)]);
-    const history = [...(groupChats[normalized.groupId] || []),
-      ...(users[normalized.userId]?.chats || []).filter(item => String(item.group) === normalized.groupId)];
+    const history = storedScopeSourceLinks(normalized);
     return { excludedMessageIds: expandMemorySourceExclusions(history, ids),
       replacedSources: excluded.filter(item => item.userId === normalized.userId),
       revisions: new Map(own.map(item => [item.id, item.revision])),
@@ -127,12 +125,7 @@ export function createMemoryNoteService(options = {}) {
       expiresAt: item.expiresAt, active: item.expiresAt > time && item.source.at <= time && item.source.at > privacyCutoff(item, () => privacy),
     }));
     if (!settings.withLinks) return { entries };
-    const history = normalized.groupId === "private" ? [] : [...(groupChats[normalized.groupId] || []),
-      ...(users[normalized.userId]?.chats || []).filter(item => String(item.group) === normalized.groupId)
-        .map(item => ({ uid: normalized.userId, messageId: item.messageId, replyToMessageId: item.replyToMessageId, turnId: item.turnId }))];
-    const links = history.map(item => ({ userId: String(item.uid || ""), messageId: sourceMessageId(item.messageId),
-      replyToMessageId: sourceMessageId(item.replyToMessageId), turnId: sourceMessageId(item.turnId) })).filter(item => item.messageId);
-    return { entries, links };
+    return { entries, links: storedScopeSourceLinks(normalized) };
   }
   return { snapshot, act, clear, prune, corrections, metadata };
 }

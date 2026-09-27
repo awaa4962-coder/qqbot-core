@@ -108,3 +108,22 @@ for (const mode of ["group", "private"]) for (const command of ["help", "version
     assert.ok(sends > 0);
   });
 }
+
+test("a confirmed reply to an excluded source keeps its receipt but cannot seed future conversational memory", async t => {
+  users[UID] = { uid: UID, nicknames: [], chats: [] }; groupChats[GROUP] = [];
+  resetCognitionForTest();
+  const id = nextId++;
+  let sends = 0;
+  t.mock.method(globalThis, "fetch", async url => {
+    assert.ok(String(url).endsWith("/send_group_msg")); sends++;
+    return { ok: true, json: async () => ({ status: "ok", retcode: 0, data: { message_id: 90999 } }) };
+  });
+  await aiReply(GROUP, UID, "这个引用还能用吗", "Synthetic", [], id, "", true, [], {
+    messageId: id, memorySourceExcluded: true,
+    executeChatTask: async () => ({ kind: "reply", text: "这段来源已不可用，请补充当前问题。" }),
+  });
+  assert.equal(sends, 1);
+  assert.equal(chatDeliveryLedger().find({ surface: "group", groupId: GROUP, userId: UID, messageId: id }).status, "sent");
+  assert.equal(getConversationThread(UID, GROUP), null);
+  assert.equal(groupChats[GROUP].at(-1).retracted, true);
+});

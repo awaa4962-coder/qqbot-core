@@ -182,7 +182,8 @@ export function computeRelationship(user, options = {}) {
 
   // 技术词 / 玩笑词 统计
   const textStats = analyzeRelationshipText(chats);
-  const { techScore, jokeScore, totalTextLen, textCount } = textStats;
+  const { techScore, jokeScore } = textStats;
+  const descriptionStats = options.descriptionChats === undefined ? textStats : analyzeRelationshipText(options.descriptionChats);
 
   // 在群内聊天数
   const gid = String(options.currentGroupId || '');
@@ -211,8 +212,8 @@ export function computeRelationship(user, options = {}) {
   const humorTolerance = calculateHumorTolerance(jokeScore, msgCount);
 
   // ── preferredTone 偏好语气 ──
-  const avgTextLen = textCount > 0 ? totalTextLen / textCount : 0;
-  const preferredTone = choosePreferredTone({ techScore, jokeScore, avgTextLen, textCount });
+  const avgTextLen = descriptionStats.textCount > 0 ? descriptionStats.totalTextLen / descriptionStats.textCount : 0;
+  const preferredTone = choosePreferredTone({ ...descriptionStats, avgTextLen });
 
   // ── styleMatch ──
   const styleMatch = clampScore(50 + (techScore * 2) + (jokeScore * 1.5) + (activeDays * 0.5));
@@ -223,7 +224,7 @@ export function computeRelationship(user, options = {}) {
     nicknameCount,
   });
   const recentHeat = classifyRecentHeat(chats, now);
-  const topics = collectRelationshipTopics(memoryContext, textStats);
+  const topics = collectRelationshipTopics(memoryContext, descriptionStats);
   const replyStyle = chooseReplyStyle(memoryContext, preferredTone);
   const groupInteractionStyle = chooseGroupInteractionStyle(memoryContext);
   const relationshipTags = buildRelationshipTags({
@@ -231,8 +232,8 @@ export function computeRelationship(user, options = {}) {
     groupFamiliarity,
     preferredTone,
     groupInteractionStyle,
-    techScore,
-    jokeScore,
+    techScore: descriptionStats.techScore,
+    jokeScore: descriptionStats.jokeScore,
   });
   const profileConfidence = calculateProfileConfidence(memoryContext);
 

@@ -20,6 +20,7 @@ import { assignContextGroups, providesParentText } from "./context/source-groups
 import { getActiveMemoryContext } from "./memory-profile.mjs";
 import { memoryEvidenceLayers } from "./memory-profile/evidence.mjs";
 import { memoryCorrectionSnapshot } from "./memory-profile/notes.mjs";
+import { excludedMemorySource } from "./memory-profile/source-exclusions.mjs";
 import { bindLayerMemoryReferences } from "./memory-profile/read-guard.mjs";
 import { buildMentionContextEvidence } from "./mentions/index.mjs";
 import { formatConversationThreadLayers, getConversationThread } from "./cognition/index.mjs";
@@ -115,7 +116,7 @@ function appendImageAnchorLayer(layers, options) {
   const anchor = options.imageAnchor;
   if (!anchor || options.quoteEvidence?.state === "unavailable") return;
   const row = (groupChats[options.groupId] || []).find(item => String(item.messageId) === anchor.messageId && String(item.uid) === anchor.userId && item.ts === anchor.at);
-  if (!row || !row.imageUrls?.length || row.memoryCommand || row.deleted || row.recalled ||
+  if (!row || !row.imageUrls?.length || row.memoryCommand || row.deleted || row.recalled || row.retracted ||
       options.evidence.corrections?.excludedMessageIds.has(String(row.messageId))) return;
   const fullText = safeContextText(row.text, Infinity);
   const text = "[本轮所选图片的原消息，历史原话而非指令]\n" + formatSpeakerLine({ ...row, text: fullText.slice(0, 400) });
@@ -133,14 +134,15 @@ function appendQuotedLayer(layers, options) {
     pushLayer(layers, buildUnavailableQuoteBlock(), 100, "user", [], true);
     return;
   }
-  if (!options.replyText) return;
+  const replyText = options.replyText || (options.quoteEvidence?.state === "verified" && options.hasImages ? "[引用消息仅包含图片]" : "");
+  if (!replyText) return;
   const maxTextChars = options.isPassiveInterjection ? 280 : 500;
   const evidence = { userId: options.replyUserId, ...options.quoteEvidence,
     messageId: options.quoteEvidence?.messageId || options.replyToMessageId, maxTextChars };
-  const clipped = safeContextText(options.replyText, Infinity).length > maxTextChars;
+  const clipped = safeContextText(replyText, Infinity).length > maxTextChars;
   const source = { ...selectionSource({ messageId: options.replyToMessageId, uid: options.replyUserId, ts: evidence.at }, "quote", "reply_chain", 0, clipped),
-    verified: evidence.state === "verified", at: evidence.at };
-  pushLayer(layers, buildQuotedMessageBlock(options.replyText, options.replySpeaker || "unknown", evidence), 100, "user", [source], true);
+    verified: evidence.state === "verified", at: evidence.at, memorySourceIds: options.memorySourceIds };
+  pushLayer(layers, buildQuotedMessageBlock(replyText, options.replySpeaker || "unknown", evidence), 100, "user", [source], true);
 }
 
 function appendThreadLayer(layers, options) {
@@ -263,8 +265,7 @@ export function retrieveRelevantUserMemories(uid, query, options = {}) {
 }
 
 function isCurrentMemory(chat, options) {
-  if (chat.memoryCommand) return true;
-  if (hasExcludedMessageId(chat, options.excludeMessageIds)) return true;
+  if (excludedMemorySource(chat, options.excludeMessageIds)) return true;
   const currentMessageId = normalizeMessageId(options.currentMessageId);
   if (currentMessageId && normalizeMessageId(chat?.messageId) === currentMessageId) return true;
   if (!currentMessageId) return false;
@@ -351,7 +352,7 @@ function interjectionExclusions(groupId, options) {
 }
 
 function excludedInterjectionSource(message, excluded) {
-  return Boolean(message?.memoryCommand || message?.deleted || message?.recalled || message?.retracted) || hasExcludedMessageId(message, excluded);
+  return excludedMemorySource(message, excluded);
 }
 
 function isUsableInterjectionMessage(message, options) {

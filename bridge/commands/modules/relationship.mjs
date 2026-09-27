@@ -6,7 +6,7 @@ import { buildRelationshipSummary } from "../../relationship-commands.mjs";
 import { getUserMemoryGeneration } from "../../memory-profile/generation.mjs";
 import { earliestMemoryExpiry } from "../../context/memory-dependencies.mjs";
 import { createMemoryReadGuard } from "../../memory-profile/read-guard.mjs";
-import { captureProfileReadReason } from "../../memory-profile/projection.mjs";
+import { captureProfileReadReason, readProfileTextEvidence } from "../../memory-profile/projection.mjs";
 
 export function buildRelationshipCommandReply(cmd, options) {
   const { relation, target, displayUser } = buildRelationshipData(options);
@@ -47,13 +47,15 @@ function buildRelationshipData(options) {
   const user = options.users?.[uid] || null;
   const isGroup = Boolean(options.groupId && String(options.groupId) !== "private");
   const context = options.memoryContext || getActiveMemoryContext(uid, options.groupId, { groupOnly: isGroup });
-  const memoryContext = isGroup ? { ...context, userProfile: null } : context;
-  options.memoryGuard?.trackTarget(uid, memoryContext);
   const displayUser = isGroup ? scopeRelationshipUser(user, options.groupId) : user;
+  const evidence = readProfileTextEvidence(uid, options.groupId, { chats: displayUser?.chats || [] });
+  const memoryContext = { ...context, ...(isGroup ? { userProfile: null } : {}), relationshipEvidence: evidence.profile };
+  options.memoryGuard?.trackTarget(uid, memoryContext);
   const relation = displayUser ? computeRelationship(displayUser, {
     currentGroupId: options.groupId,
     currentGroupChats: options.groupChats || [],
     memoryContext,
+    descriptionChats: evidence.chats,
   }) : null;
   return { relation, target, user, displayUser, memoryContext };
 }

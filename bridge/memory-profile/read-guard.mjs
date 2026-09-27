@@ -1,6 +1,7 @@
 import { memoryReadMetadata } from "./notes.mjs";
 import { getMemoryPrivacyGeneration } from "./generation.mjs";
 import { normalizeMemoryDependencies, normalizeMemoryExpiry } from "../context/memory-dependencies.mjs";
+import { sourceMessageParents, normalizeSourceMessageIds } from "./source-exclusions.mjs";
 
 export function bindLayerMemoryReferences(layers, scope) {
   let metadata;
@@ -8,6 +9,7 @@ export function bindLayerMemoryReferences(layers, scope) {
   const lookup = sourceLookup(metadata);
   return layers.map(layer => {
     const sources = layer.contextSources || [];
+    if (sources.some(source => normalizeSourceMessageIds(source.memorySourceIds) === null)) return { ...layer, contextMemorySources: null };
     if (!metadata && sources.length) return { ...layer, contextMemorySources: null };
     const matched = sources.flatMap(lookup);
     if (matched.some(item => !item.active)) return { ...layer, contextMemorySources: null };
@@ -38,7 +40,7 @@ function sourceLookup(metadata) {
       seen.add(key);
       matched.push(...(byMessage.get(id) || []).filter(item => !row.userId || item.userId === row.userId));
       const parents = [row, ...(links.get(id) || []).filter(item => !row.userId || item.userId === row.userId)];
-      for (const parent of parents) for (const messageId of [parent.replyToMessageId, parent.turnId]) {
+      for (const parent of parents) for (const messageId of sourceMessageParents(parent)) {
         if (messageId) queue.push({ messageId });
       }
     }

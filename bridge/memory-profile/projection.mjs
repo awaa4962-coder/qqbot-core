@@ -24,9 +24,34 @@ export function projectMemoryProfiles(context, { uid, groupId, now }) {
   };
 }
 
-function ownRows(uid) {
-  return (users[uid]?.chats || []).filter(item => item &&
+function ownRows(uid, chats = users[uid]?.chats || []) {
+  return chats.filter(item => item &&
     [item.uid, item.userId, item.user_id].every(author => author === undefined || String(author) === uid)).map(item => ({ ...item, uid }));
+}
+
+// Relationship prose uses these rows; historical numerical counters keep their original inputs.
+export function readProfileTextEvidence(uid, groupId, options = {}) {
+  uid = String(uid);
+  const read = sourceRead(uid, options.now ?? Date.now());
+  const profile = { sourceState: "unavailable", sourceCount: 0, sourceExpiresAt: null };
+  try {
+    if (!ID.test(uid) || !Number.isSafeInteger(read.now) || read.now <= 0) throw new Error("invalid_source_scope");
+    const own = ownRows(uid, options.chats);
+    const groupOnly = groupId && String(groupId) !== "private";
+    const rows = selectRows(groupOnly ? own.filter(row => String(row.group) === String(groupId)) : own, read);
+    const guards = guardSources(rows, uid);
+    if (guards.some(guard => guard.reason())) throw new Error("memory_unavailable");
+    profile.sourceState = rows.length ? "available" : "empty";
+    profile.sourceCount = rows.length;
+    applySourceLifetime(profile, rows, guards, "relationship", read.now);
+    if (guards.some(guard => guard.reason())) throw new Error("memory_unavailable");
+    proofs.set(profile, () => guards.map(guard => guard.reason()).find(Boolean) || "");
+    return { chats: rows, profile };
+  } catch {
+    Object.assign(profile, { sourceState: "unavailable", sourceCount: 0, sourceExpiresAt: null });
+    proofs.set(profile, () => "memory_unavailable");
+    return { chats: [], profile };
+  }
 }
 
 function groupRows(groupId) {
@@ -99,7 +124,7 @@ function applySourceLifetime(view, selected, guards, kind, now) {
     if (view.interjectionToleranceExpiresAt <= now) view.interjectionTolerance = "normal";
     else view.sourceExpiresAt = Math.min(view.sourceExpiresAt ?? Infinity, view.interjectionToleranceExpiresAt);
   }
-  for (const guard of guards) guard.limitUntil(Math.min(view.sourceExpiresAt, Number(view.expiresAt)));
+  for (const guard of guards) { guard.limitUntil(view.sourceExpiresAt); guard.limitUntil(view.expiresAt); }
 }
 
 function selectRows(rows, { uid, now, privacy, corrections, index }) {

@@ -55,6 +55,7 @@ async function runAiReply(group_id, userId, userMsg, userName, imageUrls, replyT
     replySpeaker: runtime.replySpeaker,
     replyUserId: runtime.replyUserId,
     quoteEvidence: runtime.quoteEvidence,
+    memorySourceIds: runtime.memorySourceIds,
     hasImages: Boolean(imageUrls?.length),
     imageCount: imageUrls?.length || 0,
     imageAnchor: runtime.imageAnchor,
@@ -89,8 +90,10 @@ async function runAiReply(group_id, userId, userMsg, userName, imageUrls, replyT
   logGroupMsg(group_id, "夜星", reply, CFG.selfUin, "assistant", null, {
     replyToMessageId: runtime.messageId || replyTo,
     turnId: runtime.messageId,
+    retracted: runtime.memorySourceExcluded === true,
+    memorySourceIds: runtime.memorySourceIds,
   });
-  if (!isPassiveInterjection) {
+  if (canRememberGroupTurn(isPassiveInterjection, runtime)) {
     recordConversationTurn({
       uid,
       groupId: gid,
@@ -121,6 +124,8 @@ async function runAiReply(group_id, userId, userMsg, userName, imageUrls, replyT
 async function notifyGroupFailure(outcome, passive, groupId, replyTo) {
   if (outcome.kind === "error" && !passive) await sendMsg(groupId, MODEL_FAILURE_NOTICE, replyTo);
 }
+
+function canRememberGroupTurn(passive, runtime) { return !passive && !runtime.memorySourceExcluded; }
 
 function replyMemorySources(packet, outcome) {
   return [...packet.memorySources, ...(outcome.memorySources || [])];

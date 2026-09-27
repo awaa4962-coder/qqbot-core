@@ -144,3 +144,49 @@ test("source-backed projections and negative evidence survive erase, pruning and
     assert.equal(memoryProfiles.notes.items.length, 0);
   `);
 });
+
+for (const invalidInitially of [true, false]) test(`incoming ${invalidInitially ? "retracted" : "active"} lineage survives a cold restart and an evicted shared buffer`, t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-lineage-restart-"));
+  t.after(() => {
+    assert.equal(path.dirname(path.resolve(root)), path.resolve(os.tmpdir()));
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  const time = Date.now();
+  const setup = `
+    import assert from 'node:assert/strict';
+    Date.now = () => ${time}; Math.random = () => 1;
+    globalThis.fetch = async () => { throw new Error('network forbidden'); };
+    ${imports}
+    const { CFG } = await import(${moduleUrl("config.mjs")});
+    const { groupChats, saveGroupChats } = await import(${moduleUrl("storage.mjs")});
+    const { handleGroupMessage } = await import(${moduleUrl("reply-group.mjs")});
+    CFG.groupWhitelist = [Number(scope.groupId)]; CFG.summaryGroupWhitelist = []; CFG.botBlacklist = [];
+    const ctx = (uid, id, parent) => ({ message_type: 'group', group_id: scope.groupId, user_id: uid, message_id: id,
+      text: '机器人项目引用 ' + id, rawText: '机器人项目引用 ' + id, nickname: 'Synthetic', images: [], files: [], mentions: [],
+      isAtMe: false, replyData: { id: parent }, eventTime: Date.now() });
+  `;
+  run(root, setup + `
+    const note = applyMemoryNoteAction({ ...scope, revision: memoryNotesSnapshot(scope).revision, action: 'create',
+      title: 'Project', text: 'Original project' }, { origin: 'user_command', messageId: '70931' }).items[0];
+    if (${invalidInitially}) applyMemoryNoteAction({ ...scope, revision: memoryNotesSnapshot(scope).revision, action: 'remove', id: note.id });
+    await handleGroupMessage(ctx('60332', '70932', '70931'), []);
+    assert.equal(users['60332'].chats[0].retracted, ${invalidInitially ? "true" : "undefined"});
+    assert.ok(users['60332'].chats[0].memorySourceIds.includes('70931'));
+    groupChats[scope.groupId] = []; saveUsers(); saveGroupChats();
+    assert.equal(flushSavesSync({ durable: true }), true);
+  `);
+  run(root, setup + `
+    assert.equal(groupChats[scope.groupId].length, 0);
+    assert.equal(users['60332'].chats[0].retracted, ${invalidInitially ? "true" : "undefined"});
+    await handleGroupMessage(ctx('60333', '70933', '70932'), []);
+    assert.equal(users['60333'].chats[0].retracted, ${invalidInitially ? "true" : "undefined"});
+    assert.ok(users['60333'].chats[0].memorySourceIds.includes('70931'));
+    if (!${invalidInitially}) {
+      const note = memoryNotesSnapshot(scope).items[0];
+      users['60332'].chats = []; groupChats[scope.groupId] = groupChats[scope.groupId].filter(row => row.messageId === '70933');
+      applyMemoryNoteAction({ ...scope, revision: memoryNotesSnapshot(scope).revision, action: 'remove', id: note.id });
+    }
+    const packet = buildReplyContextPacket({ uid: '60333', groupId: scope.groupId, userMsg: '机器人项目' });
+    assert.doesNotMatch(JSON.stringify(packet.messages), /机器人项目引用/);
+  `);
+});

@@ -5,6 +5,7 @@ import { logE } from './logger.mjs';
 import { createJsonSaver } from './persistence/json-file.mjs';
 import { redactSensitiveText } from './privacy.mjs';
 import { redactMemoryTextFields } from './memory-profile/privacy.mjs';
+import { normalizeSourceMessageIds } from './memory-profile/source-exclusions.mjs';
 
 // ── 全局状态 ──
 export let users = {};
@@ -117,6 +118,10 @@ export function logGroupMsg(group_id, nickname, text, uid, role, imageUrls, meta
 
 function appendMessageMetadata(target, meta) {
   if (meta.memoryCommand === true) target.memoryCommand = true;
+  if (meta.retracted === true) target.retracted = true;
+  const sourceIds = normalizeSourceMessageIds(meta.memorySourceIds);
+  if (sourceIds?.length) target.memorySourceIds = sourceIds;
+  if (sourceIds === null) target.retracted = true;
   const messageId = normalizeMetadataId(meta.messageId);
   const replyToMessageId = normalizeMetadataId(meta.replyToMessageId);
   const turnId = normalizeMetadataId(meta.turnId);

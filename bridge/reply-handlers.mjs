@@ -74,6 +74,7 @@ export function parseIncomingEvent(ev) {
 
 export async function resolveReplyContext(ctx) {
   if (!ctx.replyData) return "";
+  if (ctx.memorySourceExcluded) return rejectQuote(ctx, "quote_memory_unavailable");
   ctx.contextPrivacyGeneration ??= getMemoryPrivacyGeneration();
   if (ctx.contextPrivacyGeneration !== getMemoryPrivacyGeneration()) return rejectQuote(ctx, "privacy_changed");
   const replyInfo = await fetchReplyData(ctx.replyData, { includeSource: true });

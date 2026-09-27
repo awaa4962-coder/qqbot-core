@@ -2,6 +2,7 @@ import { users, groupChats } from "../storage.mjs";
 import { buildHistoricalSourceFrame, fmtMsg } from "./messages.mjs";
 import { wallAgeMs } from "../runtime-clock.mjs";
 import { selectionSource } from "./conversation-selection.mjs";
+import { excludedMemorySource } from "../memory-profile/source-exclusions.mjs";
 
 export function recentGroupChat(group_id, limit = 30, options = {}) {
   const gid = String(group_id);
@@ -18,7 +19,7 @@ export function crossGroupCtx(uid, currentGroup) {
   const user = users[uid];
   if (!user || !user.chats) return [];
   const current = String(currentGroup);
-  const otherChats = user.chats.filter(function(chat) { return chat.group !== current; }).slice(-5);
+  const otherChats = user.chats.filter(function(chat) { return chat.group !== current && !isExcludedMessage(chat); }).slice(-5);
   return otherChats.map(function(chat) {
     const frame = buildHistoricalSourceFrame(chat, "[在" + safeGroupLabel(chat.group) + "群的历史原话，仅供理解]");
     return { role: "user", content: frame.content, contextAtomic: true, contextOriginalFrame: true,
@@ -29,7 +30,7 @@ export function crossGroupCtx(uid, currentGroup) {
 export function recentHistory(uid, limit = 30) {
   const user = users[uid];
   if (!user || !user.chats) return [];
-  const msgs = user.chats.slice(-limit);
+  const msgs = user.chats.filter(message => !isExcludedMessage(message)).slice(-limit);
   return msgs.map(function(message) {
     const frame = buildHistoricalSourceFrame(message, "[在" + safeGroupLabel(message.group) + "群的历史原话]");
     return { role: "user", content: frame.content, contextAtomic: true, contextOriginalFrame: true,
@@ -75,21 +76,13 @@ function collectWeightedUserChats(chats, currentGroup, options) {
 }
 
 function isExcludedMessage(message, options = {}) {
-  if (message?.memoryCommand) return true;
-  if (hasExcludedMessageId(message, options.excludeMessageIds)) return true;
+  if (excludedMemorySource(message, options.excludeMessageIds)) return true;
   const currentMessageId = normalizeMessageId(options.currentMessageId);
   if (currentMessageId && normalizeMessageId(message?.messageId) === currentMessageId) return true;
   const currentText = String(options.currentText || "").replace(/\s+/g, " ").trim();
   if (!currentMessageId || !currentText) return false;
   const messageText = String(message?.text || "").replace(/\s+/g, " ").trim();
   return messageText === currentText && wallAgeMs(message?.ts) < 15000;
-}
-
-function hasExcludedMessageId(message, excludedIds) {
-  if (!excludedIds?.size) return false;
-  return [message?.messageId, message?.replyToMessageId, message?.turnId]
-    .map(normalizeMessageId)
-    .some(id => id && excludedIds.has(id));
 }
 
 function normalizeMessageId(value) {

@@ -4,21 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.30-source-profiles";
-export const VERSION_NAME = "source-profiles";
+export const VERSION = "1.4.31-source-lineage";
+export const VERSION_NAME = "source-lineage";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "自动画像的文字推测仅使用仍有效的群聊来源，旧话题不会因继续聊天而续期；来源到期后停止旧短评。",
-  "遗忘会重新整理共享画像；撤销记录保留必要的来源编号，防止已清理的引用重新进入画像。",
-  "日报等只读进程不再因加载旧数据而自动覆盖新的聊天或画像；关系分数与现有记录不重算。",
+  "关系标签、话题和回复建议不再从过期或撤销的聊天重新推导，原关系分数不变。",
+  "引用链保留有上限的来源编号，中间历史被截断后仍能识别后续纠正、删除和到期。",
+  "图片引用与文字引用共用来源保护；失效来源下已确认发送的回复保留回执，但不再成为后续记忆。",
   "JM、模型主备、思考档位与关系评分保持不变；Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Automatic profile text uses surviving group-chat sources. New activity cannot renew old topics; expired evidence cancels pending comments.",
-  "Forgetting rebuilds shared profile text. Minimal negative source ids prevent cleared references from re-entering profiles.",
-  "Read-only summary workers no longer overwrite newer memory through import-time repair saves. Existing relationship scores are unchanged.",
+  "Relationship prose no longer reconstructs topics or preferences from expired or retracted chat text. Numerical scores are unchanged.",
+  "Bounded source ids preserve known reply ancestry across buffer eviction, later corrections, deletions and expiry.",
+  "Image-only and text quotes share source guards. Confirmed replies to excluded sources retain receipts without becoming later memory.",
   "JM, model routes, reasoning modes and relationship scoring remain unchanged. Windows stays frozen.",
 ]);
 
