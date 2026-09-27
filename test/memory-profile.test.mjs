@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
-import { beforeEach, describe, it } from "node:test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import process from "node:process";
+import { after, beforeEach, describe, it } from "node:test";
 
-import {
+const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-profile-tests-"));
+Object.assign(process.env, { NODE_ENV: "test", QQBOT_CONFIG_ROOT: root, QQBOT_DATA_DIR: path.join(root, "data"), QQBOT_LOG_DIR: path.join(root, "logs") });
+const { users, groupChats } = await import("../bridge/storage.mjs");
+
+const {
   buildMemorySummary,
   buildHumanMemorySummary,
   clearGroupMemoryProfile,
@@ -10,10 +18,26 @@ import {
   getMemoryStatus,
   isSensitiveMemoryText,
   memoryProfiles,
-  observeMemoryEvent,
-} from "../bridge/memory-profile.mjs";
+  observeMemoryEvent: observe,
+} = await import("../bridge/memory-profile.mjs");
+
+after(() => {
+  assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep));
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+let messageId = 70000;
+function observeMemoryEvent(event, options = {}) {
+  const group = String(event.groupId), uid = String(event.uid);
+  const row = { uid, group, text: event.text, nickname: event.nickname, messageId: String(++messageId), ts: options.now || Date.now() };
+  (groupChats[group] ||= []).push(row);
+  (users[uid] ||= { uid, chats: [] }).chats.push(row);
+  return observe(event, options);
+}
 
 function resetProfiles() {
+  for (const key of Object.keys(users)) delete users[key];
+  for (const key of Object.keys(groupChats)) delete groupChats[key];
   memoryProfiles.userProfiles = {};
   memoryProfiles.groupProfiles = {};
   memoryProfiles.userGroupProfiles = {};

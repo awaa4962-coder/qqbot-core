@@ -98,3 +98,49 @@ test("version-two topic deadlines persist across a fresh process without extendi
     assert.equal(packet.memoryExpiresAt, null);
   `);
 });
+
+test("source-backed projections and negative evidence survive erase, pruning and a cold restart", t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-profile-restart-"));
+  t.after(() => {
+    assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep));
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  const time = Date.now();
+  const profileImports = `
+    const { groupChats, logGroupMsg, saveGroupChats } = await import(${moduleUrl("storage.mjs")});
+    const { observeMemoryEvent } = await import(${moduleUrl("memory-profile/updates.mjs")});
+    const { getActiveMemoryContext } = await import(${moduleUrl("memory-profile/query.mjs")});
+    const { memoryProfiles, flushMemoryProfilesSync } = await import(${moduleUrl("memory-profile/store.mjs")});
+    const { memoryNoteService } = await import(${moduleUrl("memory-profile/notes.mjs")});
+  `;
+  run(root, `
+    import assert from 'node:assert/strict';
+    Date.now = () => ${time};
+    ${imports}
+    ${profileImports}
+    applyMemoryNoteAction({ ...scope, revision: memoryNotesSnapshot(scope).revision, action: 'create',
+      title: 'Project', text: '机器人项目', ttlDays: 1 }, { origin: 'user_command', messageId: '70731' });
+    logGroupMsg(scope.groupId, 'Synthetic', '机器人模型项目', '60332', 'member', null, { messageId: '70732', replyToMessageId: '70731' });
+    observeMemoryEvent({ uid: '60332', groupId: scope.groupId, text: '机器人模型项目' });
+    logGroupMsg(scope.groupId, 'Synthetic', '漫画下载完成', '60332', 'member', null, { messageId: '70733' });
+    observeMemoryEvent({ uid: '60332', groupId: scope.groupId, text: '漫画下载完成' });
+    assert.equal(memoryNoteService.clear({ userId: scope.userId }, { persist: true }), true);
+    groupChats[scope.groupId] = [];
+    users['60332'].chats[0].replyToMessageId = undefined;
+    saveUsers(); saveGroupChats();
+    assert.equal(flushSavesSync({ durable: true }), true);
+    assert.equal(flushMemoryProfilesSync(), true);
+  `);
+  run(root, `
+    import assert from 'node:assert/strict';
+    Date.now = () => ${time + 2 * 86400000};
+    ${imports}
+    ${profileImports}
+    memoryNoteService.prune();
+    const view = getActiveMemoryContext('60332', scope.groupId);
+    assert.ok(!view.userProfile.commonTopics.includes('机器人'));
+    assert.ok(view.userProfile.commonTopics.includes('漫画'));
+    assert.ok(memoryProfiles.notes.retractions.some(row => row.messageId === '70732'));
+    assert.equal(memoryProfiles.notes.items.length, 0);
+  `);
+});

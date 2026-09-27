@@ -36,31 +36,45 @@ export function compactProfile(profile, keys) {
 }
 
 export function describeUserProfile(profile) {
+  if (sourceUnavailableText(profile)) return sourceUnavailableText(profile);
   return [
+    sourceLabel(profile),
     "回复偏好偏 " + toneLabel(profile.preferredTone),
     "表达长度偏 " + toneLabel(profile.replyStyle),
     "常聊主题：" + listLabel(profile.commonTopics),
     "避雷点：" + listLabel(profile.dislikes),
     "可信度：" + confidenceLabel(profile.confidence),
-  ].join("；");
+  ].filter(Boolean).join("；");
 }
 
 export function describeGroupProfile(profile) {
+  if (sourceUnavailableText(profile)) return sourceUnavailableText(profile);
   return [
+    sourceLabel(profile),
     "群氛围偏 " + toneLabel(profile.tone),
     "活跃主题：" + listLabel(profile.activeTopics),
     "玩笑尺度：" + toneLabel(profile.jokeLevel),
     "插话容忍度：" + toneLabel(profile.interjectionTolerance),
-  ].join("；");
+  ].filter(Boolean).join("；");
 }
 
 export function describeUserGroupProfile(profile) {
+  if (sourceUnavailableText(profile)) return sourceUnavailableText(profile);
   return [
+    sourceLabel(profile),
     "群内互动风格偏 " + toneLabel(profile.interactionStyle),
     "近期主题：" + listLabel(profile.recentTopics),
     "可信度：" + confidenceLabel(profile.confidence),
-  ].join("；");
+  ].filter(Boolean).join("；");
 }
+
+function sourceUnavailableText(profile) {
+  if (profile.sourceState === "empty") return "现有记录不足，暂无可核验的近期推测";
+  if (profile.sourceState === "unavailable") return "来源暂不可核验，未使用旧画像";
+  return "";
+}
+
+function sourceLabel(profile) { return profile.sourceState === "available" ? "以下仅是有效群聊记录的推测，不是固定偏好" : ""; }
 
 export function listLabel(value) {
   return Array.isArray(value) && value.length ? value.join("、") : "暂无明显记录";

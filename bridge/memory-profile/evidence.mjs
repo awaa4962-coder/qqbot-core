@@ -29,7 +29,7 @@ function collectTopics(chats, groupId, now, cutoff, excluded) {
   const topics = new Map();
   const seen = new Set();
   for (const chat of chats.slice(-100).reverse()) {
-    if (!sourceUsable(chat, groupId, now, cutoff) || excludedMemorySource(chat, excluded)) continue;
+    if (!isUsableEvidenceSource(chat, groupId, now, cutoff) || excludedMemorySource(chat, excluded)) continue;
     const text = safeContextExcerpt(chat.text, 500);
     const normalized = text.normalize("NFKC").replace(/[\p{P}\p{S}\s]+/gu, "").toLowerCase();
     if (!normalized || seen.has(normalized) || seen.has("id:" + chat.messageId)) continue;
@@ -56,9 +56,9 @@ function addTopicEvidence(topics, text, chat) {
 
 function sourceLink(value) { return /^-?\d{1,20}$/.test(String(value ?? "")) ? String(value) : ""; }
 
-function sourceUsable(chat, groupId, now, cutoff) {
+export function isUsableEvidenceSource(chat, groupId, now, cutoff, windowMs = WINDOW_MS) {
   if (!chat || String(chat.group) !== String(groupId) || !/^-?\d{1,20}$/.test(String(chat.messageId ?? ""))) return false;
-  if (!Number.isFinite(chat.ts) || chat.ts <= cutoff || chat.ts > now || now - chat.ts > WINDOW_MS) return false;
+  if (!Number.isFinite(chat.ts) || chat.ts <= cutoff || chat.ts > now || now - chat.ts > windowMs) return false;
   if (chat.memoryCommand || chat.deleted || chat.recalled || chat.retracted) return false;
   return typeof chat.text === "string" && !/^(?:\[已按用户请求清除\]|\[command\]|记住\s|记事\s|事项状态\s|纠正记忆\s|删除记忆\s)/.test(chat.text);
 }

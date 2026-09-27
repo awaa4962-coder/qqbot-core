@@ -94,20 +94,21 @@ test("prompt boundary also redacts already-loaded legacy history and completed t
 });
 
 test("third-party mentions and relationship cards only expose current-group evidence", () => {
-  logGroupMsg("GROUP_A", "ONLY_A_NAME", "archive old history", "20001", "member");
-  logGroupMsg("GROUP_B", "PUBLIC_B_NAME", "current group discussion", "20001", "member");
+  logGroupMsg("10011", "ONLY_A_NAME", "archive old history", "20001", "member", null, { messageId: "70011" });
+  logGroupMsg("10012", "PUBLIC_B_NAME", "current group 测试 discussion", "20001", "member", null, { messageId: "70012" });
   setUserDisplayName("20001", "PRIVATE_SETTING", { skipSave: true });
   memoryProfiles.userProfiles["20001"] = { confidence: 1, expiresAt: Date.now() + 60000, commonTopics: ["ONLY_A_TOPIC"], dislikes: ["ONLY_A_DISLIKE"] };
-  memoryProfiles.userGroupProfiles["GROUP_B:20001"] = { confidence: 1, expiresAt: Date.now() + 60000, recentTopics: ["LOCAL_B_TOPIC"], interactionStyle: "technical" };
-  const block = buildMentionContextBlock({ groupId: "GROUP_B", mentions: [{ qq: "20001", displayName: "PUBLIC_B_NAME" }] });
+  memoryProfiles.userGroupProfiles["10012:20001"] = { confidence: 1, expiresAt: Date.now() + 60000, recentTopics: ["LOCAL_B_TOPIC"], interactionStyle: "technical" };
+  const block = buildMentionContextBlock({ groupId: "10012", mentions: [{ qq: "20001", displayName: "PUBLIC_B_NAME" }] });
   assert.match(block, /PUBLIC_B_NAME|LOCAL_B_TOPIC/);
   assert.doesNotMatch(block, /ONLY_A_|PRIVATE_SETTING|preferredName|knownNames/);
-  const reply = buildRelationshipCommandReply("关系", { users, groupId: "GROUP_B", userId: "20002", mentionedUsers: [{ qq: "20001" }] });
+  const reply = buildRelationshipCommandReply("关系", { users, groupId: "10012", userId: "20002", mentionedUsers: [{ qq: "20001" }] });
   assert.match(reply, /PUBLIC_B_NAME/);
-  assert.match(reply, /LOCAL_B_TOPIC/);
+  assert.match(reply, /运维/);
+  assert.doesNotMatch(reply, /LOCAL_B_TOPIC/);
   assert.doesNotMatch(reply, /ONLY_A_|PRIVATE_SETTING/);
-  assert.equal(resolveMentionDisplayName("20001", { groupId: "GROUP_C" }), "QQ:20001");
-  const self = buildReplyContextPacket({ uid: "20001", groupId: "GROUP_B", userMsg: "hello" });
+  assert.equal(resolveMentionDisplayName("20001", { groupId: "10013" }), "QQ:20001");
+  const self = buildReplyContextPacket({ uid: "20001", groupId: "10012", userMsg: "hello" });
   assert.match(self.currentInput, /PRIVATE_SETTING/);
   assert.match(JSON.stringify(self.messages), /PRIVATE_SETTING/);
   assert.doesNotMatch(JSON.stringify(self.messages), /ONLY_A_/);

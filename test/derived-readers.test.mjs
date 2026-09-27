@@ -310,11 +310,12 @@ test("admin group memory summary does not expose global inferred topics or survi
   t.after(() => { CFG.adminUins = admins; delete memoryProfiles.userProfiles[PEER]; delete memoryProfiles.userGroupProfiles[GROUP + ":" + PEER]; });
   memoryProfiles.userProfiles[PEER] = { confidence: 1, expiresAt: start + DAY, commonTopics: ["FOREIGN_GLOBAL_TOPIC"], dislikes: [] };
   memoryProfiles.userGroupProfiles[GROUP + ":" + PEER] = { confidence: 1, expiresAt: start + DAY, recentTopics: ["LOCAL_TOPIC"], interactionStyle: "normal" };
+  users[PEER].chats = [historical("70539", start - 100)];
   let reached = 0;
   await dispatchGroupCommand({ isAtMe: true, text: "memory summary " + PEER, user_id: UID, group_id: GROUP, message_id: 80539 }, {
     sender: async (groupId, text, replyTo, settings) => {
       reached++;
-      assert.match(text, /LOCAL_TOPIC/); assert.doesNotMatch(text, /FOREIGN_GLOBAL_TOPIC/);
+      assert.match(text, /运维/); assert.doesNotMatch(text, /FOREIGN_GLOBAL_TOPIC|LOCAL_TOPIC/);
       CFG.adminUins = [];
       assert.equal(settings.stopReason(), "permission_changed");
       return sendMsg(groupId, text, replyTo, settings);

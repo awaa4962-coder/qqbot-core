@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import {
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import process from "node:process";
+import { after, describe, it } from "node:test";
+const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-admin-command-tests-"));
+Object.assign(process.env, { NODE_ENV: "test", QQBOT_CONFIG_ROOT: root, QQBOT_DATA_DIR: path.join(root, "data"), QQBOT_LOG_DIR: path.join(root, "logs") });
+const {
   buildCommandReply,
   buildCommandReplyAsync,
   buildGroupCommandReply,
@@ -8,9 +14,13 @@ import {
   isAdminUser,
   normalizeCommand,
   stripBotMention,
-} from "../bridge/admin-commands.mjs";
-import { CFG } from "../bridge/config.mjs";
-import { VERSION, VERSION_NOTES_EN } from "../bridge/version.mjs";
+} = await import("../bridge/admin-commands.mjs");
+const { CFG } = await import("../bridge/config.mjs");
+const { VERSION, VERSION_NOTES_EN } = await import("../bridge/version.mjs");
+after(() => {
+  assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep));
+  fs.rmSync(root, { recursive: true, force: true });
+});
 
 describe("admin command parsing", () => {
   it("strips CQ at and visible bot mention", () => {

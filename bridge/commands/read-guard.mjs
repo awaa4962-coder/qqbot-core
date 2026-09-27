@@ -4,6 +4,7 @@ import { messageRouteRejection } from "../event-admission.mjs";
 import { getMemoryPrivacyGeneration, getUserMemoryGeneration } from "../memory-profile/generation.mjs";
 import { createMemoryReadGuard } from "../memory-profile/read-guard.mjs";
 import { isRelationshipCommand } from "../relationship-commands.mjs";
+import { captureProfileReadReason } from "../memory-profile/projection.mjs";
 
 export function isPersonalReadCommand(cmd) {
   return isRelationshipCommand(cmd) || ["我的档案", "my-profile", "回复风格 推荐"].includes(cmd) || /^memory summary \d+$/.test(cmd);
@@ -17,18 +18,23 @@ export function createPersonalReadGuard(options = {}) {
   const memory = createMemoryReadGuard(scope);
   const privacy = options.contextPrivacyGeneration ?? getMemoryPrivacyGeneration();
   const targets = new Map();
+  const sourceReaders = [];
   let stopped = "";
   function trackTarget(uid, context = {}) {
     const key = String(uid);
     if (!targets.has(key)) targets.set(key, getUserMemoryGeneration(key));
-    for (const profile of Object.values(context)) if (profile) memory.limitUntil(profile.expiresAt);
+    sourceReaders.push(captureProfileReadReason(context));
+    for (const profile of Object.values(context)) if (profile) {
+      memory.limitUntil(profile.expiresAt);
+      memory.limitUntil(profile.sourceExpiresAt);
+    }
   }
   function stopReason() {
     if (stopped) return stopped;
     if (privacy !== getMemoryPrivacyGeneration()) stopped = "privacy_changed";
     else if ([...targets].some(([uid, revision]) => revision !== getUserMemoryGeneration(uid))) stopped = "preferences_changed";
     else if (!permitted(scope, cfg, options.admins) || (isAdminSummary(options) && !isAdminUser(scope.userId, options.admins || cfg.adminUins || []))) stopped = "permission_changed";
-    else stopped = memory.reason();
+    else stopped = memory.reason() || sourceReaders.map(read => read()).find(Boolean) || "";
     return stopped;
   }
   return { trackTarget, stopReason, expiry: memory.expiry };

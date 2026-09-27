@@ -1,5 +1,6 @@
 import { memoryProfiles } from "./store.mjs";
 import { userGroupKey } from "./constants.mjs";
+import { projectMemoryProfiles } from "./projection.mjs";
 
 export function getActiveMemoryContext(uid, groupId, options = {}) {
   const now = options.now || Date.now();
@@ -7,7 +8,7 @@ export function getActiveMemoryContext(uid, groupId, options = {}) {
   const rawGroupProfile = activeProfile(memoryProfiles.groupProfiles[String(groupId)], now, { requireConfidence: false });
   const groupProfile = withEffectiveInterjectionTolerance(rawGroupProfile, now);
   const userGroupProfile = activeProfile(memoryProfiles.userGroupProfiles[userGroupKey(groupId, uid)], now);
-  return { userProfile, groupProfile, userGroupProfile };
+  return projectMemoryProfiles({ userProfile, groupProfile, userGroupProfile }, { uid: String(uid), groupId: String(groupId), now });
 }
 
 export function withEffectiveInterjectionTolerance(profile, now) {
@@ -23,7 +24,8 @@ export function withEffectiveInterjectionTolerance(profile, now) {
 
 export function activeProfile(profile, now, options = {}) {
   if (!profile) return null;
-  if (Number(profile.expiresAt || 0) <= now) return null;
+  const expiresAt = Number(profile.expiresAt || 0);
+  if (!Number.isSafeInteger(expiresAt) || expiresAt <= now) return null;
   const confidence = Number(profile.confidence || 0);
   if (options.requireConfidence !== false && (!Number.isFinite(confidence) || confidence < 0.16)) return null;
   return profile;

@@ -49,13 +49,16 @@ export function saveGroupChats() {
 
 // 立即存档（进程退出前调用）
 export function flushSavesSync(options = {}) {
+  persistLoadedStorageRepairs();
   const usersSaved = usersSaver.flushSync(options);
   const chatsSaved = chatsSaver.flushSync(options);
   return usersSaved && chatsSaved;
 }
 
-if (_usersNeedTimestampRepair) saveUsers();
-if (_groupChatsNeedTimestampRepair) saveGroupChats();
+export function persistLoadedStorageRepairs() {
+  if (_usersNeedTimestampRepair) { saveUsers(); _usersNeedTimestampRepair = false; }
+  if (_groupChatsNeedTimestampRepair) { saveGroupChats(); _groupChatsNeedTimestampRepair = false; }
+}
 
 export function getUser(uid, nickname) {
   nickname = redactSensitiveText(nickname);

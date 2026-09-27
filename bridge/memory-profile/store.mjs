@@ -16,7 +16,9 @@ const saver = createJsonSaver(PROFILE_FILE, () => memoryProfiles, {
   durable: true,
   onError: error => logE("saveMemoryProfiles failed:", error.message),
 });
-if (needsRedactionSave) saver.markDirty();
+export function persistLoadedProfileRepairs() {
+  if (needsRedactionSave && !loadFailed) { saver.markDirty(); needsRedactionSave = false; }
+}
 
 export function createRoot() {
   return {
@@ -54,6 +56,7 @@ export function saveMemoryProfiles() {
 }
 
 export function flushMemoryProfilesSync() {
+  persistLoadedProfileRepairs();
   return !loadFailed && saver.flushSync();
 }
 

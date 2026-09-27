@@ -158,7 +158,7 @@ async function handleRandomInterjection(ctx, previewSent, replyState = {}) {
     log("random interjection skipped: duplicate", ctx.duplicateInfo.reason);
     return;
   }
-  const memory = getActiveMemoryContext(ctx.user_id, ctx.group_id);
+  const memory = getActiveMemoryContext(ctx.user_id, ctx.group_id, { groupOnly: true });
   const decision = buildInterjectionDecision(ctx.text, {
     isAtMe: ctx.isAtMe,
     previewSent,

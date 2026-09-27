@@ -6,6 +6,7 @@ import { buildRelationshipSummary } from "../../relationship-commands.mjs";
 import { getUserMemoryGeneration } from "../../memory-profile/generation.mjs";
 import { earliestMemoryExpiry } from "../../context/memory-dependencies.mjs";
 import { createMemoryReadGuard } from "../../memory-profile/read-guard.mjs";
+import { captureProfileReadReason } from "../../memory-profile/projection.mjs";
 
 export function buildRelationshipCommandReply(cmd, options) {
   const { relation, target, displayUser } = buildRelationshipData(options);
@@ -18,7 +19,9 @@ export function buildRelationshipCommandReply(cmd, options) {
 export async function buildRelationshipCommandReplyAsync(cmd, options) {
   const { relation, target, user, displayUser, memoryContext } = buildRelationshipData(options);
   const lifetime = createMemoryReadGuard();
-  lifetime.limitUntil(earliestMemoryExpiry(...Object.values(memoryContext).map(profile => profile?.expiresAt)));
+  lifetime.limitUntil(earliestMemoryExpiry(...Object.values(memoryContext).flatMap(profile => [profile?.expiresAt, profile?.sourceExpiresAt])));
+  const sources = captureProfileReadReason(memoryContext);
+  const guard = { stopReason: () => options.memoryGuard?.stopReason() || lifetime.reason() || sources(), expiry: lifetime.expiry };
   const generation = getUserMemoryGeneration(target.uid);
   const shortComment = relation ? await getRelationshipShortComment(relation, {
     user,
@@ -27,10 +30,10 @@ export async function buildRelationshipCommandReplyAsync(cmd, options) {
     now: options.now,
     callMiMo: options.callMiMo,
     callDeepSeek: options.callDeepSeek,
-    memoryGuard: options.memoryGuard,
+    memoryGuard: guard,
     memoryExpiresAt: lifetime.expiry(),
   }) : "";
-  if (generation !== getUserMemoryGeneration(target.uid) || lifetime.reason() || options.memoryGuard?.stopReason()) return "资料已更新，请重新查询。";
+  if (generation !== getUserMemoryGeneration(target.uid) || guard.stopReason()) return "资料已更新，请重新查询。";
   return buildRelationshipSummary(relation, cmd, {
     nicknames: displayUser?.nicknames || [],
     subjectName: target.isSelf ? "" : target.displayName,

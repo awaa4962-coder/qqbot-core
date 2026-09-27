@@ -5,7 +5,8 @@ import { WebSocketServer } from "ws";
 import { CFG } from "./config.mjs";
 import { log, logE, cleanupLogger, getStormStatus } from "./logger.mjs";
 import { stopChatRuns } from "./cognition/chat-run.mjs";
-import { users, groupChats, flushSavesSync } from "./storage.mjs";
+import { users, groupChats, flushSavesSync, persistLoadedStorageRepairs } from "./storage.mjs";
+import { persistLoadedProfileRepairs } from "./memory-profile/store.mjs";
 import { sendMsg, getImages, getFiles, getReplyData } from "./napcat.mjs";
 import { processEvent } from "./reply.mjs";
 import { getAdmissionStatus } from "./event-admission.mjs";
@@ -268,6 +269,9 @@ process.once('qqfriend:fatal', () => {
 });
 
 server.listen(CFG.listenPort, CFG.listenHost, function() {
+  // Secondary summary/replay processes may read these stores, but must not schedule snapshot writes on import.
+  persistLoadedStorageRepairs();
+  persistLoadedProfileRepairs();
   log('NapCat Bridge v' + VERSION + ' listening on http://' + CFG.listenHost + ':' + CFG.listenPort);
   log('WebSocket server ready');
   log('Self UIN:', CFG.selfUin);

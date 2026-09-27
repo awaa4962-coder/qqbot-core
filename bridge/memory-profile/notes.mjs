@@ -6,6 +6,7 @@ import { summaryPrivacy } from "../group-summary/state.mjs";
 import { users, groupChats } from "../storage.mjs";
 import { MEMORY_SEMANTICS, assertNoteTransition, buildNoteSemantics, projectNoteSemantics, validNoteSemantics } from "./semantics.mjs";
 import { expandMemorySourceExclusions } from "./source-exclusions.mjs";
+import { storedMemorySourceIndex } from "./retention.mjs";
 
 const DAY = 86400000;
 const MAX_ITEMS = 32;
@@ -62,7 +63,14 @@ export function createMemoryNoteService(options = {}) {
   function clear(filter, settings = {}) {
     const previous = root();
     const items = previous.items.filter(item => !matchesClear(item, filter));
-    const retractions = previous.retractions.filter(item => !matchesClear(item, filter));
+    const next = { retractions: [...previous.retractions] };
+    const removed = previous.items.filter(item => matchesClear(item, filter));
+    if (removed.length) {
+      const sources = storedMemorySourceIndex();
+      for (const item of removed) retainRetraction(next, item, now(), sources);
+    }
+    // Negative source ids enforce erasure; they contain no remembered titles or bodies.
+    const retractions = next.retractions;
     if (items.length === previous.items.length && retractions.length === previous.retractions.length) {
       if (settings.persist && !persist()) throw memoryError("记忆清理未能落盘，请管理员检查。", 503);
       return false;
@@ -76,10 +84,14 @@ export function createMemoryNoteService(options = {}) {
   function prune(time = now()) {
     const previous = root();
     const items = previous.items.filter(item => item.expiresAt + 7 * DAY > time);
+    if (items.length === previous.items.length && !previous.retractions.length) return false;
     const next = { retractions: [...previous.retractions] };
-    for (const item of previous.items) if (item.expiresAt + 7 * DAY <= time) retainRetraction(next, item, time);
-    const retractions = next.retractions.filter(item => time - item.at < DAY || (options.hasSource || hasStoredSource)(item));
-    if (items.length === previous.items.length && retractions.length === previous.retractions.length) return false;
+    const sources = storedMemorySourceIndex();
+    for (const item of previous.items) if (item.expiresAt + 7 * DAY <= time) retainRetraction(next, item, time, sources);
+    expandRetractions(next, time, sources);
+    const retractions = next.retractions.filter(item => time - item.at < DAY || (options.hasSource || sources.has)(item));
+    if (items.length === previous.items.length && retractions.length === previous.retractions.length &&
+      retractions.every((item, index) => item === previous.retractions[index])) return false;
     profiles.notes = { schema: 1, revision: previous.revision + 1, items, retractions };
     invalidate();
     return true;
@@ -142,7 +154,11 @@ function applyAction(root, index, scope, payload, context, now) {
   }
   if (previous) { retainRetraction(root, previous, now); root.items[index] = entry; }
   else {
-    for (const item of root.items) if (item.expiresAt <= now) retainRetraction(root, item, now);
+    const expired = root.items.filter(item => item.expiresAt <= now);
+    if (expired.length) {
+      const sources = storedMemorySourceIndex();
+      for (const item of expired) retainRetraction(root, item, now, sources);
+    }
     root.items = root.items.filter(item => item.expiresAt > now);
     if (root.items.length >= MAX_TOTAL || root.items.filter(item => sameScope(item, scope)).length >= MAX_ITEMS) {
       throw memoryError("记忆数量已达上限，请先删除或整理旧条目。", 409);
@@ -151,17 +167,31 @@ function applyAction(root, index, scope, payload, context, now) {
   }
 }
 
-function retainRetraction(root, previous, now) {
-  for (const messageId of [...previous.replacedSources, previous.source.messageId].filter(Boolean)) {
-    if (root.retractions.some(item => sameScope(item, previous) && item.messageId === messageId)) continue;
+function retainRetraction(root, previous, now, sources = storedMemorySourceIndex()) {
+  const ids = sources.expand(previous, [...previous.replacedSources, previous.source.messageId].filter(Boolean));
+  retainSourceIds(root, previous, ids, now);
+}
+
+function retainSourceIds(root, previous, ids, now) {
+  const known = new Set(root.retractions.map(item => item.userId + ":" + item.groupId + ":" + item.messageId));
+  for (const messageId of ids) {
+    if (!sourceMessageId(messageId)) continue;
+    const key = previous.userId + ":" + previous.groupId + ":" + messageId;
+    if (known.has(key)) continue;
     if (root.retractions.length >= MAX_RETRACTIONS) throw memoryError("纠正来源记录已达上限，请管理员先检查存储；本次没有覆盖旧记忆。", 409);
-    root.retractions.push({ userId: previous.userId, groupId: previous.groupId, noteId: previous.id, messageId, at: now });
+    root.retractions.push({ userId: previous.userId, groupId: previous.groupId, noteId: previous.id || previous.noteId, messageId, at: now });
+    known.add(key);
   }
 }
 
-function hasStoredSource(item) {
-  return (users[item.userId]?.chats || []).some(chat => String(chat.group) === item.groupId && String(chat.messageId) === item.messageId) ||
-    (groupChats[item.groupId] || []).some(chat => String(chat.messageId) === item.messageId);
+function expandRetractions(root, now, sources) {
+  const batches = new Map();
+  for (const item of root.retractions) {
+    const key = item.userId + ":" + item.groupId + ":" + item.noteId;
+    if (!batches.has(key)) batches.set(key, { scope: item, ids: [] });
+    batches.get(key).ids.push(item.messageId);
+  }
+  for (const { scope, ids } of batches.values()) retainSourceIds(root, scope, sources.expand(scope, ids), now);
 }
 
 function buildNote(scope, payload, context, previous, now) {

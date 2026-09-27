@@ -5,24 +5,34 @@ export function excludedMemorySource(message, excluded) {
 
 // Follow only explicit stored links. Text similarity is not evidence of derivation.
 export function expandMemorySourceExclusions(messages, excluded) {
-  const result = new Set(excluded);
+  return createMemorySourceGraph(messages).expand(excluded);
+}
+
+export function createMemorySourceGraph(messages) {
   const children = new Map();
+  const references = new Set();
   for (const message of messages) {
     const id = message?.messageId;
     if (id === undefined || id === null || id === "") continue;
+    references.add(String(id));
     for (const parent of [message.replyToMessageId, message.turnId]) {
       if (parent === undefined || parent === null || parent === "") continue;
       const key = String(parent);
+      references.add(key);
       if (!children.has(key)) children.set(key, []);
       children.get(key).push(String(id));
     }
   }
-  const queue = [...result];
-  for (let index = 0; index < queue.length; index++) {
-    for (const id of children.get(queue[index]) || []) {
-      if (result.has(id)) continue;
-      result.add(id); queue.push(id);
+  function expand(excluded) {
+    const result = new Set(excluded);
+    const queue = [...result];
+    for (let index = 0; index < queue.length; index++) {
+      for (const id of children.get(queue[index]) || []) {
+        if (result.has(id)) continue;
+        result.add(id); queue.push(id);
+      }
     }
+    return result;
   }
-  return result;
+  return { references, expand };
 }
