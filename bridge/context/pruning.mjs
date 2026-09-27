@@ -4,10 +4,11 @@ const membership = new WeakMap();
 export function registerContextGroups(messages, layers) {
   const groups = new Map();
   layers.forEach((layer, index) => {
-    if (!groups.has(layer.group)) groups.set(layer.group, { messages: [], sources: [], priority: layer.priority, order: layer.index });
+    if (!groups.has(layer.group)) groups.set(layer.group, { messages: [], sources: [], memorySources: [], priority: layer.priority, order: layer.index });
     const group = groups.get(layer.group);
     group.messages.push(messages[index]);
     group.sources.push(...layer.sources);
+    group.memorySources.push(...layer.memorySources);
     group.priority = Math.max(group.priority, layer.priority);
     group.order = Math.min(group.order, layer.index);
   });
@@ -17,6 +18,11 @@ export function registerContextGroups(messages, layers) {
 export function registeredContextSources(messages) {
   const groups = [...new Set(messages.map(message => membership.get(message)).filter(Boolean))];
   return groups.flatMap(group => group.sources);
+}
+
+export function registeredContextMemorySources(messages) {
+  const groups = [...new Set(messages.map(message => membership.get(message)).filter(Boolean))];
+  return groups.flatMap(group => group.memorySources);
 }
 
 export function fitContextMessageGroups(request, maxChars, measure) {

@@ -61,6 +61,7 @@ function boundedHistory(protectedLength = 160) {
 
 function sessionWithMeasurements() {
   const actual = createChatToolSession({ scope, cfg: CFG, task: "group_chat", userMessage: current,
+    memoryRead: () => ({ entries: [{ ...source, active: true, expiresAt: Date.now() + 86400000 }] }),
     recallMemory: () => ({ status: "ok", text: "synthetic recalled fact", memorySources: [source] }),
     readBotStatus: () => ({ status: "ok", text: "synthetic status" }) });
   const measurements = [];

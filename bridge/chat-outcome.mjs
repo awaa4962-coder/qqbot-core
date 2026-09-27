@@ -1,6 +1,7 @@
 import { buildOutputPacket } from "./output-pipeline.mjs";
 import { normalizeInterjectionReply } from "./thinking.mjs";
-import { chatCancellation, chatRunStopReason } from "./cognition/chat-run.mjs";
+import { chatCancellation, chatRunStopReason, trackChatMemorySources } from "./cognition/chat-run.mjs";
+import { normalizeMemoryDependencies } from "./context/memory-dependencies.mjs";
 
 export const MODEL_FAILURE_NOTICE = "这次模型没有生成可用回复，请稍后再试。";
 const ERROR_REASONS = new Set(["model_unavailable", "request_failed", "tools_unavailable", "invalid_interjection",
@@ -33,16 +34,17 @@ export function normalizeChatOutcome(value) {
   if (value?.kind === "error") return chatError(value.reason || "model_unavailable");
   // Typed replies have already crossed the output boundary; legacy strings have not.
   if (value?.kind === "reply" && typeof value.text === "string" && value.text.trim()) {
-    const memorySources = validMemorySources(value.memorySources);
-    return { kind: "reply", text: value.text, reason: "reply", ...(memorySources.length ? { memorySources } : {}) };
+    return normalizeTypedReply(value);
   }
   return typeof value === "string" && value.trim() ? parseChatOutcome({ content: value }) : chatError();
 }
 
-function validMemorySources(value) {
-  if (!Array.isArray(value)) return [];
-  return value.filter(item => /^[a-f0-9]{12}$/.test(item?.noteId || "") && Number.isSafeInteger(item.revision) && item.revision > 0)
-    .slice(0, 32).map(item => ({ noteId: item.noteId, revision: item.revision }));
+function normalizeTypedReply(value) {
+  const memorySources = normalizeMemoryDependencies(value.memorySources === undefined ? [] : value.memorySources);
+  if (!memorySources) return chatCancellation("memory_unavailable");
+  trackChatMemorySources(memorySources);
+  if (chatRunStopReason()) return chatCancellation();
+  return { kind: "reply", text: value.text, reason: "reply", ...(memorySources.length ? { memorySources } : {}) };
 }
 
 export async function callChatSlot(call, request) {

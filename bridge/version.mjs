@@ -4,21 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.27-derived-privacy";
-export const VERSION_NAME = "derived-privacy";
+export const VERSION = "1.4.28-memory-read-guards";
+export const VERSION_NAME = "memory-read-guards";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "忘记我也会清除表情采集的发送者关联；只由本人贡献的自动采集项停用，共用或人工收藏不自动删除。",
-  "旧表情采集、分析和选择结果在资料变化后停止回填，不继续调用备用模型或发送旧结果。",
-  "表情目录损坏时保留原文件并显示未知；取消的分析不再显示完成，清理落盘失败可明确重试。",
+  "引用的记忆在等待中到期时，停止旧回复和后续分段，不再为旧资料调用备用模型。",
+  "群内明确引用与后续转述保留来源版本，纠正、删除、到期和重启后仍会重新核对。",
+  "来源缺失或矛盾时停止使用，不丢掉来源继续作答；诊断显示原因，已确认发送的部分仍保留真实记录。",
   "JM、模型主备、思考档位与关系评分保持不变；Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Forget also clears sticker sender associations. Sole-source automatic captures are disabled; shared and manual favorites are not automatically deleted.",
-  "Stale sticker capture, analysis and selection results cannot write back, start fallback calls or send after a privacy change.",
-  "Unreadable catalogs preserve their files and show unknown. Cancelled analyses do not report completion, and failed erase writes can be retried.",
+  "When referenced memory expires during a wait, stale replies and remaining chunks stop without another fallback call.",
+  "Explicit group quotes and later paraphrases retain source revisions, checked again after correction, deletion, expiry and restart.",
+  "Missing or conflicting sources cancel the reply instead of silently dropping dependencies. Diagnostics show the reason and preserve confirmed delivery records.",
   "JM, model routes, reasoning modes and relationship scoring remain unchanged. Windows stays frozen.",
 ]);
 

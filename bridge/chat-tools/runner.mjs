@@ -1,6 +1,7 @@
 import { callApiProvider, callTaskApi } from "../api-providers/gateway.mjs";
 import { getProvider, getTaskRoute, loadApiConfig } from "../api-providers/store.mjs";
 import { chatError, parseChatOutcome } from "../chat-outcome.mjs";
+import { chatCancellation, CHAT_CANCEL_REASONS } from "../cognition/chat-run.mjs";
 import { traceStage } from "../diagnostics/message-trace.mjs";
 import { createChatToolSession } from "./session.mjs";
 import { CHAT_TOOL_LIMITS, safeToolBatch, publicSearchPhrase } from "./policy.mjs";
@@ -13,6 +14,9 @@ export async function runScopedChat(request, options = {}) {
     await compatibilitySearch(context);
     return await runRounds(context);
   } catch (error) {
+    if (["CHAT_MEMORY_CHANGED", "CHAT_CANCELLED", "CHAT_TOOL_STOPPED"].includes(error.code) && CHAT_CANCEL_REASONS.has(error.message)) {
+      return chatCancellation(error.message);
+    }
     traceStage("tool", { status: "failed", reason: error.code === "CHAT_TOOL_STOPPED" ? "tool_budget" : "tool_unavailable" });
     return chatError("tools_unavailable");
   }
@@ -45,6 +49,7 @@ function createSlot(request, options) {
   const providerId = options.providerId || getTaskRoute(options.task, { config })[options.position || "primary"];
   const provider = getProvider(providerId, { config });
   const messages = [...request.messages];
+  session.trackContext(messages);
   if (options.position === "fallback") messages.splice(Math.max(0, messages.length - 1), 0, ...session.fallbackContext());
   const bound = { ...request, selfContext: { surface: session.scope.surface, groupId: session.scope.groupId, userId: session.scope.userId },
     usageContext: { ...request.usageContext, userId: session.scope.userId } };

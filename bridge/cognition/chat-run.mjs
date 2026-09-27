@@ -6,13 +6,14 @@ import { getMemoryPrivacyGeneration, getUserMemoryGeneration } from "../memory-p
 import { monotonicNow } from "../runtime-clock.mjs";
 import { traceStage } from "../diagnostics/message-trace.mjs";
 import { chatDeliveryLedger } from "./delivery-ledger.mjs";
+import { createMemoryReadGuard } from "../memory-profile/read-guard.mjs";
 
 const storage = new AsyncLocalStorage();
 const active = new Map();
 const MAX_ACTIVE_RUNS = 1000;
 let revision = 0;
 let stopping = false;
-export const CHAT_CANCEL_REASONS = new Set(["privacy_changed", "permission_changed", "preferences_changed", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping", "reply_duplicate", "delivery_state_unavailable"]);
+export const CHAT_CANCEL_REASONS = new Set(["privacy_changed", "permission_changed", "preferences_changed", "memory_expired", "memory_unavailable", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping", "reply_duplicate", "delivery_state_unavailable"]);
 
 function permitted(scope, cfg) {
   if (!/^\d{1,20}$/.test(String(scope.userId || ""))) return false;
@@ -37,6 +38,10 @@ export function chatRunSignal() {
 export function currentChatScope() {
   const scope = storage.getStore()?.scope;
   return scope ? { ...scope } : null;
+}
+
+export function trackChatMemorySources(sources) {
+  storage.getStore()?.memoryGuard.track(sources);
 }
 
 export function chatRunPrivacyChanged() {
@@ -131,6 +136,7 @@ function createRun(scope, options) {
   const expiresAt = now() + Math.max(1000, Math.min(300000, Number(options.maxDurationMs || 180000)));
   const run = { revision: ++revision, privacyGeneration: getMemoryPrivacyGeneration(), reason: "",
     scope: { surface: scope.surface, groupId: scope.groupId, userId: scope.userId, currentMessageId: scope.messageId } };
+  run.memoryGuard = createMemoryReadGuard(run.scope);
   const controller = new globalThis.AbortController();
   run.signal = controller.signal;
   run.cancel = reason => { run.reason ||= reason; controller.abort(); };
@@ -141,6 +147,7 @@ function createRun(scope, options) {
     if (staleInputContext(scope, run.privacyGeneration) || run.privacyGeneration !== getMemoryPrivacyGeneration()) run.reason = "privacy_changed";
     else if (userGeneration !== getUserMemoryGeneration(scope.userId)) run.reason = "preferences_changed";
     else if (!permitted(scope, cfg)) run.reason = "permission_changed";
+    else if (run.memoryGuard.reason()) run.reason = run.memoryGuard.reason();
     else if (now() >= expiresAt) run.reason = "reply_expired";
     if (run.reason) controller.abort();
     return run.reason;

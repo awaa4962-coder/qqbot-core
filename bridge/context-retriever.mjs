@@ -20,6 +20,7 @@ import { assignContextGroups, providesParentText } from "./context/source-groups
 import { getActiveMemoryContext } from "./memory-profile.mjs";
 import { memoryEvidenceLayers } from "./memory-profile/evidence.mjs";
 import { memoryCorrectionSnapshot } from "./memory-profile/notes.mjs";
+import { bindLayerMemoryReferences } from "./memory-profile/read-guard.mjs";
 import { buildMentionContextBlock } from "./mentions/index.mjs";
 import { formatConversationThreadLayers, getConversationThread } from "./cognition/index.mjs";
 import {
@@ -58,7 +59,7 @@ export function buildLayeredReplyContext(options = {}) {
     appendActiveReplyLayers(layers, { ...options, uid, groupId, userMsg, thread, evidence });
   }
   for (const layer of layers) layer.contextAtomic = true;
-  const groupedLayers = assignContextGroups(layers);
+  const groupedLayers = assignContextGroups(bindLayerMemoryReferences(layers, { userId: uid, groupId }));
 
   return {
     history: groupedLayers,
@@ -83,7 +84,7 @@ function afterMemoryCorrection(thread, corrections) {
   // Older turns may omit inherited dependencies even when they contain an empty array.
   const turns = thread.turns.filter(turn => !hasExcludedMessageId(turn, corrections.excludedMessageIds) &&
     turn.memoryDependencyVersion === 1 && Array.isArray(turn.memorySources) &&
-    turn.memorySources.every(source => corrections.revisions.get(source.noteId) === source.revision));
+    turn.memorySources.every(source => (corrections.scopeRevisions || corrections.revisions).get(source.noteId) === source.revision));
   return turns.length ? { ...thread, turns, turnCount: turns.length,
     topic: turns.length === thread.turns.length ? thread.topic : "" } : null;
 }

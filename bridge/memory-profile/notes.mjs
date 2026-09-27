@@ -98,9 +98,31 @@ export function createMemoryNoteService(options = {}) {
       ...(users[normalized.userId]?.chats || []).filter(item => String(item.group) === normalized.groupId)];
     return { excludedMessageIds: expandMemorySourceExclusions(history, ids),
       replacedSources: excluded.filter(item => item.userId === normalized.userId),
-      revisions: new Map(own.map(item => [item.id, item.revision])), correctedAt: Math.max(0, ...own.filter(item => item.revision > 1).map(item => item.updatedAt)) };
+      revisions: new Map(own.map(item => [item.id, item.revision])),
+      scopeRevisions: new Map(metadata(scope).entries.filter(item => item.active).map(item => [item.noteId, item.revision])),
+      correctedAt: Math.max(0, ...own.filter(item => item.revision > 1).map(item => item.updatedAt)) };
   }
-  return { snapshot, act, clear, prune, corrections };
+  function metadata(scope, settings = {}) {
+    const normalized = normalizeNoteScope(scope);
+    const value = root();
+    const time = now();
+    const privacy = readPrivacy();
+    privacyCutoff(normalized, () => privacy);
+    // This internal projection carries no titles or bodies, including for public quote authors.
+    const entries = value.items.filter(item => item.groupId === normalized.groupId &&
+      (normalized.groupId !== "private" || item.userId === normalized.userId)).map(item => ({
+      noteId: item.id, revision: item.revision, userId: item.userId, messageId: item.source.messageId,
+      expiresAt: item.expiresAt, active: item.expiresAt > time && item.source.at <= time && item.source.at > privacyCutoff(item, () => privacy),
+    }));
+    if (!settings.withLinks) return { entries };
+    const history = normalized.groupId === "private" ? [] : [...(groupChats[normalized.groupId] || []),
+      ...(users[normalized.userId]?.chats || []).filter(item => String(item.group) === normalized.groupId)
+        .map(item => ({ uid: normalized.userId, messageId: item.messageId, replyToMessageId: item.replyToMessageId, turnId: item.turnId }))];
+    const links = history.map(item => ({ userId: String(item.uid || ""), messageId: sourceMessageId(item.messageId),
+      replyToMessageId: sourceMessageId(item.replyToMessageId), turnId: sourceMessageId(item.turnId) })).filter(item => item.messageId);
+    return { entries, links };
+  }
+  return { snapshot, act, clear, prune, corrections, metadata };
 }
 
 function applyAction(root, index, scope, payload, context, now) {
@@ -267,3 +289,4 @@ export const memoryNoteService = createMemoryNoteService();
 export const memoryNotesSnapshot = scope => memoryNoteService.snapshot(scope);
 export const applyMemoryNoteAction = (payload, context) => memoryNoteService.act(payload, context);
 export const memoryCorrectionSnapshot = scope => memoryNoteService.corrections(scope);
+export const memoryReadMetadata = (scope, settings) => memoryNoteService.metadata(scope, settings);

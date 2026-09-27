@@ -34,7 +34,7 @@ import { initializeDeliveries } from "./deliveries.js";
     accepted: "已接纳", preview_sent: "链接预览抑制插话", mentioned: "已进入 @ 回复", short: "消息太短", empty: "内容为空", no_probability: "该场景不自动插话", cooldown: "插话冷却中", random: "本次未命中插话概率", triggered: "触发插话",
     empty_content: "模型正文为空", empty_content_with_reasoning: "只有推理，没有正文", unsafe_reasoning: "正文含推理内容", secret_leak: "正文安全检查未通过", send_failed: "发送重试后失败", exception: "处理异常",
     intentional_silence: "模型决定不插话", invalid_interjection: "插话输出格式无效", request_failed: "模型请求失败", tools_unavailable: "本轮工具未开放", output_budget: "模型正文超过输出上限",
-    cancelled: "已停止", privacy_changed: "记忆已清理，旧回复作废", permission_changed: "会话权限已变化", preferences_changed: "称呼或偏好已更新", reply_superseded: "已有更新的回复请求", reply_expired: "回复处理超时", reply_capacity: "进行中的回复过多", bridge_stopping: "服务正在停止",
+    cancelled: "已停止", privacy_changed: "记忆已清理，旧回复作废", permission_changed: "会话权限已变化", preferences_changed: "称呼或偏好已更新", memory_expired: "引用的记忆已到期，旧回复作废", memory_unavailable: "记忆来源无法确认，回复已停止", reply_superseded: "已有更新的回复请求", reply_expired: "回复处理超时", reply_capacity: "进行中的回复过多", bridge_stopping: "服务正在停止",
     unknown: "回执未知", send_unknown: "发送结果未知，请先核实",
     reply_duplicate: "这条消息已处理，不再重发", delivery_state_unavailable: "发送状态无法保存，已停止回复", forgotten_event: "已清理的旧事件", stale_event: "超过保留期的旧事件",
     quote_source_unknown: "引用来源资料不完整", quote_scope_mismatch: "引用不属于当前群", quote_message_mismatch: "引用消息编号不匹配",

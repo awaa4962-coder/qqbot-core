@@ -13,7 +13,7 @@ const REASONS = new Set([
   "empty_content", "empty_content_with_reasoning", "reasoning_leak", "secret_leak",
   "sanitized_empty", "unsafe_output", "unsafe_reasoning", "model_unavailable", "send_failed", "send_unknown", "exception",
   "intentional_silence", "invalid_interjection", "request_failed", "tools_unavailable",
-  "privacy_changed", "permission_changed", "preferences_changed", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping",
+  "privacy_changed", "permission_changed", "preferences_changed", "memory_expired", "memory_unavailable", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping",
   "reply_duplicate", "delivery_state_unavailable", "forgotten_event", "stale_event",
   "quote_source_unknown", "quote_scope_mismatch", "quote_message_mismatch", "quote_privacy_unavailable", "quote_forgotten", "quote_content_empty", "quote_superseded", "quote_memory_unavailable",
   "tool_model_round", "tool_completed", "tool_empty", "tool_denied", "tool_arguments", "tool_unavailable", "tool_reused", "tool_budget", "output_budget",
@@ -175,7 +175,7 @@ function finalStatus(record, failed) {
 }
 
 function cancellationStatus(reason, sends) {
-  const reasons = ["privacy_changed", "permission_changed", "preferences_changed", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping", "delivery_state_unavailable"];
+  const reasons = ["privacy_changed", "permission_changed", "preferences_changed", "memory_expired", "memory_unavailable", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping", "delivery_state_unavailable"];
   return reasons.includes(reason) ? (sends ? "partial" : "cancelled") : "";
 }
 

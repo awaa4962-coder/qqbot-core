@@ -2,6 +2,7 @@ import { CFG } from "../config.mjs";
 import { users } from "../storage.mjs";
 import { summaryPrivacy } from "../group-summary/state.mjs";
 import { memoryNotesSnapshot, memoryCorrectionSnapshot } from "../memory-profile/notes.mjs";
+import { bindLayerMemoryReferences } from "../memory-profile/read-guard.mjs";
 import { noteSemanticText, projectNoteSemantics, validNoteSemantics } from "../memory-profile/semantics.mjs";
 import { redactSensitiveText } from "../privacy.mjs";
 import { compareRelevance, retrievalFeatures } from "../context/relevance.mjs";
@@ -42,10 +43,18 @@ export function recallMemory(scope, args = {}, options = {}) {
     const excluded = excludedSources(notes, corrections, context.currentMessageId);
     const candidates = request.kind === "history" ? [] : noteCandidates(notes, corrections, context);
     candidates.push(...readHistoryCandidates(options, excluded, context));
-    return packMemory(result, candidates, request.limit);
+    return bindRecalledSources(packMemory(result, candidates, request.limit), access.scope);
   } catch {
     return failure(result, "unavailable", "memory_unavailable");
   }
+}
+
+function bindRecalledSources(result, scope) {
+  if (!result.items.length) return result;
+  const [bound] = bindLayerMemoryReferences([{ contextSources: result.items.map(item =>
+    ({ userId: scope.userId, messageId: item.source.messageId })), contextMemorySources: result.memorySources }], scope);
+  if (!bound.contextMemorySources) return failure(memoryResult(scope), "unavailable", "memory_unavailable");
+  return { ...result, memorySources: bound.contextMemorySources };
 }
 
 export function readBotStatus(scope, args = {}, options = {}) {

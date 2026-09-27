@@ -72,7 +72,10 @@ test("search rejects extra context and search keys before network use", async ()
 
 test("per-turn repeats reuse only scoped data and preserve actual note dependencies", async () => {
   let reads = 0;
-  const session = create({ recallMemory: () => { reads++; return { status: "ok", items: [{ text: "synthetic" }], memorySources: [{ noteId: "abcdef012345", revision: 3 }] }; } });
+  const session = create({
+    memoryRead: () => ({ entries: [{ noteId: "abcdef012345", revision: 3, expiresAt: Date.now() + 86400000, active: true }] }),
+    recallMemory: () => { reads++; return { status: "ok", items: [{ text: "synthetic" }], memorySources: [{ noteId: "abcdef012345", revision: 3 }] }; },
+  });
   const first = await session.execute(call("recall_memory", { query: "project" }), READ_TOOLS);
   const again = await session.execute(call("recall_memory", { query: "project" }, "call-2"), READ_TOOLS);
   assert.equal(first.content, again.content); assert.equal(reads, 1);

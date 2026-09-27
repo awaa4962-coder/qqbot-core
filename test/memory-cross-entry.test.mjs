@@ -68,6 +68,7 @@ function fixture(t, groupId = GROUP) {
   // Keep production read paths intact, replacing only their backing store and clock.
   t.mock.method(memoryNoteService, "snapshot", service.snapshot);
   t.mock.method(memoryNoteService, "corrections", service.corrections);
+  t.mock.method(memoryNoteService, "metadata", service.metadata);
   t.mock.method(Date, "now", () => state.now);
   const cfg = { selfUin: 98101, groupWhitelist: [Number(GROUP)], friendWhitelist: [Number(UID)],
     botBlacklist: [], adminUins: [], botNames: ["SyntheticBot"] };
