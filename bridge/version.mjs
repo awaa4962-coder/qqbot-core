@@ -13,6 +13,7 @@ export const VERSION_NOTES_ZH = Object.freeze([
   "被动插话与预览分别限制并发，不挤占全部明确 @ 名额；被动容量满时安静跳过，明确预览命令返回忙碌提示。",
   "词云渲染和关系短评也进入有界命令槽，生成期间不会堵住本群后续消息；命令忙碌提示不会取消正在生成的明确 @ 回复。",
   "发送仍走持久账本，后台结束后才结案；不确定预览回执不再触发第二份小程序预览或短时重复链接发送。",
+  "已确认发送的群聊回答记录 QQ 消息号，引用夜星较早的回复时先按编号关联原轮次，避免只靠相似词接错话题。",
   "JM、模型主备、思考档位与关系评分不变；只更新 Linux，Windows 继续冻结。",
 ]);
 
@@ -21,6 +22,7 @@ export const VERSION_NOTES_EN = Object.freeze([
   "Passive work has separate limits so it cannot consume all explicit mention slots. Passive overload stays quiet; an explicit preview command gets a busy notice.",
   "Wordcloud rendering and relationship comments now use bounded command slots, and their busy notices cannot cancel an in-flight explicit mention reply.",
   "Actual sends remain in the durable ledger and finish diagnostics only on completion. Uncertain preview delivery no longer triggers a second mini-app payload or immediate same-URL retry.",
+  "Confirmed group replies retain their QQ message IDs, so quoting an older bot reply can select that exact turn before lexical fallback.",
   "Only Linux is updated; Windows stays frozen. JM, model routes, reasoning modes and relationship scoring remain unchanged.",
 ]);
 

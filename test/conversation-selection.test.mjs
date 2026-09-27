@@ -12,6 +12,7 @@ import { forgetUserData, setUserDisplayName } from "../bridge/user-preferences.m
 import { resolveReplyContext, pullRecentImages } from "../bridge/reply-handlers.mjs";
 import { createTraceRecorder, traceStage, withMessageTrace } from "../bridge/diagnostics/message-trace.mjs";
 import { processEvent } from "../bridge/reply.mjs";
+import { CFG } from "../bridge/config.mjs";
 
 const now = Date.now();
 const row = (messageId, uid, text, rest = {}) => ({ messageId, uid, text, nickname: "user-" + uid, role: "member", ts: now - 1000, ...rest });
@@ -82,6 +83,38 @@ test("thread selection keeps follow-up results with the matching earlier topic",
   assert.deepEqual(selected.turns.map(turn => turn.messageId), ["1", "2"]);
   assert.equal(selected.topic, "相关历史对话");
   assert.match(selected.turns[1].assistantSummary, /损坏/);
+});
+
+test("quoting a confirmed bot chunk anchors the matching older topic", () => {
+  const parallelTurns = [
+    { messageId: "701", assistantMessageIds: ["801", "802"], userSummary: "JM 压缩包解压失败", assistantSummary: "检查 FS 密码。" },
+    { messageId: "702", assistantMessageIds: ["803"], userSummary: "日报怎么没生成", assistantSummary: "检查定时任务。" },
+  ];
+  const selected = selectConversationThread({ turns: parallelTurns, topic: "日报" }, {
+    userMsg: "这个还是不行", replyToMessageId: "802", replyUserId: "100", selfUin: "100",
+  });
+  assert.deepEqual(selected.turns.map(turn => turn.messageId), ["701"]);
+  assert.equal(selected.topic, "相关历史对话");
+  assert.equal(selectConversationThread({ turns: parallelTurns }, {
+    userMsg: "这个还是不行", replyToMessageId: "802", replyUserId: "999", selfUin: "100",
+  }), null);
+});
+
+test("assembled context follows the quoted bot reply across two saved topics", () => {
+  const scope = { uid: "11", groupId: "22", now: Date.now(), memorySources: [], memoryExpiresAt: null };
+  recordConversationTurn({ ...scope, messageId: "701", assistantMessageIds: ["801", "802"],
+    userText: "JM 压缩包解压失败", assistantText: "检查 FS 密码。" }, { save: false });
+  recordConversationTurn({ ...scope, messageId: "702", assistantMessageIds: ["803"],
+    userText: "日报怎么没生成", assistantText: "检查定时任务。" }, { save: false });
+  const botId = String(CFG.selfUin);
+  const packet = buildReplyContextPacket({ uid: "11", groupId: "22", userName: "合成用户",
+    userMsg: "这个还是不行", replyToMessageId: "802", replyUserId: botId,
+    replySpeaker: "夜星", replyText: "检查 FS 密码。",
+    quoteEvidence: { state: "verified", messageId: "802", userId: botId, groupId: "22", at: Date.now() } });
+  const wire = JSON.stringify(packet.messages);
+  assert.match(wire, /检查 FS 密码/);
+  assert.doesNotMatch(wire, /检查定时任务/);
+  assert.ok(packet.retrieval.sources.some(item => item.kind === "thread" && item.messageId === "701"));
 });
 
 test("quoting someone else does not attach the sender's old conversation", () => {

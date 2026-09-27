@@ -19,10 +19,17 @@ export function selectConversationThread(thread, options = {}) {
 
 function threadAnchor(turns, options) {
   let anchor = turns.findIndex(turn => options.replyToMessageId && String(turn.messageId) === String(options.replyToMessageId));
+  if (anchor < 0) anchor = assistantQuoteAnchor(turns, options);
   if (anchor < 0 && options.replyToMessageId && String(options.replyUserId || "") !== String(options.selfUin || "bot")) return -1;
   if (anchor < 0 && !options.replyText && continuesTopic(options.userMsg, turnText(turns.at(-1)))) anchor = turns.length - 1;
   if (anchor < 0) anchor = bestTurnIndex(turns, options.replyText || options.userMsg);
   return anchor;
+}
+
+function assistantQuoteAnchor(turns, options) {
+  if (!options.replyToMessageId || String(options.replyUserId || "") !== String(options.selfUin || "bot")) return -1;
+  return turns.findIndex(turn => Array.isArray(turn.assistantMessageIds) &&
+    turn.assistantMessageIds.includes(String(options.replyToMessageId)));
 }
 
 function relatedTurns(turns, anchor) {

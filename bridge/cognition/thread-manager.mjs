@@ -184,17 +184,26 @@ function buildTurn(event, userSummary, assistantSummary, now) {
   const explicitId = normalizeId(event.messageId || event.turnId);
   const memorySources = normalizeMemoryDependencies(event.memorySources);
   const memoryExpiresAt = normalizeMemoryExpiry(event.memoryExpiresAt);
+  const assistantMessageIds = normalizeAssistantMessageIds(event.assistantMessageIds);
   return {
     id: explicitId || "turn-" + now,
     messageId: explicitId,
     userSummary,
     assistantSummary,
+    ...(assistantMessageIds.length ? { assistantMessageIds } : {}),
     userTruncated: normalizedText(event.userText).length > 320,
     assistantTruncated: normalizedText(event.assistantText).length > 480,
     outcome: String(event.outcome || "sent"),
     createdAt: now,
     ...(memorySources && !Number.isNaN(memoryExpiresAt) ? { memorySources, memoryExpiresAt, memoryDependencyVersion: 2 } : {}),
   };
+}
+
+function normalizeAssistantMessageIds(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.slice(0, 16).filter(id =>
+    (typeof id === "string" || (typeof id === "number" && Number.isSafeInteger(id))) &&
+    /^-?\d{1,20}$/.test(String(id))).map(String))];
 }
 
 function upsertTurn(thread, turn) {

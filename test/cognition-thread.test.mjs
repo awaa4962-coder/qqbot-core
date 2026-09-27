@@ -25,6 +25,7 @@ describe("cognition conversation threads", () => {
       uid: "42",
       groupId: "100",
       messageId: "m1",
+      assistantMessageIds: ["9101", "9102", "bad-id"],
       userText: "JM 下载还是失败",
       assistantText: "检查到 jmcomic 依赖缺失。",
       now: 1000,
@@ -41,6 +42,7 @@ describe("cognition conversation threads", () => {
     const thread = getConversationThread("42", "100", { userStore: users, now: 2500 });
     assert.equal(thread.topic, "JM 下载");
     assert.equal(thread.turnCount, 2);
+    assert.deepEqual(thread.turns[0].assistantMessageIds, ["9101", "9102"]);
     assert.equal(thread.privacy, "same-group-only");
     assert.match(buildConversationThreadBlock("42", "100", { userStore: users, now: 2500 }), /jmcomic 依赖缺失/);
   });

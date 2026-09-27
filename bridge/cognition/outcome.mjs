@@ -18,3 +18,16 @@ export function isSuccessfulOutbound(result) {
   }
   return isOutboundPayloadSuccessful(result);
 }
+
+export function confirmedOutboundMessageIds(result) {
+  if (!isSuccessfulOutbound(result)) return [];
+  const receipts = Array.isArray(result) ? result : [result];
+  const ids = new Set();
+  for (const receipt of receipts.slice(0, 16)) {
+    const value = receipt?.data?.message_id ?? receipt?.message_id;
+    if (typeof value === "number" && !Number.isSafeInteger(value)) continue;
+    if (!["number", "string"].includes(typeof value) || !/^-?\d{1,20}$/.test(String(value))) continue;
+    ids.add(String(value));
+  }
+  return [...ids];
+}

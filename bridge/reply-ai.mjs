@@ -10,7 +10,7 @@ import {
 } from "./model-router.mjs";
 import { buildReplyContextPacket } from "./context/index.mjs";
 import { getPreferredDisplayName } from "./user-preferences.mjs";
-import { isSuccessfulOutbound, recordConversationTurn } from "./cognition/index.mjs";
+import { confirmedOutboundMessageIds, isSuccessfulOutbound, recordConversationTurn } from "./cognition/index.mjs";
 import { selectPersonaCue } from "./persona-style.mjs";
 import { maybeSendStickerAfterReply } from "./features/stickers/index.mjs";
 import { wallAgeMs } from "./runtime-clock.mjs";
@@ -98,6 +98,7 @@ async function runAiReply(group_id, userId, userMsg, userName, imageUrls, replyT
       uid,
       groupId: gid,
       messageId: runtime.messageId,
+      assistantMessageIds: confirmedOutboundMessageIds(sendResult),
       userText: userMsg,
       assistantText: reply,
       outcome: "sent",

@@ -13,6 +13,7 @@ import { chatRunStopReason, noteChatOutcome, withChatRun } from "../bridge/cogni
 import { logGroupMsg } from "../bridge/storage.mjs";
 import { invalidateMemoryPrivacyGeneration } from "../bridge/memory-profile/generation.mjs";
 import { sendMsg } from "../bridge/napcat.mjs";
+import { getConversationThread } from "../bridge/cognition/index.mjs";
 
 function deferred() {
   let resolve;
@@ -585,7 +586,7 @@ test("real detached group reply records only a confirmed synthetic model answer"
   let modelCalls = 0; let sends = 0;
   t.mock.method(globalThis, "fetch", async url => {
     if (String(url).includes("/send_group_msg")) {
-      sends++; return { ok: true, json: async () => ({ status: "ok", retcode: 0 }) };
+      sends++; return { ok: true, json: async () => ({ status: "ok", retcode: 0, data: { message_id: 1901107 } }) };
     }
     modelCalls++;
     return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: "合成答复" } }] }) };
@@ -597,6 +598,7 @@ test("real detached group reply records only a confirmed synthetic model answer"
     assert.equal(modelCalls, 1);
     assert.equal(sends, 1);
     assert.equal(inspectChatEvent(parseIncomingEvent(event)), "reply_duplicate");
+    assert.deepEqual(getConversationThread(event.user_id, event.group_id)?.turns.at(-1).assistantMessageIds, ["1901107"]);
     assert.equal(listMessageTraces({ messageId: String(event.message_id) }).items[0].status, "sent");
   } finally { await scheduler.stop({ drainMs: 1000 }); }
 });

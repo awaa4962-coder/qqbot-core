@@ -8,4 +8,4 @@ export {
   recordConversationTurn,
   resetCognitionForTest,
 } from "./thread-manager.mjs";
-export { isSuccessfulOutbound } from "./outcome.mjs";
+export { confirmedOutboundMessageIds, isSuccessfulOutbound } from "./outcome.mjs";
