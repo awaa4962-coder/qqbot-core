@@ -4,21 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.28-memory-read-guards";
-export const VERSION_NAME = "memory-read-guards";
+export const VERSION = "1.4.29-derived-readers";
+export const VERSION_NAME = "derived-readers";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "引用的记忆在等待中到期时，停止旧回复和后续分段，不再为旧资料调用备用模型。",
-  "群内明确引用与后续转述保留来源版本，纠正、删除、到期和重启后仍会重新核对。",
-  "来源缺失或矛盾时停止使用，不丢掉来源继续作答；诊断显示原因，已确认发送的部分仍保留真实记录。",
+  "被提及成员的话题线索、历史查询和后续转述都有有效期，过期资料不会继续用于回复。",
+  "关系短评在话题或风格变化时更新；资料清理或到期后停止旧生成和分段，保留原节流与分数算法。",
+  "群内档案和画像摘要只展示本群推断；清理画像同步确认落盘，前端显示话题线索的参考截止时间。",
   "JM、模型主备、思考档位与关系评分保持不变；Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "When referenced memory expires during a wait, stale replies and remaining chunks stop without another fallback call.",
-  "Explicit group quotes and later paraphrases retain source revisions, checked again after correction, deletion, expiry and restart.",
-  "Missing or conflicting sources cancel the reply instead of silently dropping dependencies. Diagnostics show the reason and preserve confirmed delivery records.",
+  "Mentioned-user topic hints, history queries and later paraphrases carry bounded evidence lifetimes.",
+  "Relationship prose refreshes on meaningful topic or style changes. Cleared or expired inputs stop stale generation and later chunks, preserving throttling and scores.",
+  "Group profile views expose only current-group inferences. Profile clears confirm persistence and the console shows topic-evidence deadlines.",
   "JM, model routes, reasoning modes and relationship scoring remain unchanged. Windows stays frozen.",
 ]);
 

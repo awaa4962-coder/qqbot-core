@@ -12,6 +12,7 @@ import { isSuccessfulOutbound } from "../cognition/outcome.mjs";
 import { traceStage } from "../diagnostics/message-trace.mjs";
 import { handleConversationSummaryCommand, parseConversationSummaryCommand } from "../features/conversation-summary/index.mjs";
 import { createMemoryCommandGuard, isSelfMemoryCommand } from "./modules/memory.mjs";
+import { createPersonalReadGuard, isPersonalReadCommand } from "./read-guard.mjs";
 
 const SPECIAL_GROUP_ACTIONS = Object.freeze([
   { id: "conversation-summary", parse: parseConversationSummaryCommand, handle: handleConversationSummaryCommand },
@@ -95,7 +96,8 @@ async function dispatchCatalogCommand(ctx, commandText, options) {
 }
 
 function catalogMemoryGuard(ctx, commandText, options) {
-  return isSelfMemoryCommand(commandText) ? createMemoryCommandGuard({ ...options, userId: ctx.user_id,
+  const create = isSelfMemoryCommand(commandText) ? createMemoryCommandGuard : isPersonalReadCommand(commandText) ? createPersonalReadGuard : null;
+  return create ? create({ ...options, commandText, userId: ctx.user_id,
     groupId: ctx.group_id, surface: "group", contextPrivacyGeneration: ctx.contextPrivacyGeneration }) : null;
 }
 

@@ -253,7 +253,7 @@ for (const change of changes) {
       assert.deepEqual(derived.memorySources, initial.memorySources);
       const recorded = record("78202", derived.memorySources, "Project OBSOLETE_DERIVED_BODY second turn");
       assert.deepEqual(recorded.turns.at(-1).memorySources, derived.memorySources);
-      assert.equal(recorded.turns.at(-1).memoryDependencyVersion, 1);
+      assert.equal(recorded.turns.at(-1).memoryDependencyVersion, 2);
       const before = f.packet({ userMsg: CONTINUE });
       assert.match(JSON.stringify(before.messages), /OBSOLETE_DERIVED_BODY second turn/);
       assert.ok(before.retrieval.sources.some(source => source.kind === "thread" && source.messageId === "78202"));

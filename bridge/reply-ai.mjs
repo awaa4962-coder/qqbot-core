@@ -17,6 +17,7 @@ import { wallAgeMs } from "./runtime-clock.mjs";
 import { traceStage } from "./diagnostics/message-trace.mjs";
 import { MODEL_FAILURE_NOTICE, normalizeChatOutcome } from "./chat-outcome.mjs";
 import { chatRunStopReason, withChatRun } from "./cognition/chat-run.mjs";
+import { earliestMemoryExpiry } from "./context/memory-dependencies.mjs";
 
 const PROFILE_REFRESH_MS = 6 * 60 * 60 * 1000;
 const PROFILE_REFRESH_MESSAGES = 30;
@@ -98,6 +99,7 @@ async function runAiReply(group_id, userId, userMsg, userName, imageUrls, replyT
       assistantText: reply,
       outcome: "sent",
       memorySources: replyMemorySources(contextPacket, outcome),
+      memoryExpiresAt: earliestMemoryExpiry(contextPacket.memoryExpiresAt, outcome.memoryExpiresAt),
     });
   }
   log("aiReply done for", preferredUserName, "in", gid);

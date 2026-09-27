@@ -17,6 +17,8 @@ import { assertChatRunCurrent, chatRunSignal, chatRunStopReason, withChatRun } f
 import { getMemoryPrivacyGeneration } from "./memory-profile/generation.mjs";
 import { createMemoryCommandGuard, isSelfMemoryCommand } from "./commands/modules/memory.mjs";
 import { normalizeCommand } from "./commands/normalize.mjs";
+import { earliestMemoryExpiry } from "./context/memory-dependencies.mjs";
+import { createPersonalReadGuard, isPersonalReadCommand } from "./commands/read-guard.mjs";
 
 export async function handlePrivateMessage(ctx, runtime = {}) {
   ctx.contextPrivacyGeneration ??= getMemoryPrivacyGeneration();
@@ -69,7 +71,7 @@ async function runPrivateReply(userId, text) {
   if (reply) {
     const result = await sendPrivateMsg(uid, reply);
     if (isSuccessfulOutbound(result)) {
-      recordPrivateTurn({ user_id: uid, message_id: null, memorySources: context.memorySources }, text, reply, outcome);
+      recordPrivateTurn({ user_id: uid, message_id: null, memorySources: context.memorySources, memoryExpiresAt: context.memoryExpiresAt }, text, reply, outcome);
       log("privateReply sent to", uid);
       await maybeSendPrivateSticker(uid, text, reply, context.history);
     }
@@ -187,9 +189,10 @@ function buildPrivateReplyContext(ctx, userMsg, options = {}) {
     ...(options.attachmentEvidence ? { attachmentEvidence: options.attachmentEvidence } : {}),
   });
   ctx.memorySources = contextPacket.memorySources;
+  ctx.memoryExpiresAt = contextPacket.memoryExpiresAt;
   ctx.attachmentCoverage = contextPacket.attachmentCoverage;
   return { history: contextPacket.messages, userName, currentInput: contextPacket.currentInput,
-    memorySources: ctx.memorySources, attachmentCoverage: ctx.attachmentCoverage };
+    memorySources: ctx.memorySources, memoryExpiresAt: ctx.memoryExpiresAt, attachmentCoverage: ctx.attachmentCoverage };
 }
 
 function recordPrivateTurn(ctx, userText, assistantText, outcome = {}) {
@@ -202,12 +205,14 @@ function recordPrivateTurn(ctx, userText, assistantText, outcome = {}) {
     assistantText,
     outcome: "sent",
     memorySources: [...(ctx.memorySources || []), ...(outcome.memorySources || [])],
+    memoryExpiresAt: earliestMemoryExpiry(ctx.memoryExpiresAt, outcome.memoryExpiresAt),
   });
 }
 
 async function trySendPrivateCommand(ctx) {
-  const memoryGuard = isSelfMemoryCommand(normalizeCommand(ctx.text)) ? createMemoryCommandGuard({ userId: ctx.user_id,
-    surface: "private", contextPrivacyGeneration: ctx.contextPrivacyGeneration }) : null;
+  const command = normalizeCommand(ctx.text);
+  const create = isSelfMemoryCommand(command) ? createMemoryCommandGuard : isPersonalReadCommand(command) ? createPersonalReadGuard : null;
+  const memoryGuard = create ? create({ commandText: command, userId: ctx.user_id, surface: "private", contextPrivacyGeneration: ctx.contextPrivacyGeneration }) : null;
   const reply = await buildPrivateCommandReplyAsync(ctx, { users, groupChats, memoryGuard });
   if (!reply) return false;
   traceStage("route", { status: "ok", route: "command" });

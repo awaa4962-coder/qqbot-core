@@ -18,6 +18,7 @@ export function buildMemorySummary(uid, groupId, options = {}) {
 
 export function buildHumanMemorySummary(uid, groupId, options = {}) {
   const ctx = getActiveMemoryContext(uid, groupId, options);
+  options.memoryGuard?.trackTarget(uid, ctx);
   const lines = [];
   if (ctx.userProfile) lines.push("用户画像：" + describeUserProfile(ctx.userProfile));
   if (ctx.groupProfile) lines.push("群画像：" + describeGroupProfile(ctx.groupProfile));

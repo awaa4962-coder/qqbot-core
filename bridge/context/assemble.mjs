@@ -2,7 +2,7 @@ import { buildLayeredReplyContext } from "../context-retriever.mjs";
 import { enforceContextBudget, estimateContextBudget } from "./budget.mjs";
 import { deriveReplyMode, isPassiveMode } from "./policy.mjs";
 import { traceStage } from "../diagnostics/message-trace.mjs";
-import { trackChatMemorySources } from "../cognition/chat-run.mjs";
+import { trackChatMemorySources, trackChatMemoryExpiry } from "../cognition/chat-run.mjs";
 
 export function buildReplyContextPacket(options = {}) {
   const mode = deriveReplyMode(options);
@@ -24,6 +24,7 @@ export function buildReplyContextPacket(options = {}) {
   }, groupId);
   const messages = bounded.messages;
   trackChatMemorySources(bounded.memorySources);
+  trackChatMemoryExpiry(bounded.memoryExpiresAt);
   traceContextPacket(bounded, options, attachmentCoverage);
   return {
     mode,
@@ -34,6 +35,7 @@ export function buildReplyContextPacket(options = {}) {
     mood: layered.mood,
     memory: layered.memory,
     memorySources: bounded.memorySources,
+    memoryExpiresAt: bounded.memoryExpiresAt,
     thread: buildThreadMetadata(layered.thread),
     metadata: {
       uid,

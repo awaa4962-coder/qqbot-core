@@ -102,5 +102,5 @@ function finalOutcome(result, context) {
   const outcome = parseChatOutcome(result.raw, { provider: result.provider, replyMode: context.options.replyMode, imagePayloads: context.request.trustedImageUrls });
   if (outcome.kind === "reply" && outcome.text.length > CHAT_TOOL_LIMITS.replyChars) return chatError("output_budget");
   const memorySources = context.session.sources();
-  return outcome.kind === "reply" && memorySources.length ? { ...outcome, memorySources } : outcome;
+  return outcome.kind === "reply" ? { ...outcome, memorySources, memoryExpiresAt: context.session.expiry() } : outcome;
 }

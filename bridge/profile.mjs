@@ -8,6 +8,7 @@ import { chatRunStopReason } from "./cognition/chat-run.mjs";
 import { memoryCorrectionSnapshot } from "./memory-profile/notes.mjs";
 import { excludedMemorySource } from "./memory-profile/source-exclusions.mjs";
 import { summaryPrivacy } from "./group-summary/state.mjs";
+import { bindLayerMemoryReferences, createMemoryReadGuard } from "./memory-profile/read-guard.mjs";
 
 async function generateProfileVia(prompt, position) {
   const result = await callTaskApi("profile", position, {
@@ -29,10 +30,11 @@ export async function generateProfile(uid, options = {}) {
   if (!u) return '';
   const generation = getUserMemoryGeneration(uid);
   const privacyGeneration = getMemoryPrivacyGeneration();
-  const isCurrent = () => users[uid] === u && generation === getUserMemoryGeneration(uid) &&
-    privacyGeneration === getMemoryPrivacyGeneration() && !chatRunStopReason();
   const recent = profileHistory(uid, u.chats);
   if (!recent.length) return '';
+  const guards = profileReadGuards(uid, recent);
+  const isCurrent = () => users[uid] === u && generation === getUserMemoryGeneration(uid) &&
+    privacyGeneration === getMemoryPrivacyGeneration() && !chatRunStopReason() && guards.every(guard => !guard.reason());
 
   const chatLog = recent.map(function(c) {
     return '[' + new Date(c.ts).toLocaleString('zh-CN') + '] 在' + c.group + '群说: ' + redactSensitiveText(c.text);
@@ -53,6 +55,22 @@ export async function generateProfile(uid, options = {}) {
     } catch {}
   }
   return '';
+}
+
+function profileReadGuards(uid, recent) {
+  const groups = new Map();
+  for (const item of recent) {
+    const groupId = String(item.group);
+    if (!groups.has(groupId)) groups.set(groupId, []);
+    groups.get(groupId).push({ userId: String(uid), messageId: item.messageId, replyToMessageId: item.replyToMessageId, turnId: item.turnId });
+  }
+  return [...groups].map(([groupId, contextSources]) => {
+    const scope = { surface: "group", userId: String(uid), groupId };
+    const guard = createMemoryReadGuard(scope);
+    const [layer] = bindLayerMemoryReferences([{ contextSources }], scope);
+    guard.track(layer.contextMemorySources);
+    return guard;
+  });
 }
 
 function profileHistory(uid, chats) {

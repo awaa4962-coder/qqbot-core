@@ -44,6 +44,10 @@ export function trackChatMemorySources(sources) {
   storage.getStore()?.memoryGuard.track(sources);
 }
 
+export function trackChatMemoryExpiry(expiresAt) {
+  storage.getStore()?.memoryGuard.limitUntil(expiresAt);
+}
+
 export function chatRunPrivacyChanged() {
   const run = storage.getStore();
   return Boolean(run && run.privacyGeneration !== getMemoryPrivacyGeneration());

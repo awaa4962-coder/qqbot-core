@@ -3,6 +3,7 @@ import { users } from "../storage.mjs";
 import { summaryPrivacy } from "../group-summary/state.mjs";
 import { memoryNotesSnapshot, memoryCorrectionSnapshot } from "../memory-profile/notes.mjs";
 import { bindLayerMemoryReferences } from "../memory-profile/read-guard.mjs";
+import { earliestMemoryExpiry } from "../context/memory-dependencies.mjs";
 import { noteSemanticText, projectNoteSemantics, validNoteSemantics } from "../memory-profile/semantics.mjs";
 import { redactSensitiveText } from "../privacy.mjs";
 import { compareRelevance, retrievalFeatures } from "../context/relevance.mjs";
@@ -43,7 +44,7 @@ export function recallMemory(scope, args = {}, options = {}) {
     const excluded = excludedSources(notes, corrections, context.currentMessageId);
     const candidates = request.kind === "history" ? [] : noteCandidates(notes, corrections, context);
     candidates.push(...readHistoryCandidates(options, excluded, context));
-    return bindRecalledSources(packMemory(result, candidates, request.limit), access.scope);
+    return bindRecalledSources(packMemory(result, candidates, request.limit, request.days), access.scope);
   } catch {
     return failure(result, "unavailable", "memory_unavailable");
   }
@@ -255,7 +256,7 @@ function relevance(text, context) {
   return text.toLowerCase().includes(context.query) ? 10 : compareRelevance(context.features, retrievalFeatures(text)).score;
 }
 
-function packMemory(result, candidates, limit) {
+function packMemory(result, candidates, limit, days) {
   const seenText = new Set();
   const seenId = new Set();
   candidates.sort((a, b) => b.priority - a.priority || b.score - a.score || b.item.source.at - a.item.source.at);
@@ -264,7 +265,8 @@ function packMemory(result, candidates, limit) {
     const { noteId, revision, messageId: id } = item.source;
     if (!textKey || seenText.has(textKey) || (id && seenId.has(id)) || (noteId && seenId.has(noteId))) continue;
     const next = { ...result, status: "ok", items: [...result.items, item],
-      memorySources: noteId ? [...result.memorySources, { noteId, revision }] : result.memorySources };
+      memorySources: noteId ? [...result.memorySources, { noteId, revision }] : result.memorySources,
+      memoryExpiresAt: earliestMemoryExpiry(result.memoryExpiresAt, item.source.expiresAt, item.source.at + days * DAY + 1) };
     // Drop whole records, including their revision dependency, rather than slicing JSON.
     if (JSON.stringify(next).length > MAX_JSON_CHARS) continue;
     result = next;

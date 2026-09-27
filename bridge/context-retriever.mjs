@@ -21,7 +21,7 @@ import { getActiveMemoryContext } from "./memory-profile.mjs";
 import { memoryEvidenceLayers } from "./memory-profile/evidence.mjs";
 import { memoryCorrectionSnapshot } from "./memory-profile/notes.mjs";
 import { bindLayerMemoryReferences } from "./memory-profile/read-guard.mjs";
-import { buildMentionContextBlock } from "./mentions/index.mjs";
+import { buildMentionContextEvidence } from "./mentions/index.mjs";
 import { formatConversationThreadLayers, getConversationThread } from "./cognition/index.mjs";
 import {
   buildMinimalPreferenceContextBlock,
@@ -83,7 +83,7 @@ function afterMemoryCorrection(thread, corrections) {
   if (!thread || !corrections) return null;
   // Older turns may omit inherited dependencies even when they contain an empty array.
   const turns = thread.turns.filter(turn => !hasExcludedMessageId(turn, corrections.excludedMessageIds) &&
-    turn.memoryDependencyVersion === 1 && Array.isArray(turn.memorySources) &&
+    turn.memoryDependencyVersion === 2 && (turn.memoryExpiresAt === null || (Number.isSafeInteger(turn.memoryExpiresAt) && turn.memoryExpiresAt > Date.now())) && Array.isArray(turn.memorySources) &&
     turn.memorySources.every(source => (corrections.scopeRevisions || corrections.revisions).get(source.noteId) === source.revision));
   return turns.length ? { ...thread, turns, turnCount: turns.length,
     topic: turns.length === thread.turns.length ? thread.topic : "" } : null;
@@ -123,8 +123,9 @@ function appendImageAnchorLayer(layers, options) {
 }
 
 function appendMentionLayer(layers, options) {
-  const mentionBlock = buildMentionContextBlock(options);
-  if (mentionBlock) pushLayer(layers, mentionBlock, 95);
+  const evidence = buildMentionContextEvidence(options);
+  if (evidence.content) layers.push({ content: evidence.content, role: "user", contextPriority: 95, contextAtomic: true,
+    contextSources: evidence.sources, contextExpiresAt: evidence.expiresAt });
 }
 
 function appendQuotedLayer(layers, options) {
@@ -144,7 +145,8 @@ function appendQuotedLayer(layers, options) {
 
 function appendThreadLayer(layers, options) {
   for (const { turn, content, clipped } of formatConversationThreadLayers(options.thread)) {
-    layers.push({ content, role: "user", contextPriority: 88, contextAtomic: true, contextMemorySources: turn.memorySources, contextSources: [{
+    layers.push({ content, role: "user", contextPriority: 88, contextAtomic: true, contextMemorySources: turn.memorySources,
+      contextExpiresAt: turn.memoryExpiresAt, contextSources: [{
       ...selectionSource({ ...turn, uid: options.uid }, "thread", "continuation"),
       clipped,
     }] });

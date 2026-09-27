@@ -1,5 +1,15 @@
 export const MAX_MEMORY_DEPENDENCIES = 32;
 
+export function normalizeMemoryExpiry(value) {
+  if (value === undefined || value === null) return null;
+  return Number.isSafeInteger(value) && value > 0 && value < 8640000000000000 ? value : NaN;
+}
+
+export function earliestMemoryExpiry(...values) {
+  const deadlines = values.map(normalizeMemoryExpiry).filter(value => value !== null);
+  return deadlines.length ? Math.min(...deadlines) : null;
+}
+
 // Dependency metadata is lossless: unknown, contradictory or oversized sets cannot become [].
 export function normalizeMemoryDependencies(value) {
   if (!Array.isArray(value) || value.length > 512) return null;

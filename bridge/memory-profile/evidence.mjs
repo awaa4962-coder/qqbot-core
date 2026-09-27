@@ -42,12 +42,19 @@ function collectTopics(chats, groupId, now, cutoff, excluded) {
 function addTopicEvidence(topics, text, chat) {
   for (const [topic, pattern] of MEMORY_TOPIC_RULES) {
     if (!pattern.test(text)) continue;
-    const entry = topics.get(topic) || { label: "近期谈过" + topic, sourceCount: 0, latestAt: chat.ts, sources: [] };
-    entry.sourceCount++;
-    if (entry.sources.length < 3) entry.sources.push({ messageId: String(chat.messageId), at: chat.ts });
+    const entry = topics.get(topic) || { label: "近期谈过" + topic, sourceCount: 0, latestAt: chat.ts, expiresAt: chat.ts + WINDOW_MS + 1, sources: [] };
+    // Counts and lifetime describe the selected witnesses, not unprovided older evidence.
+    if (entry.sources.length < 3) {
+      entry.sources.push({ messageId: String(chat.messageId), at: chat.ts,
+        replyToMessageId: sourceLink(chat.replyToMessageId), turnId: sourceLink(chat.turnId) });
+      entry.sourceCount = entry.sources.length;
+      entry.expiresAt = Math.min(entry.expiresAt, chat.ts + WINDOW_MS + 1);
+    }
     topics.set(topic, entry);
   }
 }
+
+function sourceLink(value) { return /^-?\d{1,20}$/.test(String(value ?? "")) ? String(value) : ""; }
 
 function sourceUsable(chat, groupId, now, cutoff) {
   if (!chat || String(chat.group) !== String(groupId) || !/^-?\d{1,20}$/.test(String(chat.messageId ?? ""))) return false;
@@ -113,8 +120,9 @@ export function memoryEvidenceLayers(uid, groupId, options = {}) {
       messageId: item.source.messageId, at: item.updatedAt, noteId: item.id, revision: item.revision, score: 1 }],
   }))];
   if (evidence.inferences.length) layers.push({ role: "user", contextPriority: 55, contextAtomic: true,
+    contextExpiresAt: Math.min(...evidence.inferences.map(item => item.expiresAt)),
     content: "[近期话题线索，非个人事实或固定偏好]\n只说明在本群谈过，不能推断喜欢、讨厌、经历或能力。\n" +
-      evidence.inferences.map(item => item.label + "（去重原话 " + item.sourceCount + " 条）").join("；"),
+      evidence.inferences.map(item => item.label + "（已选去重原话 " + item.sourceCount + " 条）").join("；"),
     contextSources: evidence.inferences.flatMap(item => item.sources.map(source => ({ ...source, userId: String(uid), kind: "memory", reason: "inferred_topic", score: 0 }))),
   });
   return { layers, supersededMessageIds: evidence.supersededMessageIds, corrections: evidence.corrections };

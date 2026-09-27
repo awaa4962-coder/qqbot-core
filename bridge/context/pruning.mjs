@@ -4,11 +4,12 @@ const membership = new WeakMap();
 export function registerContextGroups(messages, layers) {
   const groups = new Map();
   layers.forEach((layer, index) => {
-    if (!groups.has(layer.group)) groups.set(layer.group, { messages: [], sources: [], memorySources: [], priority: layer.priority, order: layer.index });
+    if (!groups.has(layer.group)) groups.set(layer.group, { messages: [], sources: [], memorySources: [], expiresAt: null, priority: layer.priority, order: layer.index });
     const group = groups.get(layer.group);
     group.messages.push(messages[index]);
     group.sources.push(...layer.sources);
     group.memorySources.push(...layer.memorySources);
+    if (layer.memoryExpiresAt !== null) group.expiresAt = Math.min(group.expiresAt ?? Infinity, layer.memoryExpiresAt);
     group.priority = Math.max(group.priority, layer.priority);
     group.order = Math.min(group.order, layer.index);
   });
@@ -23,6 +24,11 @@ export function registeredContextSources(messages) {
 export function registeredContextMemorySources(messages) {
   const groups = [...new Set(messages.map(message => membership.get(message)).filter(Boolean))];
   return groups.flatMap(group => group.memorySources);
+}
+
+export function registeredContextExpiry(messages) {
+  const groups = [...new Set(messages.map(message => membership.get(message)).filter(Boolean))];
+  return groups.reduce((expiry, group) => group.expiresAt === null ? expiry : Math.min(expiry ?? Infinity, group.expiresAt), null);
 }
 
 export function fitContextMessageGroups(request, maxChars, measure) {

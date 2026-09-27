@@ -1,7 +1,7 @@
 import { buildOutputPacket } from "./output-pipeline.mjs";
 import { normalizeInterjectionReply } from "./thinking.mjs";
-import { chatCancellation, chatRunStopReason, trackChatMemorySources } from "./cognition/chat-run.mjs";
-import { normalizeMemoryDependencies } from "./context/memory-dependencies.mjs";
+import { chatCancellation, chatRunStopReason, trackChatMemorySources, trackChatMemoryExpiry } from "./cognition/chat-run.mjs";
+import { normalizeMemoryDependencies, normalizeMemoryExpiry } from "./context/memory-dependencies.mjs";
 
 export const MODEL_FAILURE_NOTICE = "这次模型没有生成可用回复，请稍后再试。";
 const ERROR_REASONS = new Set(["model_unavailable", "request_failed", "tools_unavailable", "invalid_interjection",
@@ -41,10 +41,13 @@ export function normalizeChatOutcome(value) {
 
 function normalizeTypedReply(value) {
   const memorySources = normalizeMemoryDependencies(value.memorySources === undefined ? [] : value.memorySources);
-  if (!memorySources) return chatCancellation("memory_unavailable");
+  const memoryExpiresAt = normalizeMemoryExpiry(value.memoryExpiresAt);
+  if (!memorySources || Number.isNaN(memoryExpiresAt)) return chatCancellation("memory_unavailable");
   trackChatMemorySources(memorySources);
+  trackChatMemoryExpiry(memoryExpiresAt);
   if (chatRunStopReason()) return chatCancellation();
-  return { kind: "reply", text: value.text, reason: "reply", ...(memorySources.length ? { memorySources } : {}) };
+  return { kind: "reply", text: value.text, reason: "reply", ...(memorySources.length ? { memorySources } : {}),
+    ...(memoryExpiresAt === null ? {} : { memoryExpiresAt }) };
 }
 
 export async function callChatSlot(call, request) {

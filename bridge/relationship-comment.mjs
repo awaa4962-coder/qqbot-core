@@ -4,9 +4,12 @@ import {
   callRelationshipCommentPrimary,
 } from "./model-router.mjs";
 import { saveUsers } from "./storage.mjs";
+import { createHash } from "node:crypto";
 import { wallAgeMs } from "./runtime-clock.mjs";
 import { redactSensitiveText } from "./privacy.mjs";
 import { getUserMemoryGeneration } from "./memory-profile/generation.mjs";
+import { createMemoryReadGuard } from "./memory-profile/read-guard.mjs";
+import { earliestMemoryExpiry } from "./context/memory-dependencies.mjs";
 
 const COMMENT_CACHE_MS = 6 * 60 * 60 * 1000;
 const COMMENT_CACHE_MESSAGES = 30;
@@ -17,18 +20,25 @@ export async function getRelationshipShortComment(relation, options = {}) {
   const user = options.user || null;
   const uid = options.uid ?? user?.uid;
   const generation = getUserMemoryGeneration(uid);
+  const expiryGuard = createMemoryReadGuard();
+  expiryGuard.limitUntil(options.memoryExpiresAt);
+  const isCurrent = () => generation === getUserMemoryGeneration(uid) &&
+    !expiryGuard.reason() && !options.memoryGuard?.stopReason();
+  if (!isCurrent()) return "";
   const groupId = String(options.groupId || "0");
   const now = options.now || Date.now();
   const cache = getCommentCache(user, groupId);
-  if (!options.forceRefresh && cache && !shouldRefreshComment(cache, relation, now)) {
+  const fingerprint = commentFingerprint(relation);
+  if (canUseCachedComment(cache, relation, now, fingerprint, options.forceRefresh)) {
     return normalizeRelationshipComment(cache.text);
   }
 
   const prompt = redactSensitiveText(buildRelationshipCommentPrompt(relation));
-  const text = await generateRelationshipComment(prompt, options, () => generation === getUserMemoryGeneration(uid)) || buildLocalRelationshipComment(relation);
-  if (generation !== getUserMemoryGeneration(uid)) return "";
+  const text = await generateRelationshipComment(prompt, options, isCurrent) || buildLocalRelationshipComment(relation);
+  if (!isCurrent()) return "";
   const safeText = normalizeRelationshipComment(text) || buildLocalRelationshipComment(relation);
-  writeCommentCache(user, groupId, safeText, relation, now, options.source || "auto");
+  const expiresAt = earliestMemoryExpiry(now + COMMENT_CACHE_MS, options.memoryExpiresAt, options.memoryGuard?.expiry());
+  writeCommentCache(user, groupId, safeText, relation, now, options.source || "auto", { fingerprint, expiresAt });
   return safeText;
 }
 
@@ -71,6 +81,7 @@ export function normalizeRelationshipComment(text) {
 
 export function shouldRefreshComment(cache, relation, now = Date.now()) {
   if (!cache?.text) return true;
+  if (now < cache.generatedAt || (cache.expiresAt !== undefined && now >= cache.expiresAt)) return true;
   if (wallAgeMs(cache.generatedAt, now) >= COMMENT_CACHE_MS) return true;
   if (Number(relation.messageCount || 0) - Number(cache.messageCount || 0) >= COMMENT_CACHE_MESSAGES) return true;
   if (Number(relation.groupMessageCount || 0) - Number(cache.groupMessageCount || 0) >= COMMENT_CACHE_MESSAGES) return true;
@@ -115,14 +126,15 @@ async function defaultDeepSeekCall(prompt) {
 
 function getCommentCache(user, groupId) {
   const cache = user?.relationshipComments?.[String(groupId)];
-  return cache?.privacyScope === "group-v1" ? cache : null;
+  return cache?.privacyScope === "group-v2" ? cache : null;
 }
 
-function writeCommentCache(user, groupId, text, relation, now, source) {
+function writeCommentCache(user, groupId, text, relation, now, source, evidence) {
   if (!user || !text) return;
   if (!user.relationshipComments) user.relationshipComments = {};
   user.relationshipComments[String(groupId)] = {
-    privacyScope: "group-v1",
+    privacyScope: "group-v2",
+    ...evidence,
     text,
     generatedAt: now,
     messageCount: Number(relation.messageCount || 0),
@@ -130,6 +142,18 @@ function writeCommentCache(user, groupId, text, relation, now, source) {
     source,
   };
   saveUsers();
+}
+
+function canUseCachedComment(cache, relation, now, fingerprint, force) {
+  return !force && cache?.fingerprint === fingerprint && Number.isSafeInteger(cache.expiresAt) &&
+    !shouldRefreshComment(cache, relation, now);
+}
+
+function commentFingerprint(relation) {
+  // Fine score movement still follows the existing age/count throttle; changed meanings never reuse old prose.
+  const semantic = { ...relation, familiarity: 0, groupFamiliarity: 0,
+    confidence: Number(relation.confidence || 0) < 0.2 ? 0 : Number(relation.confidence || 0) < 0.5 ? 0.3 : 0.8 };
+  return createHash("sha256").update(redactSensitiveText(buildRelationshipCommentPrompt(semantic))).digest("hex");
 }
 
 function listText(values) {

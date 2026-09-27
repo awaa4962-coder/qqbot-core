@@ -1,5 +1,5 @@
 import { redactSensitiveText } from "../privacy.mjs";
-import { normalizeMemoryDependencies } from "./memory-dependencies.mjs";
+import { normalizeMemoryDependencies, normalizeMemoryExpiry } from "./memory-dependencies.mjs";
 import { registerContextGroups } from "./pruning.mjs";
 
 const MAX_LAYERS = 128;
@@ -29,6 +29,7 @@ export function enforceContextBudget(messages, currentInput = "", options = {}) 
   const bounded = accepted.map(({ role, content }) => ({ role, content }));
   registerContextGroups(bounded, accepted);
   return { messages: bounded, memorySources: selected.memorySources,
+    memoryExpiresAt: accepted.reduce((expiry, item) => item.memoryExpiresAt === null ? expiry : Math.min(expiry ?? Infinity, item.memoryExpiresAt), null),
     sources: accepted.flatMap(item => item.sources),
     budget: { ...estimateContextBudget(bounded, currentInput), maxChars: limits.maxChars, maxMessages: limits.maxMessages,
       originalMessageCount: layers.length, prunedMessageCount: layers.length - bounded.length,
@@ -53,7 +54,7 @@ function normalizeLayer(item, index) {
       priority: Number.isFinite(item?.contextPriority) ? item.contextPriority : 50,
       content: redactSensitiveText(item?.content).trim(),
       atomic: isAtomic(item, sources, group),
-      sources, memorySources: layerDependencies(item, sources) };
+      sources, memorySources: layerDependencies(item, sources), memoryExpiresAt: normalizeMemoryExpiry(item?.contextExpiresAt) };
 }
 
 function assertHistoryLayer(item) {
@@ -98,7 +99,7 @@ function selectGroups(groups, limits, currentChars) {
 }
 
 function groupDependencies(group, previous) {
-  if (group.layers.some(layer => layer.memorySources === null)) return null;
+  if (group.layers.some(layer => layer.memorySources === null || Number.isNaN(layer.memoryExpiresAt))) return null;
   return normalizeMemoryDependencies([...previous, ...group.layers.flatMap(layer => layer.memorySources)]);
 }
 

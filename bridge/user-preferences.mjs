@@ -139,7 +139,8 @@ export function buildStylePreview(uid, options = {}) {
 }
 
 export function buildStyleRecommendation(uid, groupId, options = {}) {
-  const ctx = options.memoryContext || getActiveMemoryContext(uid, groupId, options);
+  const ctx = personalReadContext(uid, groupId, options);
+  options.memoryGuard?.trackTarget(uid, ctx);
   const topics = collectProfileTopics(ctx);
   const tone = ctx.userProfile?.preferredTone || ctx.userGroupProfile?.interactionStyle || "";
   if (isTechnicalPreference(topics, tone)) {
@@ -156,7 +157,8 @@ export function buildStyleRecommendation(uid, groupId, options = {}) {
 
 export function buildSelfProfileText(uid, groupId, options = {}) {
   const pref = getUserPreferences(uid, options.users || users);
-  const ctx = options.memoryContext || getActiveMemoryContext(uid, groupId, options);
+  const ctx = personalReadContext(uid, groupId, options);
+  options.memoryGuard?.trackTarget(uid, ctx);
   const topics = collectProfileTopics(ctx).slice(0, 5);
   const groupStyle = ctx.userGroupProfile?.interactionStyle || "normal";
   const confidence = profileConfidence(ctx);
@@ -170,6 +172,12 @@ export function buildSelfProfileText(uid, groupId, options = {}) {
     "",
     "隐私：这里只显示摘要，不展示聊天原文；私聊内容不会拿到群里展示。",
   ].join("\n");
+}
+
+function personalReadContext(uid, groupId, options) {
+  const groupOnly = Boolean(groupId && String(groupId) !== "private");
+  const context = options.memoryContext || getActiveMemoryContext(uid, groupId, { ...options, groupOnly });
+  return groupOnly ? { ...context, userProfile: null } : context;
 }
 
 export function buildPrivacyText() {

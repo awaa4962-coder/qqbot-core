@@ -69,15 +69,19 @@ describe("user preferences", () => {
     });
     assert.match(text, /我的档案/);
     assert.match(text, /阿明/);
-    assert.match(text, /机器人/);
+    assert.match(text, /运维/);
+    assert.doesNotMatch(text, /机器人/);
     assert.match(text, /不展示聊天原文/);
 
     assert.match(buildPrivacyText(), /不展示聊天原文/);
     assert.match(buildStyleHelpText(), /回复风格帮助/);
     assert.match(buildStylePreview("42", { users: {} }), /当前风格预览/);
     assert.match(buildStyleRecommendation("42", "1", {
-      memoryContext: { userProfile: { commonTopics: ["机器人"], preferredTone: "technical" } },
+      memoryContext: { userGroupProfile: { recentTopics: ["运维"], interactionStyle: "technical" } },
     }), /简短 技术/);
+    assert.match(buildSelfProfileText("42", "private", {
+      memoryContext: { userProfile: { commonTopics: ["机器人"], confidence: 0.6 } },
+    }), /机器人/);
   });
 
   it("forgets user memory and replaces group log text with a placeholder", () => {

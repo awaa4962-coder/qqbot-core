@@ -8,7 +8,7 @@ export function buildMemoryManagerSnapshot(payload = {}) {
   const snapshot = memoryNotesSnapshot(scope);
   const preferences = getUserPreferences(scope.userId);
   return { ...snapshot, preferences: { displayName: preferences.displayName, styleText: formatStyle(preferences.style) },
-    inferences: recentTopicEvidence(scope.userId, scope.groupId).map(({ label, sourceCount, latestAt }) => ({ label, sourceCount, latestAt })) };
+    inferences: recentTopicEvidence(scope.userId, scope.groupId).map(({ label, sourceCount, latestAt, expiresAt }) => ({ label, sourceCount, latestAt, expiresAt })) };
 }
 
 export function applyMemoryManagerAction(payload = {}) {

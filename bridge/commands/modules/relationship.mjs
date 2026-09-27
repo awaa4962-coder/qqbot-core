@@ -4,6 +4,8 @@ import { computeRelationship, scopeRelationshipUser } from "../../relationship.m
 import { getRelationshipShortComment } from "../../relationship-comment.mjs";
 import { buildRelationshipSummary } from "../../relationship-commands.mjs";
 import { getUserMemoryGeneration } from "../../memory-profile/generation.mjs";
+import { earliestMemoryExpiry } from "../../context/memory-dependencies.mjs";
+import { createMemoryReadGuard } from "../../memory-profile/read-guard.mjs";
 
 export function buildRelationshipCommandReply(cmd, options) {
   const { relation, target, displayUser } = buildRelationshipData(options);
@@ -14,7 +16,9 @@ export function buildRelationshipCommandReply(cmd, options) {
 }
 
 export async function buildRelationshipCommandReplyAsync(cmd, options) {
-  const { relation, target, user, displayUser } = buildRelationshipData(options);
+  const { relation, target, user, displayUser, memoryContext } = buildRelationshipData(options);
+  const lifetime = createMemoryReadGuard();
+  lifetime.limitUntil(earliestMemoryExpiry(...Object.values(memoryContext).map(profile => profile?.expiresAt)));
   const generation = getUserMemoryGeneration(target.uid);
   const shortComment = relation ? await getRelationshipShortComment(relation, {
     user,
@@ -23,8 +27,10 @@ export async function buildRelationshipCommandReplyAsync(cmd, options) {
     now: options.now,
     callMiMo: options.callMiMo,
     callDeepSeek: options.callDeepSeek,
+    memoryGuard: options.memoryGuard,
+    memoryExpiresAt: lifetime.expiry(),
   }) : "";
-  if (generation !== getUserMemoryGeneration(target.uid)) return "资料已更新，请重新查询。";
+  if (generation !== getUserMemoryGeneration(target.uid) || lifetime.reason() || options.memoryGuard?.stopReason()) return "资料已更新，请重新查询。";
   return buildRelationshipSummary(relation, cmd, {
     nicknames: displayUser?.nicknames || [],
     subjectName: target.isSelf ? "" : target.displayName,
@@ -39,13 +45,14 @@ function buildRelationshipData(options) {
   const isGroup = Boolean(options.groupId && String(options.groupId) !== "private");
   const context = options.memoryContext || getActiveMemoryContext(uid, options.groupId, { groupOnly: isGroup });
   const memoryContext = isGroup ? { ...context, userProfile: null } : context;
+  options.memoryGuard?.trackTarget(uid, memoryContext);
   const displayUser = isGroup ? scopeRelationshipUser(user, options.groupId) : user;
   const relation = displayUser ? computeRelationship(displayUser, {
     currentGroupId: options.groupId,
     currentGroupChats: options.groupChats || [],
     memoryContext,
   }) : null;
-  return { relation, target, user, displayUser };
+  return { relation, target, user, displayUser, memoryContext };
 }
 
 function resolveRelationshipTarget(options = {}) {

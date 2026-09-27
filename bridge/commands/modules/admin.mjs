@@ -35,18 +35,22 @@ function buildMemoryCommandReply(cmd, options) {
   }
   if (cmd === "memory clear group") {
     if (!options.groupId) return "请在群聊里执行 memory clear group。";
-    clearGroupMemoryProfile(options.groupId);
-    return "已清理当前群画像。";
+    return clearProfile(() => clearGroupMemoryProfile(options.groupId, { persist: true }), "已清理当前群画像。");
   }
   const clearUser = cmd.match(/^memory clear user (\d+)$/);
   if (clearUser) {
-    clearUserMemoryProfile(clearUser[1]);
-    return "已清理用户 " + clearUser[1] + " 的画像。";
+    return clearProfile(() => clearUserMemoryProfile(clearUser[1], { persist: true }), "已清理用户 " + clearUser[1] + " 的画像。");
   }
   const summary = cmd.match(/^memory summary (\d+)$/);
   if (summary) {
-    const text = buildHumanMemorySummary(summary[1], options.groupId);
+    const text = buildHumanMemorySummary(summary[1], options.groupId, {
+      groupOnly: Boolean(options.groupId && String(options.groupId) !== "private"), memoryGuard: options.memoryGuard });
     return text ? "用户 " + summary[1] + " 画像摘要：\n" + text : "这个用户暂无可用画像。";
   }
   return null;
+}
+
+function clearProfile(action, success) {
+  try { return action() ? success : "没有找到可清理的画像。"; }
+  catch { return "已停止使用旧画像，但落盘未确认，请管理员检查存储后重试。"; }
 }

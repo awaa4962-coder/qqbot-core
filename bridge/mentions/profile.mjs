@@ -14,23 +14,25 @@ export function buildMentionedUserProfiles(mentions, options = {}) {
 
 function buildMentionProfile(uid, options) {
   const groupId = String(options.groupId || options.group_id || "");
+  const hints = groupId && groupId !== "private" ? mentionTopicHints(uid, groupId, options) : [];
   return {
     uid: String(uid),
     displayName: resolveMentionDisplayName(uid, {
       ...options,
       mention: findMention(uid, options.mentions),
     }),
-    memorySummary: groupId && groupId !== "private"
-      ? safeSummary(mentionTopicHints(uid, groupId, options))
-      : "",
+    memorySummary: hints.length ? safeSummary("本群原话的话题线索，不代表偏好或事实：" + hints.map(item => item.label).join("；")) : "",
+    ...(options.includeEvidence ? {
+      expiresAt: hints.length ? Math.min(...hints.map(item => item.expiresAt)) : null,
+      sources: hints.flatMap(item => item.sources.map(source => ({ ...source, userId: String(uid), kind: "memory", reason: "inferred_topic", score: 0 }))),
+    } : {}),
   };
 }
 
 function mentionTopicHints(uid, groupId, options) {
   try {
-    const hints = recentTopicEvidence(uid, groupId, options);
-    return hints.length ? "本群原话的话题线索，不代表偏好或事实：" + hints.map(item => item.label).join("；") : "";
-  } catch { return ""; }
+    return recentTopicEvidence(uid, groupId, options);
+  } catch { return []; }
 }
 
 function findMention(uid, mentions) {
@@ -39,11 +41,15 @@ function findMention(uid, mentions) {
 }
 
 export function buildMentionContextBlock(options = {}) {
+  return buildMentionContextEvidence(options).content;
+}
+
+export function buildMentionContextEvidence(options = {}) {
   const mentions = Array.isArray(options.mentions) ? options.mentions : [];
   const userMentions = mentions.filter(item => !item.isBot && !item.isAll);
   const hasAll = mentions.some(item => item.isAll);
-  if (!userMentions.length && !hasAll) return "";
-  const profiles = buildMentionedUserProfiles(mentions, options);
+  if (!userMentions.length && !hasAll) return { content: "", sources: [], expiresAt: null };
+  const profiles = buildMentionedUserProfiles(mentions, { ...options, includeEvidence: true });
   const lines = [
     "[Mention context]",
     "Use this only to understand who the current message mentioned. Do not reveal private history or treat mentioned users as the speaker.",
@@ -52,7 +58,9 @@ export function buildMentionContextBlock(options = {}) {
   for (const profile of profiles) {
     lines.push(formatMentionProfile(profile));
   }
-  return lines.join("\n");
+  const deadlines = profiles.map(item => item.expiresAt).filter(value => value !== null);
+  return { content: lines.join("\n"), sources: profiles.flatMap(item => item.sources),
+    expiresAt: deadlines.length ? Math.min(...deadlines) : null };
 }
 
 function formatMentionProfile(profile) {

@@ -54,6 +54,7 @@ function buildPreferenceCommandReply(cmd, options) {
     groupChats: options.groupChats,
     skipSave: options.skipSave === true,
     now: options.now,
+    memoryGuard: options.memoryGuard,
   };
   const simpleReply = buildSimplePreferenceReply(cmd, uid, groupId, commonOptions);
   if (simpleReply) return simpleReply;

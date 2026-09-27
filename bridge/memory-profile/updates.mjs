@@ -1,11 +1,12 @@
 import { DEFAULT_TTL_MS, INTERJECTION_PREFERENCE_TTL_MS, userGroupKey } from "./constants.mjs";
 import { MEMORY_TOPIC_RULES } from "../knowledge/topic-rules.mjs";
 import { getMemoryStatus } from "./query.mjs";
-import { memoryProfiles, memoryProfilesAvailable, saveMemoryProfiles } from "./store.mjs";
+import { memoryProfiles, memoryProfilesAvailable, saveMemoryProfiles, flushMemoryProfilesSync } from "./store.mjs";
 import { memoryNoteService } from "./notes.mjs";
 import { logE } from "../logger.mjs";
 import { containsSensitiveText, redactSensitiveText } from "../privacy.mjs";
 import { invalidateMemoryPrivacyGeneration, invalidateUserMemoryGeneration } from "./generation.mjs";
+import { users, saveUsers, flushSavesSync } from "../storage.mjs";
 
 export function isSensitiveMemoryText(text) {
   return containsSensitiveText(text);
@@ -222,28 +223,49 @@ export function addUnique(target, item, limit) {
   if (target.length > limit) target.splice(0, target.length - limit);
 }
 
-export function clearUserMemoryProfile(uid) {
+export function clearUserMemoryProfile(uid, options = {}) {
   const id = String(uid || "");
   if (!id) return false;
   invalidateUserMemoryGeneration(id);
+  if (users[id]) {
+    users[id].profile = "";
+    users[id].description = "";
+    users[id].relationshipComments = {};
+    users[id].profileGeneratedAt = 0;
+    users[id].profileGeneratedChatCount = 0;
+    saveUsers();
+  }
   delete memoryProfiles.userProfiles[id];
   for (const key of Object.keys(memoryProfiles.userGroupProfiles)) {
     if (key.endsWith(":" + id)) delete memoryProfiles.userGroupProfiles[key];
   }
   saveMemoryProfiles();
+  if (options.persist) confirmProfileClear();
   return true;
 }
 
-export function clearGroupMemoryProfile(groupId) {
+export function clearGroupMemoryProfile(groupId, options = {}) {
   const gid = String(groupId || "");
   if (!gid) return false;
   invalidateMemoryPrivacyGeneration();
+  for (const user of Object.values(users)) {
+    if (!user?.relationshipComments?.[gid]) continue;
+    delete user.relationshipComments[gid];
+    saveUsers();
+  }
   delete memoryProfiles.groupProfiles[gid];
   for (const key of Object.keys(memoryProfiles.userGroupProfiles)) {
     if (key.startsWith(gid + ":")) delete memoryProfiles.userGroupProfiles[key];
   }
   saveMemoryProfiles();
+  if (options.persist) confirmProfileClear();
   return true;
+}
+
+function confirmProfileClear() {
+  const usersSaved = flushSavesSync({ durable: true });
+  const profilesSaved = flushMemoryProfilesSync();
+  if (!usersSaved || !profilesSaved) throw new Error("profile_clear_unconfirmed");
 }
 
 export function cleanupExpiredMemoryProfiles(now = Date.now()) {

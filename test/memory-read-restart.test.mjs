@@ -68,3 +68,33 @@ for (const change of ["correction", "deletion", "expiry"]) {
     `);
   });
 }
+
+test("version-two topic deadlines persist across a fresh process without extending derived thread validity", t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-topic-restart-"));
+  t.after(() => {
+    assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep));
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  const time = Date.now();
+  run(root, `
+    import assert from 'node:assert/strict';
+    Date.now = () => ${time};
+    ${imports}
+    recordConversationTurn({ uid: '60332', groupId: scope.groupId, messageId: '70631', userText: 'Project',
+      assistantText: 'DEADLINE_RESTART_BODY', memorySources: [], memoryExpiresAt: ${time + 1000}, now: Date.now() });
+    const packet = buildReplyContextPacket({ uid: '60332', groupId: scope.groupId, userMsg: '继续' });
+    assert.equal(packet.memoryExpiresAt, ${time + 1000});
+    saveUsers(); assert.equal(flushSavesSync({ durable: true }), true);
+  `);
+  run(root, `
+    import assert from 'node:assert/strict';
+    Date.now = () => ${time + 1000};
+    ${imports}
+    const saved = users['60332'].cognition.threads[scope.groupId].turns[0];
+    assert.equal(saved.memoryDependencyVersion, 2);
+    assert.equal(saved.memoryExpiresAt, ${time + 1000});
+    const packet = buildReplyContextPacket({ uid: '60332', groupId: scope.groupId, userMsg: '继续' });
+    assert.doesNotMatch(JSON.stringify(packet.messages), /DEADLINE_RESTART_BODY/);
+    assert.equal(packet.memoryExpiresAt, null);
+  `);
+});

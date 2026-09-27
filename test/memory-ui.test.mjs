@@ -83,6 +83,13 @@ test("memory renders source, expired state and read-only preferences as text, ne
   assert.equal(f.$("Save").disabled, true); assert.equal(f.$("Delete").disabled, false);
 });
 
+test("topic hints label selected witnesses and their deadline rather than implying an unlimited profile", async () => {
+  const f = setup(() => snapshot({ inferences: [{ label: "近期谈过代码", sourceCount: 3, latestAt: 1700000000000, expiresAt: 1700604800001 }] }));
+  await f.load();
+  assert.match(allText(f.$("Inferences")), /已选来源 3 条/);
+  assert.match(allText(f.$("Inferences")), /参考截止/);
+});
+
 test("create and update use distinct actions and snapshot tokens, never spoof user provenance", async () => {
   const f = setup(); await f.load(); await f.edit();
   f.setReply((_action, payload) => snapshot({ revision: "snapshot-2", items: [item("one", { text: payload.text, kind: "operator_note" })] }));

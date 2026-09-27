@@ -170,7 +170,7 @@ export function initializeMemory(host, { document: doc = document, window: win =
     $("memoryInferences").replaceChildren();
     for (const item of result.inferences) {
       const li = doc.createElement("li");
-      li.textContent = `${item.label} · 来源 ${item.sourceCount} 条 · 最近 ${dateLabel(item.latestAt)}`;
+      li.textContent = `${item.label} · 已选来源 ${item.sourceCount} 条 · 最近 ${dateLabel(item.latestAt)} · 参考截止 ${dateLabel(item.expiresAt)}`;
       $("memoryInferences").append(li);
     }
     if (!result.inferences.length) {

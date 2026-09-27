@@ -1,6 +1,6 @@
 import { memoryReadMetadata } from "./notes.mjs";
 import { getMemoryPrivacyGeneration } from "./generation.mjs";
-import { normalizeMemoryDependencies } from "../context/memory-dependencies.mjs";
+import { normalizeMemoryDependencies, normalizeMemoryExpiry } from "../context/memory-dependencies.mjs";
 
 export function bindLayerMemoryReferences(layers, scope) {
   let metadata;
@@ -58,7 +58,7 @@ export function createMemoryReadGuard(scope = {}, options = {}) {
   function reason() {
     if (invalid) return invalid;
     if (privacy !== getMemoryPrivacyGeneration()) return (invalid = "privacy_changed");
-    if (!dependencies.length) return "";
+    if (expiresAt === Infinity) return "";
     const current = now();
     if (!Number.isSafeInteger(current) || current < readAt) return (invalid = "memory_unavailable");
     if (current >= expiresAt) return (invalid = "memory_expired");
@@ -85,7 +85,16 @@ export function createMemoryReadGuard(scope = {}, options = {}) {
     const problem = reason();
     if (problem) throw Object.assign(new Error(problem), { code: "CHAT_MEMORY_CHANGED" });
   }
-  return { track, reason, assertCurrent, sources: () => dependencies.map(item => ({ ...item })) };
+  function limitUntil(value) {
+    const expiry = normalizeMemoryExpiry(value);
+    if (expiry === null || reason()) return;
+    const current = now();
+    if (!Number.isFinite(expiry) || !Number.isSafeInteger(current) || current <= 0) { invalid = "memory_unavailable"; return; }
+    expiresAt = Math.min(expiresAt, expiry);
+    readAt = current;
+  }
+  return { track, limitUntil, reason, assertCurrent, sources: () => dependencies.map(item => ({ ...item })),
+    expiry: () => expiresAt === Infinity ? null : expiresAt };
 }
 
 function earliestExpiry(sources, entries, now) {
