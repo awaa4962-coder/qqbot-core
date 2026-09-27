@@ -25,7 +25,7 @@ export function buildReplyContextPacket(options = {}) {
   const messages = bounded.messages;
   trackChatMemorySources(bounded.memorySources);
   trackChatMemoryExpiry(bounded.memoryExpiresAt);
-  traceContextPacket(bounded, options, attachmentCoverage);
+  traceContextPacket(bounded, currentInput, options, attachmentCoverage);
   return {
     mode,
     messages,
@@ -65,9 +65,12 @@ function boundContext(layered, options, limits, groupId) {
   return { bounded, currentInput, attachmentCoverage };
 }
 
-function traceContextPacket(bounded, options, attachmentCoverage) {
+function traceContextPacket(bounded, currentInput, options, attachmentCoverage) {
   traceStage("context", {
     status: "ok", chars: bounded.budget.chars, messages: bounded.messages.length,
+    currentInputChars: currentInput.length,
+    historyTextChars: bounded.messages.reduce((sum, message) => sum +
+      (typeof message.content === "string" ? message.content.length : 0), 0),
     pruned: bounded.budget.prunedMessageCount, truncated: bounded.budget.truncatedMessageCount,
     images: Number(options.imageCount || 0), mentions: options.mentions?.length || 0,
     contextGroups: bounded.budget.originalGroupCount, selectedGroups: bounded.budget.selectedGroupCount,

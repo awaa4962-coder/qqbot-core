@@ -28,13 +28,35 @@ export function buildModelPrompt(options = {}) {
 }
 
 export function measurePromptText(messages = []) {
-  let textChars = 0;
+  return measurePromptComposition(messages).inputTextChars;
+}
+
+export function measurePromptComposition(messages = [], tools = []) {
+  const counts = { systemTextChars: 0, userTextChars: 0, assistantTextChars: 0, toolTextChars: 0,
+    otherTextChars: 0, imageParts: 0, toolDeclarations: Array.isArray(tools) ? tools.length : 0,
+    toolSchemaChars: Array.isArray(tools) && tools.length ? JSON.stringify(tools).length : 0 };
   for (const message of messages) {
-    if (typeof message.content === "string") textChars += message.content.length;
-    else if (Array.isArray(message.content)) {
-      textChars += message.content.filter(item => item?.type === "text").reduce((sum, item) => sum + String(item.text || "").length, 0);
-    }
-    for (const call of message.tool_calls || []) textChars += String(call.function?.arguments || "").length;
+    counts[roleCountKey(message.role)] += messageTextChars(message.content);
+    if (Array.isArray(message.content)) counts.imageParts += message.content.filter(item => item?.type === "image_url").length;
+    for (const call of message.tool_calls || []) counts.toolTextChars += String(call.function?.arguments || "").length;
   }
-  return textChars;
+  return { ...counts, inputTextChars: counts.systemTextChars + counts.userTextChars + counts.assistantTextChars +
+    counts.toolTextChars + counts.otherTextChars };
+}
+
+function roleCountKey(role) {
+  switch (role) {
+    case "system": return "systemTextChars";
+    case "user": return "userTextChars";
+    case "assistant": return "assistantTextChars";
+    case "tool": return "toolTextChars";
+    default: return "otherTextChars";
+  }
+}
+
+function messageTextChars(content) {
+  if (typeof content === "string") return content.length;
+  if (!Array.isArray(content)) return 0;
+  return content.filter(item => item?.type === "text")
+    .reduce((sum, item) => sum + String(item.text || "").length, 0);
 }

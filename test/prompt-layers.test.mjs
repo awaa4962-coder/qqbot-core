@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildModelPrompt, measurePromptText } from "../bridge/system-prompts/compose.mjs";
+import { buildModelPrompt, measurePromptComposition, measurePromptText } from "../bridge/system-prompts/compose.mjs";
 import { withBotSelfContext } from "../bridge/capabilities/self-context.mjs";
 import { enforceContextBudget } from "../bridge/context/budget.mjs";
 import { formatConversationThreadLayers, recordConversationTurn } from "../bridge/cognition/thread-manager.mjs";
@@ -53,6 +53,32 @@ test("prompt text measurement excludes image buffers and private reasoning", () 
     { role: "user", content: [{ type: "text", text: "de" }, { type: "image_url", image_url: { url: "data:image/png;base64," + "a".repeat(2000) } }] },
     { role: "assistant", content: null, reasoning_content: "hidden", tool_calls: [{ function: { arguments: "{}" } }] },
   ]), 7);
+});
+
+test("prompt composition counts roles and declarations without retaining their contents", () => {
+  const secret = "sk-" + "syntheticsecret".repeat(3);
+  const measured = measurePromptComposition([
+    { role: "system", content: "rules" },
+    { role: "user", content: [{ type: "text", text: "ask" }, { type: "image_url", image_url: { url: secret } }] },
+    { role: "assistant", content: "done", reasoning_content: secret, tool_calls: [{ function: { arguments: "{}" } }] },
+    { role: "tool", content: "ok" },
+  ], [{ type: "function", function: { name: "read_bot_status", description: secret } }]);
+  assert.equal(measured.inputTextChars, 5 + 3 + 4 + 2 + 2);
+  assert.equal(measured.imageParts, 1);
+  assert.equal(measured.toolDeclarations, 1);
+  assert.ok(measured.toolSchemaChars > 0);
+  assert.doesNotMatch(JSON.stringify(measured), /syntheticsecret|reasoning_content/);
+});
+
+test("actual context packet trace separates current input from selected history without storing text", async () => {
+  const recorder = createTraceRecorder();
+  const secret = "sk-" + "syntheticcontext".repeat(3);
+  const packet = await withMessageTrace({ message_type: "group", user_id: 90101, group_id: 90202, message_id: 90303, text: secret },
+    () => buildReplyContextPacket({ uid: "90101", groupId: "90202", userMsg: secret, userName: "合成用户" }), recorder);
+  const context = recorder.list().items[0].stages.find(stage => stage.stage === "context" && stage.currentInputChars !== undefined);
+  assert.equal(context.currentInputChars, packet.currentInput.length);
+  assert.equal(context.historyTextChars, packet.messages.reduce((sum, message) => sum + message.content.length, 0));
+  assert.doesNotMatch(JSON.stringify(context), /syntheticcontext/);
 });
 
 test("long completed turns preserve final corrections within unchanged storage limits", () => {

@@ -29,6 +29,7 @@ export function buildConversationSummaryRequest(bundle, options = {}) {
   }));
   return {
     systemPrompt: CONVERSATION_SUMMARY_PROMPT,
+    promptMetadata: { promptVersion: "conversation-summary-v1" },
     messages: [{ role: "user", content: [
       options.separate ? "请分别总结，每个人用称呼开头写一小段自然的话。" : "请按事情自然地讲清楚，不必按人分段。",
       "没有记录的成员不要推测。材料可能不完整。",

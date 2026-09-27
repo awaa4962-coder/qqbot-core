@@ -73,6 +73,21 @@ if (!vm.SourceTextModule) {
     assert.equal(result.status, 0, result.stdout + result.stderr);
   });
 } else {
+  test("diagnostics compare source reasons and request parts without showing prompt text", async () => {
+    const secret = "PRIVATE-PROMPT-BODY";
+    const h = await harness([
+      context({ currentInputChars: 18, historyTextChars: 96, sourceReasons: { reply_chain: 1, continuation: 2 }, rawPrompt: secret }),
+      context({ promptVersion: "group-summary-structured-v1", promptFingerprint: "abcdef0123456789", promptTagged: true,
+        systemTextChars: 72, userTextChars: 116, toolDeclarations: 1, toolSchemaChars: 51, inputTextChars: 188,
+        prompt: secret }, 2),
+    ]);
+    assert.match(h.steps[0].textContent, /初选输入 18 \/ 历史 96 字符/);
+    assert.match(h.steps[0].textContent, /来源原因 引用链 1 \/ 对话承接 2/);
+    assert.match(h.steps[1].textContent, /请求组成 系统 72 \/ 用户 116 字符/);
+    assert.match(h.steps[1].textContent, /工具定义 51 字符/);
+    assert.doesNotMatch(h.text, /PRIVATE-PROMPT-BODY/);
+  });
+
   test("initial groups, attachment coverage, history pruning and actual wire selection stay distinct", async () => {
     const h = await harness([
       context({ contextGroups: 9, selectedGroups: 5, prunedGroups: 4, selectedSourceCount: 27,
@@ -157,8 +172,12 @@ if (!vm.SourceTextModule) {
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
     const stages = [context({ reason: "context_wire_selected", selectedSourceCount: 30, continuationPrunedGroups: 2,
+      currentInputChars: 183, historyTextChars: 12750, sourceReasons: { continuation: 30 },
       sources: Array.from({ length: 24 }, (_, index) => ({ kind: "thread", reason: "continuation", messageId: String(index + 1), completeness: "unknown" })),
-      sourceDisplayOmitted: 6, filesTotal: 3, filesIncluded: 1, filesUnreadable: 1, filesOmitted: 1 })];
+      sourceDisplayOmitted: 6, filesTotal: 3, filesIncluded: 1, filesUnreadable: 1, filesOmitted: 1 }),
+    context({ promptVersion: "group-summary-structured-v1", promptFingerprint: "abcdef0123456789", promptTagged: true,
+      systemTextChars: 1360, userTextChars: 18750, assistantTextChars: 430, toolTextChars: 390,
+      inputTextChars: 20930, imageParts: 2, toolDeclarations: 3, toolSchemaChars: 2970 }, 2)];
     await page.route("**/*", route => {
       const url = new URL(route.request().url());
       const name = url.pathname === "/console/" ? "index.html" : url.pathname.slice("/console/".length);
@@ -176,6 +195,7 @@ if (!vm.SourceTextModule) {
     await page.goto("http://context.test/console/");
     await page.evaluate(() => { globalThis.document.querySelector('[data-view-panel="diagnostics"]').hidden = false; });
     await page.waitForFunction(() => globalThis.document.getElementById("traceDetail").textContent.includes("另 6 条来源未展示"));
+    await page.waitForFunction(() => globalThis.document.getElementById("traceDetail").textContent.includes("工具定义 2970 字符"));
     for (const width of [1400, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });
       const size = await page.evaluate(() => {

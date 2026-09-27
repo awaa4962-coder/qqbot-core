@@ -206,6 +206,7 @@ export async function callRelationshipCommentPrimary(prompt) {
   const raw = await callTaskRawProvider(MODEL_TASKS.RELATIONSHIP_COMMENT, "primary", {
     task: MODEL_TASKS.RELATIONSHIP_COMMENT,
     systemPrompt: "你是夜星的关系短评生成器。只输出一段中文短评，不要解释。",
+    promptMetadata: { promptVersion: "relationship-comment-v1" },
     messages: [{ role: "user", content: prompt }],
     maxTokens: 160,
     options: { allowTools: false, thinking: { type: "disabled" } },
@@ -217,6 +218,7 @@ export async function callRelationshipCommentFallback(prompt) {
   const raw = await callTaskRawProvider(MODEL_TASKS.RELATIONSHIP_COMMENT, "fallback", {
     task: MODEL_TASKS.RELATIONSHIP_COMMENT,
     systemPrompt: "你是夜星的关系短评生成器。只输出一段中文短评，不要解释。",
+    promptMetadata: { promptVersion: "relationship-comment-v1" },
     messages: [{ role: "user", content: prompt }],
     maxTokens: 160,
     temperature: 0.5,
@@ -231,6 +233,7 @@ export async function callStickerSelection(prompt, position = "primary") {
       "你是聊天表情选择器，只能从候选中选择一张真正符合当前语境的图片。",
       "没有可靠匹配时必须选择 null。只输出严格 JSON，不要解释。",
     ].join("\n"),
+    promptMetadata: { promptVersion: "sticker-select-v1" },
     messages: [{ role: "user", content: prompt }],
     maxTokens: 100,
     temperature: 0.2,
@@ -253,6 +256,7 @@ function buildRawRequest(request) {
     thinking: request.options?.thinking,
     tools: request.options?.allowTools === false ? [] : request.tools,
     usageContext: request.options?.usageContext || request.usageContext,
+    promptMetadata: request.promptMetadata,
   };
 }
 

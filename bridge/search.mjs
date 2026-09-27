@@ -100,6 +100,7 @@ export async function buildSearchFallback(toolResults, toolResults2, userMsg, us
         { role: 'system', content: [CORE_IDENTITY, CONTEXT_SAFETY, '用2-3句话基于搜索结果回答用户，结果不足或不相关时明确说明。自然表达，不强加口癖或颜文字。'].join('\n') },
         { role: 'user', content: redactSensitiveText('用户' + (userName||'') + '问了：' + userMsg) + '\n\n搜索结果：\n' + rawText.slice(0, 3000) },
       ],
+      promptMetadata: { promptVersion: "search-summary-v1" },
       maxTokens: 300,
       temperature: 0.7,
       timeoutMs: 15000,

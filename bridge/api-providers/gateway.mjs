@@ -1,4 +1,5 @@
 import { log, logE } from "../logger.mjs";
+import { createHash } from "node:crypto";
 import { callAnthropicMessages } from "./adapters/anthropic-messages.mjs";
 import { callGeminiNative } from "./adapters/gemini-native.mjs";
 import { callOpenAiChat } from "./adapters/openai-chat.mjs";
@@ -8,7 +9,7 @@ import { normalizeProviderUsage, recordApiUsage } from "./usage-metrics.mjs";
 import { traceStage } from "../diagnostics/message-trace.mjs";
 import { withBotSelfContext } from "../capabilities/self-context.mjs";
 import { chatRunPrivacyChanged, chatRunStopReason } from "../cognition/chat-run.mjs";
-import { measurePromptText } from "../system-prompts/compose.mjs";
+import { measurePromptComposition } from "../system-prompts/compose.mjs";
 import { usageDimensions } from "./usage-aggregate.mjs";
 import { getMemoryPrivacyGeneration } from "../memory-profile/generation.mjs";
 import {
@@ -52,12 +53,13 @@ async function invokeApiProvider(providerId, request = {}, options = {}) {
     validateProviderEndpoint(provider);
     const key = options.key !== undefined ? String(options.key || "").trim() : readProviderSecret(provider, options);
     const prepared = prepareContext(request, provider, options);
-    if (request.promptMetadata) traceStage("context", { status: "ok", ...request.promptMetadata,
-      inputTextChars: measurePromptText(prepared.request.messages) });
+    const promptMetadata = resolvePromptMetadata(request);
+    traceStage("context", { status: "ok", ...promptMetadata, promptTagged: Boolean(promptMetadata?.promptVersion),
+      ...measurePromptComposition(prepared.request.messages, prepared.request.tools) });
     if (prepared.snapshot) traceStage("model", { provider: provider.id, task: options.usageTask,
       position: options.usagePosition, selfFactsVersion: prepared.snapshot.version,
       capabilityCount: prepared.snapshot.capabilityCount, model: prepared.snapshot.model });
-    const usageIdentity = callUsageIdentity(provider, request, options);
+    const usageIdentity = callUsageIdentity(provider, request, options, promptMetadata);
     const privacy = getMemoryPrivacyGeneration();
     const result = await adapter(provider, key, { ...prepared.request,
       onUsageAttempt: attempt => recordAttemptUsage(usageIdentity, request, attempt, options, privacy) });
@@ -140,16 +142,27 @@ function recordAttemptUsage(identity, request, attempt, options, privacy) {
   });
 }
 
-function callUsageIdentity(provider, request, options) {
+function callUsageIdentity(provider, request, options, promptMetadata) {
   const policy = options.reasoningPolicy || {};
   return usageDimensions({ provider: provider.id, model: provider.model,
     task: options.usageTask || request.usageContext?.task || "direct",
     position: options.usagePosition || request.usageContext?.position || "direct",
-    promptVersion: request.promptMetadata?.promptVersion, promptFingerprint: request.promptMetadata?.promptFingerprint,
+    promptVersion: promptMetadata?.promptVersion, promptFingerprint: promptMetadata?.promptFingerprint,
     configuredMode: policy.configuredMode, reasoningControl: policy.control,
     reasoningApplied: typeof policy.applied === "boolean" ? policy.applied ? "yes" : "no" : "unknown",
     effectiveMode: effectiveReasoningMode(policy),
   });
+}
+
+function resolvePromptMetadata(request) {
+  const metadata = request.promptMetadata;
+  if (!metadata || typeof metadata !== "object") return null;
+  const promptVersion = /^[a-z][a-z0-9-]{0,47}-v\d{1,4}$/.test(metadata.promptVersion || "") ? metadata.promptVersion : undefined;
+  const staticSystem = request.messages?.find(message => message?.role === "system" && typeof message.content === "string")?.content;
+  const fingerprint = /^[a-f0-9]{16}$/.test(metadata.promptFingerprint || "") ? metadata.promptFingerprint :
+    staticSystem ? createHash("sha256").update(staticSystem).digest("hex").slice(0, 16) : undefined;
+  return { promptVersion, promptFingerprint: fingerprint,
+    staticChars: metadata.staticChars, dynamicChars: metadata.dynamicChars };
 }
 
 function effectiveReasoningMode(policy) {

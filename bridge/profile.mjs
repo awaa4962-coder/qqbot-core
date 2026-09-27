@@ -16,6 +16,7 @@ async function generateProfileVia(prompt, position) {
       { role: 'system', content: '你是一个用户画像生成器。请根据聊天记录总结用户特点，简洁、准确。' },
       { role: 'user', content: prompt },
     ],
+    promptMetadata: { promptVersion: "profile-v1" },
     maxTokens: 100,
     temperature: 0.5,
     timeoutMs: 10000,

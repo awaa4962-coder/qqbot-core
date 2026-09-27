@@ -4,22 +4,22 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.33-result-contracts";
-export const VERSION_NAME = "result-contracts";
+export const VERSION = "1.4.34-prompt-provenance";
+export const VERSION_NAME = "prompt-provenance";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "链接、小程序和词云区分命令已识别与消息已确认送达；未知回执不冒充发送成功，也不自动重试。",
-  "词云图片渲染失败时明确给出文字热词，不再说图片已生成；日报和识图返回无数据、降级或不可用状态。",
-  "旧梗库自动初始化与定时调度入口已移除，历史词条仍只读；JM、模型主备和关系评分不变。",
-  "本批只更新 Linux，Windows 继续冻结；2.0.0 总计划仍在进行。",
+  "聊天、群报、成员总结、识图和辅助模型任务记录各自提示词版本；摘要路由不再丢失版本元数据。",
+  "诊断按当前输入、历史和实际模型请求的角色统计长度，并汇总引用、承接等来源原因，不保存正文或完整提示词。",
+  "前端能对照初选与发送前来源、稳定前缀和请求组成；私有推理仍只允许记录长度，不展示内容。",
+  "JM、模型主备、思考档位与关系评分不变；只更新 Linux，Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Link, mini-app and word-cloud commands distinguish recognition from confirmed delivery; uncertain receipts are not treated as sent or automatically retried.",
-  "Word-cloud image failures now return an honest text fallback. Summary and vision results expose empty, degraded and unavailable states.",
-  "Unused legacy meme initialization and scheduling entry points are removed; the historical archive remains read-only.",
-  "Only Linux is updated; Windows stays frozen. JM, model routes and relationship scoring remain unchanged; the 2.0.0 plan continues.",
+  "Chat, summary, vision and auxiliary model tasks now record prompt versions; summary routing preserves that metadata.",
+  "Diagnostics compare current input, selected history and final request sizes by role, plus bounded source-reason counts, without retaining prompt bodies.",
+  "The console shows selected versus final sources, stable-prefix fingerprints and request composition. Private reasoning text remains excluded.",
+  "Only Linux is updated; Windows stays frozen. JM, model routes, reasoning modes and relationship scoring remain unchanged.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

@@ -31,6 +31,23 @@ test("trace metadata drops bodies, keys, raw errors and invalid identifiers", as
   for (const secret of ["private body", "private nickname", "secret-user", "secret-response", "secret-error", "sk-secret", "private reasoning"]) assert.equal(text.includes(secret), false);
 });
 
+test("trace keeps only bounded source reasons and anonymous input composition", async () => {
+  const recorder = createTraceRecorder();
+  const secret = "sk-" + "syntheticprivate".repeat(3);
+  await withMessageTrace(ctx, () => {
+    traceStage("context", { status: "ok", promptTagged: true, promptVersion: "group-summary-v1",
+      currentInputChars: 22, historyTextChars: 51, rawPrompt: secret,
+      sources: [{ kind: "quote", reason: "reply_chain", messageId: "123", body: secret },
+        { kind: "thread", reason: "continuation", messageId: "124", body: secret },
+        { kind: "unexpected", reason: secret, body: secret }] });
+  }, recorder);
+  const detail = recorder.list().items[0].stages.find(stage => stage.stage === "context");
+  assert.equal(detail.promptVersion, "group-summary-v1");
+  assert.equal(detail.currentInputChars, 22);
+  assert.deepEqual(detail.sourceReasons, { reply_chain: 1, continuation: 1 });
+  assert.doesNotMatch(JSON.stringify(detail), /syntheticprivate|rawPrompt|body/);
+});
+
 test("trace uses monotonic duration, bounds records and expires metadata", () => {
   let time = 10;
   const recorder = createTraceRecorder({ now: () => time, maxRecords: 2, ttlMs: 100 });

@@ -21,7 +21,10 @@ const REASONS = new Set([
   "context_history_pruned", "context_wire_selected",
 ]);
 const ROUTES = new Set(["group_at", "interjection", "private_chat", "private_file", "command", "jm", "resource-transfer", "link-preview", "wordcloud", "preview", "file"]);
+const SOURCE_KINDS = new Set(["quote", "thread", "memory", "group", "image", "note", "file"]);
+const SOURCE_REASONS = new Set(["reply_chain", "continuation", "keywords", "synonyms", "mention", "recent", "image_reference", "explicit_note", "operator_note", "inferred_topic", "attachment"]);
 const NUMBERS = ["chars", "messages", "pruned", "truncated", "images", "mentions", "httpStatus", "attempt", "reasoningLength", "promptTokens", "cachedTokens", "completionTokens", "probability", "selfFactsVersion", "capabilityCount", "turnRevision", "privacyRevision", "staticChars", "dynamicChars", "inputTextChars",
+  "currentInputChars", "historyTextChars", "systemTextChars", "userTextChars", "assistantTextChars", "toolTextChars", "otherTextChars", "imageParts", "toolDeclarations", "toolSchemaChars", "sourceReasonOmitted",
   "modelRounds", "transportAttempts", "toolCalls", "toolOutputChars", "requestedCompletionTokens", "toolResultChars", "modelRoundLimit", "toolLimit",
   "imageFailed", "imageOmitted", "imageFirstFrames", "reasoningTokens", "totalTokens",
   "contextGroups", "selectedGroups", "prunedGroups", "selectedSourceCount", "continuationPrunedGroups",
@@ -43,6 +46,8 @@ function safeDetails(details) {
   if (Array.isArray(details.sources)) {
     safe.sources = safeSources(details.sources);
     safe.sourceDisplayOmitted = details.sources.length - safe.sources.length;
+    safe.sourceReasons = sourceReasonCounts(details.sources);
+    safe.sourceReasonOmitted = Math.max(0, details.sources.length - 256);
   }
   return safe;
 }
@@ -60,6 +65,7 @@ function safeUsageDetails(details) {
 
 function safePromptIdentity(details) {
   const safe = {};
+  if (typeof details.promptTagged === "boolean") safe.promptTagged = details.promptTagged;
   if (["recall_memory", "read_bot_status", "web_search"].includes(details.toolName)) safe.toolName = details.toolName;
   if (/^[a-f0-9]{16}$/.test(details.promptFingerprint || "")) safe.promptFingerprint = details.promptFingerprint;
   if (/^[a-z][a-z0-9-]{0,47}-v\d{1,4}$/.test(details.promptVersion || "") && !/^(sk-|token|secret)/i.test(details.promptVersion)) safe.promptVersion = details.promptVersion;
@@ -67,9 +73,7 @@ function safePromptIdentity(details) {
 }
 
 function safeSources(sources) {
-  const kinds = new Set(["quote", "thread", "memory", "group", "image", "note", "file"]);
-  const reasons = new Set(["reply_chain", "continuation", "keywords", "synonyms", "mention", "recent", "image_reference", "explicit_note", "operator_note", "inferred_topic", "attachment"]);
-  return sources.filter(item => kinds.has(item?.kind) && reasons.has(item.reason)).slice(0, 24).map(item => ({
+  return sources.filter(item => SOURCE_KINDS.has(item?.kind) && SOURCE_REASONS.has(item.reason)).slice(0, 24).map(item => ({
     kind: item.kind, reason: item.reason, messageId: numericId(item.messageId), userId: numericId(item.userId),
     score: Number.isFinite(item.score) ? Math.max(0, Math.min(12, item.score)) : 0, clipped: item.clipped === true,
     ...(["complete", "truncated", "unknown"].includes(item.completeness) ? { completeness: item.completeness } : {}),
@@ -77,6 +81,15 @@ function safeSources(sources) {
     ...(item.kind === "note" ? { noteId: /^[a-f0-9]{12}$/.test(item.noteId || "") ? item.noteId : "", at: sourceTimestamp(item.at), revision: Number.isSafeInteger(item.revision) ? item.revision : 0 } : {}),
     ...(item.kind === "file" ? { fileIndex: Number.isInteger(item.fileIndex) && item.fileIndex > 0 && item.fileIndex <= 3 ? item.fileIndex : 0 } : {}),
   }));
+}
+
+function sourceReasonCounts(sources) {
+  const counts = Object.create(null);
+  for (const item of sources.slice(0, 256)) {
+    if (!SOURCE_KINDS.has(item?.kind) || !SOURCE_REASONS.has(item.reason)) continue;
+    counts[item.reason] = (counts[item.reason] || 0) + 1;
+  }
+  return counts;
 }
 
 function sourceTimestamp(value) { return Number.isFinite(value) && value > 0 && value < 8640000000000000 ? value : 0; }

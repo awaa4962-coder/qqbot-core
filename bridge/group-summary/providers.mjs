@@ -15,6 +15,7 @@ async function callSummarySlot(position, prompt, plan) {
   const slot = SLOT_SETTINGS[position];
   return await callTaskProviderResult(MODEL_TASKS.GROUP_SUMMARY, position, {
     task: MODEL_TASKS.GROUP_SUMMARY, systemPrompt: plan.systemPrompt,
+    promptMetadata: { promptVersion: plan.structured ? "group-summary-structured-v1" : "group-summary-legacy-v1" },
     messages: [{ role: "user", content: prompt }],
     maxTokens: slot.maxTokens, temperature: 0.3, timeoutMs: 120000,
   }, { reasoningMode: slot.reasoningMode });

@@ -159,6 +159,9 @@ import { initializeDeliveries } from "./deliveries.js";
   function contextDetails(step) {
     if (step.stage !== "context") return [];
     const details = [];
+    const current = contextCount(step, "currentInputChars");
+    const history = contextCount(step, "historyTextChars");
+    if (current !== null || history !== null) details.push(`初选输入 ${current ?? "未知"} / 历史 ${history ?? "未知"} 字符`);
     const groupKeys = [["候选组", "contextGroups"], ["入选组", "selectedGroups"], ["舍弃组", "prunedGroups"]];
     const sourceTitle = step.reason === "context_wire_selected" ? "发送前来源" : "初选来源";
     const entries = [...groupKeys, [sourceTitle, "selectedSourceCount"], ["来源上限拒绝组", "rejectedSourceGroups"],
@@ -170,7 +173,24 @@ import { initializeDeliveries } from "./deliveries.js";
     const files = [["附件", "filesTotal"], ["已提供", "filesIncluded"], ["读取失败或不支持", "filesUnreadable"], ["未提供", "filesOmitted"]]
       .map(([title, key]) => [title, contextCount(step, key)]).filter(([, value]) => value !== null);
     if (files.length) details.push(files.map(([title, value]) => `${title} ${value}`).join(" / "));
+    const reasons = { reply_chain: "引用链", continuation: "对话承接", keywords: "关键词", synonyms: "同义表达", mention: "被提及者",
+      recent: "近期背景", image_reference: "图片指向", explicit_note: "本人记忆", operator_note: "管理员备注", inferred_topic: "原话话题", attachment: "附件" };
+    const reasonCounts = Object.entries(step.sourceReasons || {}).filter(([key, value]) => Object.hasOwn(reasons, key) &&
+      Number.isSafeInteger(value) && value > 0 && value <= 256).map(([key, value]) => `${reasons[key]} ${value}`);
+    if (reasonCounts.length) details.push(`来源原因 ${reasonCounts.join(" / ")}`);
+    if (contextCount(step, "sourceReasonOmitted") > 0) details.push(`另 ${step.sourceReasonOmitted} 条来源未计入原因汇总`);
     return details;
+  }
+
+  function promptCompositionDetails(step) {
+    const fields = [["系统", "systemTextChars"], ["用户", "userTextChars"], ["助手", "assistantTextChars"],
+      ["工具", "toolTextChars"], ["其他", "otherTextChars"]];
+    if (!fields.some(([, key]) => contextCount(step, key) !== null)) return [];
+    const parts = fields.map(([title, key]) => [title, contextCount(step, key)]).filter(([, value]) => value !== null && value > 0);
+    const extras = [["图片", "imageParts"], ["工具声明", "toolDeclarations"]]
+      .map(([title, key]) => [title, contextCount(step, key)]).filter(([, value]) => value !== null && value > 0);
+    return [`请求组成 ${parts.length ? parts.map(([title, value]) => `${title} ${value}`).join(" / ") : "0"} 字符`,
+      ...extras.map(([title, value]) => `${title} ${value}`)];
   }
 
   function stepDetails(step) {
@@ -183,13 +203,16 @@ import { initializeDeliveries } from "./deliveries.js";
       step.selfFactsVersion && `运行事实 v${step.selfFactsVersion} · ${step.capabilityCount || 0} 项能力`,
       step.turnRevision && `回复修订 ${step.turnRevision}`, step.privacyRevision !== undefined && `隐私代次 ${step.privacyRevision}`,
       step.promptVersion && `提示词 ${step.promptVersion}`, step.promptFingerprint && `前缀 ${step.promptFingerprint}`,
+      step.promptTagged === false && "提示词未标版本",
       step.staticChars > 0 && `固定 ${step.staticChars} 字符`, step.dynamicChars > 0 && `表达设置 ${step.dynamicChars} 字符`,
       step.inputTextChars > 0 && `组装正文 ${step.inputTextChars} 字符`,
+      step.toolSchemaChars > 0 && `工具定义 ${step.toolSchemaChars} 字符`,
       step.stage === "vision" && `可读 ${step.images || 0} 张 · 失败 ${step.imageFailed || 0} 张 · 超限 ${step.imageOmitted || 0} 张`,
       step.imageFirstFrames > 0 && `${step.imageFirstFrames} 张动态图仅读首帧`,
       step.chars !== undefined && `${step.chars} 字符`, step.messages !== undefined && `${step.messages} 层上下文`,
       step.pruned > 0 && `裁剪 ${step.pruned} 层`, step.httpStatus > 0 && `HTTP ${step.httpStatus}`,
       ...contextDetails(step),
+      ...promptCompositionDetails(step),
       step.attempt && `第 ${step.attempt} 次`, step.probability !== undefined && `概率 ${Math.round(step.probability * 100)}%`,
       ...usageDetails(step),
       ...modeDetails(step),

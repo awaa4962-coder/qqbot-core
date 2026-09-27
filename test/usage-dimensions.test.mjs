@@ -14,6 +14,7 @@ const { recordApiUsage, getApiUsageSnapshot, getUserCacheUsage, clearUserCacheUs
 const { usageDimensions } = await import("../bridge/api-providers/usage-aggregate.mjs");
 const { beijingDate } = await import("../bridge/api-providers/usage-records.mjs");
 const { callTaskApi } = await import("../bridge/api-providers/gateway.mjs");
+const { callTaskProviderResult } = await import("../bridge/model-router.mjs");
 const { saveApiProvider, saveApiRoutes } = await import("../bridge/api-providers/store.mjs");
 const { invalidateMemoryPrivacyGeneration } = await import("../bridge/memory-profile/generation.mjs");
 const { createTraceRecorder, withMessageTrace } = await import("../bridge/diagnostics/message-trace.mjs");
@@ -230,6 +231,34 @@ test("gateway records actual requested model, prompt version and applied task mo
   assert.ok(rows.every(row => row.promptVersion === "chat-v8" && row.configuredMode === "auto" && row.reasoningApplied === "yes"));
   assert.doesNotMatch(JSON.stringify(bodies), /promptMetadata|onUsageAttempt|usageIdentity|promptVersion/);
   assert.equal(bodies[0].thinking.type, "disabled"); assert.equal(bodies[1].thinking.type, "enabled");
+});
+
+test("summary prompt version survives the task facade and excludes dynamic text from its fingerprint", async t => {
+  const root = fs.mkdtempSync(path.join(workspace, "summary-prompt-")); const o = options(); configure(root);
+  saveApiRoutes({ group_summary: { primary: "mimo", fallback: "" } }, { root });
+  const bodies = [];
+  t.mock.method(globalThis, "fetch", async (_url, options) => {
+    bodies.push(JSON.parse(options.body));
+    return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: "合成摘要" } }], usage }) };
+  });
+  const recorder = createTraceRecorder();
+  for (const [index, current] of ["第一条合成材料", "第二条合成材料更长"].entries()) {
+    const result = await withMessageTrace({ message_type: "group", user_id: 60100, group_id: 70100, message_id: 80100 + index },
+      () => callTaskProviderResult("group_summary", "primary", { systemPrompt: "固定的摘要规则", messages: [{ role: "user", content: current }],
+        promptMetadata: { promptVersion: "group-summary-structured-v1" }, maxTokens: 100 },
+      { root, usageMetricsDir: o.dir, usageMetricsSalt: salt }), recorder);
+    assert.equal(result.ok, true);
+  }
+  const stages = recorder.list().items.map(item => item.stages.find(stage => stage.stage === "context" && stage.promptTagged));
+  assert.ok(stages.every(stage => stage.promptVersion === "group-summary-structured-v1"));
+  assert.equal(stages[0].promptFingerprint, stages[1].promptFingerprint);
+  assert.notEqual(stages[0].userTextChars, stages[1].userTextChars);
+  assert.ok(stages.every(stage => stage.systemTextChars === "固定的摘要规则".length));
+  assert.doesNotMatch(JSON.stringify(stages), /合成材料|reasoning_content|api_key/);
+  assert.ok(bodies.every(body => !JSON.stringify(body).includes("promptMetadata")));
+  assert.ok(bodies.some(body => JSON.stringify(body).includes("合成材料")));
+  const rows = getApiUsageSnapshot({ ...o, now: Date.now() + 1000 }).rows;
+  assert.ok(rows.some(row => row.promptVersion === "group-summary-structured-v1" && row.promptFingerprint === stages[0].promptFingerprint));
 });
 
 test("a retried request records both physical attempts without treating unreported failure as zero cost", async t => {
