@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v4
@@ -31,3 +31,20 @@ jobs:
         env:
           QQBOT_JM_PYTHON: python
       - run: npm run replay:check
+
+  image:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production Linux image
+        run: docker build -f deploy/linux/Dockerfile -t qqfriend-ci:smoke .
+      - name: Smoke image without network or real configuration
+        run: |
+          docker run --rm --network none --entrypoint bash qqfriend-ci:smoke -c '
+            set -e
+            test ! -e /app/.env_admins
+            test ! -e /app/user_memory.json
+            npm run check:jm
+            npm run smoke:linux
+          '

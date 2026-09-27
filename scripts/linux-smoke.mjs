@@ -8,6 +8,7 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
+import { VERSION } from "../bridge/version.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-linux-smoke-"));
@@ -45,8 +46,10 @@ try {
 
   const health = await waitForJson(`http://127.0.0.1:${port}/health`, 15000);
   const status = await waitForJson(`http://127.0.0.1:${port}/admin/status`, 5000);
+  const config = await waitForJson(`http://127.0.0.1:${port}/admin/config`, 5000);
   const readiness = await getJsonResponse(`http://127.0.0.1:${port}/ready`);
   const savedConfig = await postJson(`http://127.0.0.1:${port}/admin/config`, {
+    revision: config.revision,
     editable: { botNames: ["LinuxSmoke"] },
   });
   const consoleResponse = await fetch(`http://127.0.0.1:${port}/console/`, {
@@ -56,6 +59,8 @@ try {
 
   assert(health.status === "ok", "health status is not ok");
   assert(status.status === "ok", "admin status is not ok");
+  assert(status.version === VERSION, "running Bridge version does not match the image source");
+  assert(/^[a-f0-9]{64}$/.test(config.revision), "admin config revision is missing");
   assert(readiness.status === 503 && readiness.payload.status === "not_ready", "readiness must fail closed without OneBot");
   await verifyIngress(port);
   assert(savedConfig.ok === true, "admin config write failed");
@@ -63,6 +68,13 @@ try {
     fs.existsSync(path.join(sandbox, "config", ".env_bot_names")),
     "admin config was not written to the isolated config root"
   );
+  assert(savedConfig.revision !== config.revision, "admin config revision did not advance");
+  const staleSave = await postJsonResponse(`http://127.0.0.1:${port}/admin/config`, {
+    revision: config.revision, editable: { botNames: ["StaleSmoke"] },
+  });
+  assert(staleSave.status === 409, "stale admin config save was accepted");
+  assert(fs.readFileSync(path.join(sandbox, "config", ".env_bot_names"), "utf8") === "LinuxSmoke\n",
+    "stale admin config save changed the file");
   assert(
     fs.existsSync(path.join(sandbox, "logs", "admin-audit.log")),
     "admin audit was not written to the isolated log root"
@@ -82,6 +94,7 @@ try {
     readiness: readiness.payload.status,
     console: "ok",
     configWrite: "ok",
+    configConflict: "ok",
     auditWrite: "ok",
     ingressAuth: "ok",
   }, null, 2) + "\n");
@@ -120,6 +133,12 @@ async function waitForJson(url, timeoutMs) {
 }
 
 async function postJson(url, body) {
+  const { response, payload } = await postJsonResponse(url, body);
+  if (!response.ok) throw new Error(payload.error || "HTTP " + response.status);
+  return payload;
+}
+
+async function postJsonResponse(url, body) {
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8", "X-QQFriend-Admin-Token": ADMIN_TOKEN },
@@ -127,8 +146,7 @@ async function postJson(url, body) {
     signal: AbortSignal.timeout(5000),
   });
   const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || "HTTP " + response.status);
-  return payload;
+  return { response, status: response.status, payload };
 }
 
 async function verifyIngress(listenPort) {
