@@ -603,6 +603,42 @@ test("real detached group reply records only a confirmed synthetic model answer"
   } finally { await scheduler.stop({ drainMs: 1000 }); }
 });
 
+test("a superseded real group model result cannot send or create an old topic branch", async t => {
+  const scheduler = createChatWorkScheduler({ limits: { global: 3, group: 3, speaker: 2 } });
+  const oldHold = deferred(); const oldStarted = deferred();
+  const first = groupAtEvent(901128, 601128, "JM 压缩包怎么解压");
+  const second = groupAtEvent(901129, 601128, "日报为什么没生成");
+  let modelCalls = 0; let sends = 0;
+  t.mock.method(globalThis, "fetch", async url => {
+    if (String(url).includes("/send_group_msg")) {
+      sends++; return { ok: true, json: async () => ({ status: "ok", retcode: 0,
+        data: { message_id: 1901129 } }) };
+    }
+    modelCalls++;
+    if (modelCalls === 1) {
+      oldStarted.resolve(); await oldHold.promise;
+      return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: "旧 JM 回答" } }] }) };
+    }
+    return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: "日报定时任务回答" } }] }) };
+  });
+  try {
+    const old = await processEvent(first, { detachChat: true, chatScheduler: scheduler });
+    await bounded(oldStarted.promise);
+    const current = await processEvent(second, { detachChat: true, chatScheduler: scheduler });
+    assert.equal(old.pending, true);
+    assert.equal(current.pending, true);
+    await current.completion;
+    oldHold.resolve(); await old.completion;
+    assert.equal(modelCalls, 2);
+    assert.equal(sends, 1);
+    const thread = getConversationThread(second.user_id, second.group_id);
+    assert.deepEqual(thread.turns.map(turn => turn.messageId), [String(second.message_id)]);
+    assert.equal(thread.turns[0].assistantSummary, "日报定时任务回答");
+    assert.equal(thread.turns[0].assistantMessageIds[0], "1901129");
+    assert.equal(listMessageTraces({ messageId: String(first.message_id) }).items[0].status, "cancelled");
+  } finally { oldHold.resolve(); await scheduler.stop({ drainMs: 1000 }); }
+});
+
 test("a later group message is not added to an already dispatched model request", async t => {
   const scheduler = createChatWorkScheduler({ limits: { global: 2, group: 2, speaker: 2 } });
   const hold = deferred(); const started = deferred();

@@ -13,6 +13,7 @@ const { saveApiProvider, saveApiRoutes } = await import("../bridge/api-providers
 const { buildCurrentInput } = await import("../bridge/context/messages.mjs");
 const { forgetUserData } = await import("../bridge/user-preferences.mjs");
 const { users } = await import("../bridge/storage.mjs");
+const { getConversationThread } = await import("../bridge/cognition/index.mjs");
 const { executeChatTask } = await import("../bridge/model-router.mjs");
 CFG.groupWhitelist = [50100]; CFG.friendWhitelist = [60200]; CFG.botBlacklist = [];
 CFG.stickerEnabled = false; CFG.legacyProfileRefreshEnabled = false;
@@ -125,4 +126,42 @@ test("private file erasure during download cannot recreate a cleared nickname or
   assert.equal(users[60200].alias, "");
   assert.deepEqual(users[60200].nicknames, []);
   assert.deepEqual(users[60200].chats, []);
+});
+
+test("real group ingress returns to an older quoted bot topic without mixing the newer one", async t => {
+  const uid = 60350;
+  const botReplyIds = [80351, 80352, 80353];
+  const answers = ["JM 压缩包请使用 FS 密码。", "日报要检查定时任务。", "再核对压缩包的分卷。"];
+  const requests = [];
+  let sends = 0;
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    const target = String(url);
+    if (target.includes("/get_msg?")) return response({ status: "ok", retcode: 0, data: {
+      message_type: "group", group_id: 50100, message_id: botReplyIds[0], user_id: CFG.selfUin,
+      time: Math.floor(Date.now() / 1000) - 10, sender: { nickname: "夜星" },
+      message: [{ type: "text", data: { text: answers[0] } }],
+    } });
+    if (target.endsWith("/send_group_msg")) return response({ status: "ok", retcode: 0,
+      data: { message_id: botReplyIds[sends++] } });
+    assert.equal(target, "https://example.com/quote-primary");
+    requests.push(JSON.parse(options.body));
+    return response({ choices: [{ message: { content: answers[requests.length - 1] } }] });
+  });
+  const event = (messageId, text, quoteId = null) => ({ post_type: "message", message_type: "group",
+    group_id: 50100, user_id: uid, message_id: messageId, time: Math.floor(Date.now() / 1000),
+    sender: { nickname: "同名" }, message: [
+      ...(quoteId ? [{ type: "reply", data: { id: String(quoteId) } }] : []),
+      { type: "at", data: { qq: String(CFG.selfUin) } }, { type: "text", data: { text } },
+    ] });
+  await processEvent(event(90351, "JM 压缩包怎么解压"));
+  await processEvent(event(90352, "日报为什么没生成"));
+  assert.equal(users[String(uid)].cognition.threads["50100"].branches.length, 1);
+  await processEvent(event(90353, "这个还是不行", botReplyIds[0]));
+  assert.equal(requests.length, 3);
+  assert.equal(sends, 3);
+  const thirdInput = JSON.stringify(requests[2].messages);
+  assert.match(thirdInput, /JM 压缩包请使用 FS 密码/);
+  assert.doesNotMatch(thirdInput, /日报要检查定时任务/);
+  assert.deepEqual(getConversationThread(uid, 50100).turns.map(turn => turn.messageId), ["90351", "90353"]);
+  assert.equal(users[String(uid)].cognition.threads["50100"].branches[0].turns[0].messageId, "90352");
 });
