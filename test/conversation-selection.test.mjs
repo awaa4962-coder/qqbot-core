@@ -106,6 +106,7 @@ test("assembled context follows the quoted bot reply across two saved topics", (
     userText: "JM 压缩包解压失败", assistantText: "检查 FS 密码。" }, { save: false });
   recordConversationTurn({ ...scope, messageId: "702", assistantMessageIds: ["803"],
     userText: "日报怎么没生成", assistantText: "检查定时任务。" }, { save: false });
+  assert.equal(users["11"].cognition.threads["22"].branches.length, 1);
   const botId = String(CFG.selfUin);
   const packet = buildReplyContextPacket({ uid: "11", groupId: "22", userName: "合成用户",
     userMsg: "这个还是不行", replyToMessageId: "802", replyUserId: botId,
@@ -115,6 +116,25 @@ test("assembled context follows the quoted bot reply across two saved topics", (
   assert.match(wire, /检查 FS 密码/);
   assert.doesNotMatch(wire, /检查定时任务/);
   assert.ok(packet.retrieval.sources.some(item => item.kind === "thread" && item.messageId === "701"));
+  recordConversationTurn({ ...scope, threadId: packet.thread.id, messageId: "703",
+    userText: "压缩包这个还是不行", assistantText: "再核对完整分卷。" }, { save: false });
+  assert.deepEqual(users["11"].cognition.threads["22"].turns.map(turn => turn.messageId), ["701", "703"]);
+  assert.equal(users["11"].cognition.threads["22"].branches[0].turns[0].messageId, "702");
+});
+
+test("an expired older topic branch cannot enter a quoted follow-up context", () => {
+  const base = { uid: "11", groupId: "22", now: Date.now(), memorySources: [] };
+  recordConversationTurn({ ...base, threadId: null, messageId: "711", assistantMessageIds: ["811"],
+    memoryExpiresAt: Date.now() - 1000, userText: "JM 压缩包失败",
+    assistantText: "STALE_BRANCH_ASSISTANT_MARKER" }, { save: false });
+  recordConversationTurn({ ...base, threadId: null, messageId: "712", assistantMessageIds: ["812"],
+    memoryExpiresAt: null, userText: "日报没生成", assistantText: "检查定时任务。" }, { save: false });
+  const packet = buildReplyContextPacket({ uid: "11", groupId: "22", userName: "合成用户",
+    userMsg: "这个还是不行", replyToMessageId: "811", replyUserId: String(CFG.selfUin),
+    replySpeaker: "夜星", replyText: "之前说过检查。",
+    quoteEvidence: { state: "verified", messageId: "811", userId: String(CFG.selfUin), groupId: "22", at: Date.now() } });
+  assert.doesNotMatch(JSON.stringify(packet.messages), /STALE_BRANCH_ASSISTANT_MARKER/);
+  assert.equal(packet.thread, null);
 });
 
 test("quoting someone else does not attach the sender's old conversation", () => {

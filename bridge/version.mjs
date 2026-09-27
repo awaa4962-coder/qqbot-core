@@ -4,11 +4,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.37-detached-passive";
-export const VERSION_NAME = "detached-passive";
+export const VERSION = "1.4.38-topic-branches";
+export const VERSION_NAME = "topic-branches";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
+  "同一用户在同一群的短期对话保留当前话题和最多两个旧话题，切换回来时只提供选中的分支；新主题不因共享泛词硬接旧话。",
+  "旧单线程数据兼容读取，私聊仍不持久化短期线程；分支随原会话期限与遗忘清理，不改变关系评分。",
   "群聊被动插话、自动链接与小程序预览、明确链接预览命令进入有界后台运行槽；入站存储和触发判断仍按原消息顺序完成。",
   "被动插话与预览分别限制并发，不挤占全部明确 @ 名额；被动容量满时安静跳过，明确预览命令返回忙碌提示。",
   "词云渲染和关系短评也进入有界命令槽，生成期间不会堵住本群后续消息；命令忙碌提示不会取消正在生成的明确 @ 回复。",
@@ -18,6 +20,8 @@ export const VERSION_NOTES_ZH = Object.freeze([
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
+  "Each user's group conversation retains its active topic and up to two bounded earlier topics, selecting only the relevant branch for a follow-up.",
+  "Legacy single-thread data remains readable. Private threads stay volatile; topic branches retain the existing expiry and erasure boundary.",
   "Passive group interjections, automatic link and mini-app previews, and explicit link previews now use bounded background slots after ordered ingress.",
   "Passive work has separate limits so it cannot consume all explicit mention slots. Passive overload stays quiet; an explicit preview command gets a busy notice.",
   "Wordcloud rendering and relationship comments now use bounded command slots, and their busy notices cannot cancel an in-flight explicit mention reply.",

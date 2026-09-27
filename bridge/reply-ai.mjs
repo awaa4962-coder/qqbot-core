@@ -98,6 +98,10 @@ async function runAiReply(group_id, userId, userMsg, userName, imageUrls, replyT
       uid,
       groupId: gid,
       messageId: runtime.messageId,
+      threadId: selectedThreadId(contextPacket),
+      replyToMessageId: runtime.replyToMessageId,
+      replyUserId: runtime.replyUserId,
+      selfUin: CFG.selfUin,
       assistantMessageIds: confirmedOutboundMessageIds(sendResult),
       userText: userMsg,
       assistantText: reply,
@@ -120,6 +124,10 @@ async function runAiReply(group_id, userId, userMsg, userName, imageUrls, replyT
   if (CFG.legacyProfileRefreshEnabled && !chatRunStopReason()) {
     maybeGenerateProfile(uid).catch(function (e) { logE("profile update failed for", uid, ":", e.message); });
   }
+}
+
+function selectedThreadId(packet) {
+  return packet.thread?.id || null;
 }
 
 async function notifyGroupFailure(outcome, passive, groupId, replyTo) {

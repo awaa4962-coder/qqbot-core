@@ -118,6 +118,7 @@ function attachmentNotice(value) {
 function buildThreadMetadata(thread) {
   if (!thread) return null;
   return {
+    id: thread.id,
     scope: thread.scope,
     topic: thread.topic,
     turnCount: thread.turnCount,

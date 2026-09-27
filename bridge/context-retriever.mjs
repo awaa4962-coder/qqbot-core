@@ -47,7 +47,10 @@ export function buildLayeredReplyContext(options = {}) {
     preserveInput: isPrivateFileContext(options, groupId),
   });
   const layers = [];
-  let thread = isPassiveInterjection ? null : selectConversationThread(getConversationThread(uid, groupId), {
+  let thread = isPassiveInterjection ? null : selectConversationThread(getConversationThread(uid, groupId, { forMessage: {
+    uid, userMsg, replyText: options.replyText, replyToMessageId: options.replyToMessageId,
+    replyUserId: options.replyUserId, selfUin: CFG.selfUin,
+  } }), {
     ...options, userMsg, selfUin: CFG.selfUin,
   });
   if (isPassiveInterjection) {

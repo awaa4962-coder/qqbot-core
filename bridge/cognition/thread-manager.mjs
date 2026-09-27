@@ -1,12 +1,15 @@
 import { saveUsers, users } from "../storage.mjs";
+import { randomUUID } from "node:crypto";
 import { wallAgeMs } from "../runtime-clock.mjs";
-import { currentTopicText } from "../context/relevance.mjs";
+import { compareRelevance, currentTopicText, isContinuation } from "../context/relevance.mjs";
 import { redactSensitiveText } from "../privacy.mjs";
 import { normalizeMemoryDependencies, normalizeMemoryExpiry } from "../context/memory-dependencies.mjs";
 
 const GROUP_THREAD_TTL_MS = 90 * 60 * 1000;
 const PRIVATE_THREAD_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_TURNS = 8;
+const MAX_INACTIVE_TURNS = 4;
+const MAX_INACTIVE_BRANCHES = 2;
 const MAX_SCOPES_PER_USER = 8;
 const PRIVATE_THREADS = new Map();
 
@@ -22,6 +25,7 @@ const TOPIC_RULES = Object.freeze([
   ["关系状态", /好感度|熟悉度|关系状态|关系系统/],
   ["代码与故障", /代码|bug|报错|日志|修复|依赖|接口|api/i],
 ]);
+const TOPIC_LABELS = new Set(TOPIC_RULES.map(([label]) => label));
 
 export function recordConversationTurn(event = {}, options = {}) {
   const uid = String(event.uid || event.userId || "");
@@ -34,12 +38,14 @@ export function recordConversationTurn(event = {}, options = {}) {
   const userStore = options.userStore || users;
   const thread = resolveWritableThread(uid, scope, now, userStore);
   const turn = buildTurn(event, userSummary, assistantSummary, now);
+  if (scope !== "private") selectWritableBranch(thread, event, now);
 
   upsertTurn(thread, turn);
   thread.topic = resolveTopic(userSummary, thread.topic);
   thread.updatedAt = now;
   thread.expiresAt = now + ttlForScope(scope);
   thread.lastOutcome = turn.outcome;
+  if (scope !== "private") pruneInactiveBranches(thread, now);
 
   persistGroupThread(uid, scope, now, userStore, options);
   return snapshotThread(thread, scope);
@@ -66,7 +72,8 @@ export function getConversationThread(uid, groupId, options = {}) {
     ? PRIVATE_THREADS.get(privateKey(id))
     : (options.userStore || users)[id]?.cognition?.threads?.[scope];
   if (!isActiveThread(thread, now)) return null;
-  return snapshotThread(thread, scope);
+  const selected = scope === "private" ? thread : selectReadableBranch(thread, options.forMessage, now);
+  return selected ? snapshotThread(selected, scope) : null;
 }
 
 export function buildConversationThreadBlock(uid, groupId, options = {}) {
@@ -115,12 +122,16 @@ export function getCognitionStatus(options = {}) {
   const now = Number(options.now || Date.now());
   const userStore = options.userStore || users;
   let groupThreads = 0;
+  let topicBranches = 0;
   let turns = 0;
   for (const user of Object.values(userStore)) {
     for (const thread of Object.values(user?.cognition?.threads || {})) {
       if (!isActiveThread(thread, now)) continue;
       groupThreads++;
       turns += Array.isArray(thread.turns) ? thread.turns.length : 0;
+      const branches = activeBranchStats(thread, now);
+      topicBranches += branches.count;
+      turns += branches.turns;
     }
   }
   let privateThreads = 0;
@@ -129,12 +140,18 @@ export function getCognitionStatus(options = {}) {
   }
   return {
     enabled: true,
-    schemaVersion: 1,
+    schemaVersion: 2,
     groupThreads,
+    topicBranches,
     privateThreads,
     completedTurns: turns,
     privatePersistence: false,
   };
+}
+
+function activeBranchStats(thread, now) {
+  const active = (Array.isArray(thread.branches) ? thread.branches : []).filter(branch => isActiveThread(branch, now));
+  return { count: active.length, turns: active.reduce((sum, branch) => sum + branch.turns.length, 0) };
 }
 
 export function resetCognitionForTest() {
@@ -164,12 +181,142 @@ function getOrCreateGroupThread(uid, scope, now, userStore) {
     thread = createThread(scope, now);
     user.cognition.threads[scope] = thread;
   }
+  thread.schemaVersion = 2;
+  thread.id ||= branchId(thread);
+  thread.branches = Array.isArray(thread.branches) ? thread.branches : [];
+  user.cognition.schemaVersion = 2;
   return thread;
+}
+
+function selectWritableBranch(thread, event, now) {
+  pruneInactiveBranches(thread, now);
+  const messageId = normalizeId(event.messageId || event.turnId);
+  const existing = messageId && [thread, ...thread.branches].find(branch =>
+    branch.turns.some(turn => String(turn.messageId || "") === messageId));
+  const selected = existing || (Object.hasOwn(event, "threadId")
+    ? [thread, ...thread.branches].find(branch => event.threadId && branchId(branch) === event.threadId)
+    : inferWritableBranch(thread, event, now));
+  if (selected === thread) return;
+  if (selected) activateBranch(thread, selected);
+  else if (thread.turns.length) {
+    thread.branches.unshift(compactBranch(thread));
+    assignActiveBranch(thread, { ...createThread(thread.scope, now), id: newBranchId(event, now) });
+  } else thread.id = newBranchId(event, now);
+}
+
+function inferWritableBranch(thread, event, now) {
+  const branches = [thread, ...thread.branches].filter(branch => isActiveThread(branch, now));
+  const quoteId = normalizeId(event.replyToMessageId);
+  const quotedUser = String(event.replyUserId || "");
+  const bot = String(event.selfUin || "");
+  const owner = String(event.uid || event.userId || "");
+  if (isForeignQuote(quoteId, quotedUser, bot, owner)) return null;
+  const quoted = findQuotedBranch(branches, quoteId, quotedUser, bot);
+  if (quoted) return quoted;
+  if (currentTopicText(event.userText).switched) return null;
+  const candidates = topicCandidates(branches, event.userText);
+  if (!candidates.length) return null;
+  return bestBranch(candidates, event.userText) || fallbackWritableBranch(candidates, event.userText, thread);
+}
+
+function activateBranch(thread, selected) {
+  const index = thread.branches.indexOf(selected);
+  if (index < 0) return;
+  thread.branches.splice(index, 1);
+  if (thread.turns.length) thread.branches.unshift(compactBranch(thread));
+  assignActiveBranch(thread, selected);
+}
+
+function assignActiveBranch(thread, source) {
+  for (const field of ["id", "scope", "topic", "turns", "createdAt", "updatedAt", "expiresAt", "lastOutcome"]) {
+    thread[field] = source[field];
+  }
+  thread.schemaVersion = 2;
+}
+
+function compactBranch(thread) {
+  return { schemaVersion: 2, id: branchId(thread), scope: thread.scope, topic: thread.topic,
+    turns: thread.turns.slice(-MAX_INACTIVE_TURNS), createdAt: thread.createdAt,
+    updatedAt: thread.updatedAt, expiresAt: thread.expiresAt, lastOutcome: thread.lastOutcome };
+}
+
+function pruneInactiveBranches(thread, now) {
+  thread.branches = thread.branches.filter(branch => isActiveThread(branch, now) && branch.turns.length)
+    .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
+    .slice(0, MAX_INACTIVE_BRANCHES).map(compactBranch);
+}
+
+function selectReadableBranch(thread, query, now) {
+  if (!query) return thread;
+  if (currentTopicText(query.userMsg).switched) return null;
+  const branches = [thread, ...(Array.isArray(thread.branches) ? thread.branches : [])]
+    .filter(branch => isActiveThread(branch, now));
+  const quoteId = normalizeId(query.replyToMessageId);
+  const quotedUser = String(query.replyUserId || "");
+  const bot = String(query.selfUin || "");
+  const owner = String(query.uid || "");
+  if (isForeignQuote(quoteId, quotedUser, bot, owner)) return null;
+  const quoted = findQuotedBranch(branches, quoteId, quotedUser, bot);
+  if (quoted) return quoted;
+  const queryText = quotedUser === bot && query.replyText ? query.replyText + " " + query.userMsg : query.userMsg;
+  const candidates = topicCandidates(branches, queryText);
+  if (!candidates.length) return null;
+  return bestBranch(candidates, queryText) || (knownTopic(queryText) ? exactTopicBranch(candidates, queryText) : thread);
+}
+
+function topicCandidates(branches, query) {
+  const label = knownTopic(query);
+  if (!label) return branches;
+  const matching = branches.filter(branch => branch.topic === label);
+  if (matching.length) return matching;
+  return branches.filter(branch => !TOPIC_LABELS.has(branch.topic));
+}
+
+function fallbackWritableBranch(candidates, text, active) {
+  if (knownTopic(text)) return exactTopicBranch(candidates, text);
+  return isContinuation(text) ? active : null;
+}
+
+function exactTopicBranch(candidates, text) {
+  const label = knownTopic(text);
+  return candidates.find(branch => branch.topic === label) || null;
+}
+
+function isForeignQuote(quoteId, quotedUser, bot, owner) {
+  return Boolean(quoteId && quotedUser && quotedUser !== bot && quotedUser !== owner);
+}
+
+function findQuotedBranch(branches, quoteId, quotedUser, bot) {
+  if (!quoteId) return null;
+  return branches.find(branch => branch.turns.some(turn =>
+    quotedUser === bot ? turn.assistantMessageIds?.includes(quoteId) : String(turn.messageId || "") === quoteId)) || null;
+}
+
+function bestBranch(branches, query) {
+  let selected = null;
+  let bestScore = 0;
+  for (const branch of branches) {
+    const score = Math.max(0, ...branch.turns.map(turn => compareRelevance(query,
+      String(turn.userSummary || "") + " " + String(turn.assistantSummary || "")).score));
+    if (score > bestScore) { selected = branch; bestScore = score; }
+  }
+  return selected;
+}
+
+function branchId(thread) {
+  if (typeof thread.id === "string" && thread.id) return thread.id;
+  const first = normalizeId(thread.turns?.[0]?.messageId);
+  return first ? "msg:" + first : "thread:" + String(thread.createdAt || 0);
+}
+
+function newBranchId(event, now) {
+  const id = normalizeId(event.messageId || event.turnId);
+  return id ? "msg:" + id : "thread:" + now + ":" + randomUUID();
 }
 
 function createThread(scope, now) {
   return {
-    schemaVersion: 1,
+    schemaVersion: scope === "private" ? 1 : 2,
     scope,
     topic: "",
     turns: [],
@@ -218,11 +365,15 @@ function upsertTurn(thread, turn) {
 
 function resolveTopic(text, previousTopic) {
   const value = currentTopicText(text).text;
-  for (const [label, pattern] of TOPIC_RULES) {
-    if (pattern.test(value)) return label;
-  }
+  const label = knownTopic(value);
+  if (label) return label;
   if (previousTopic && CONTINUATION_RE.test(value)) return previousTopic;
   return compactText(value.replace(/https?:\/\/\S+/gi, "").replace(/\[CQ:[^\]]+\]/g, ""), 28) || previousTopic || "连续对话";
+}
+
+function knownTopic(text) {
+  const value = currentTopicText(text).text;
+  return TOPIC_RULES.find(([, pattern]) => pattern.test(value))?.[0] || "";
 }
 
 function pruneGroupThreads(user, now) {
@@ -238,7 +389,8 @@ function pruneGroupThreads(user, now) {
 function snapshotThread(thread, scope) {
   const turns = (thread.turns || []).map(turn => ({ ...turn }));
   return {
-    schemaVersion: 1,
+    schemaVersion: thread.schemaVersion || 1,
+    id: branchId(thread),
     scope,
     topic: redactSensitiveText(thread.topic),
     turnCount: turns.length,
