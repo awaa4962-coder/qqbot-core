@@ -1,5 +1,3 @@
-import { runMemeDecay } from "./learner.mjs";
-
 export {
   clearMemeCandidates,
   applyMemeUpdateBatch,
@@ -41,10 +39,4 @@ export {
   isMemeTrendUpdateDue,
   researchMemeTerm,
   runMemeTrendUpdate,
-  scheduleMemeTrendUpdates,
-  stopMemeTrendUpdates,
 } from "./trend-updater.mjs";
-
-export function initializeMemeKnowledge() {
-  return runMemeDecay();
-}

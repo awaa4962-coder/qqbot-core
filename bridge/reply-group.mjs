@@ -8,7 +8,7 @@ import {
   resolveReplyContext,
   pullRecentImages,
   handleLinkPreview,
-  handleMiniApp,
+  handleMiniAppResult,
   buildInterjectionDecision,
 } from "./reply-handlers.mjs";
 import { dispatchGroupCommand } from "./commands/action-dispatcher.mjs";
@@ -125,12 +125,12 @@ function inheritedSourceExclusion(ctx) {
 async function handleGroupPreviews(ctx, rawMessage) {
   const isLong = requireLongGroup(ctx.group_id);
   const link = await handleLinkPreview(ctx.group_id, ctx.rawText, isLong, { isAtMe: ctx.isAtMe });
-  const miniAppSent = !ctx.isAtMe && !link.sent
-    ? await handleMiniApp(rawMessage, ctx.group_id, isLong)
-    : false;
+  const miniApp = !ctx.isAtMe && !link.sent
+    ? await handleMiniAppResult(rawMessage, ctx.group_id, isLong)
+    : { found: false, delivery: "not_attempted" };
   return {
-    sent: link.sent || miniAppSent,
-    suppressInterjection: link.hadLink || miniAppSent,
+    sent: link.sent || miniApp.delivery === "sent",
+    suppressInterjection: link.hadLink || miniApp.found,
   };
 }
 

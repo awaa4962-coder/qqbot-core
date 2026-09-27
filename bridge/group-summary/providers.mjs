@@ -21,7 +21,7 @@ async function callSummarySlot(position, prompt, plan) {
 }
 
 export async function generateGroupSummaryResult(messages, options = {}) {
-  if (!messages.length) return { text: null, provider: "none", digest: null };
+  if (!messages.length) return { kind: "empty", text: null, provider: "none", reason: "no_messages", digest: null };
   const normalized = { ...options, dateText: options.dateText || formatDate() };
   const digest = options.digest || (options.structured && options.includeDigest === false ? null : buildSummaryDigest(messages, normalized));
   const plan = createSummaryPlan(messages, normalized, digest);
@@ -29,11 +29,12 @@ export async function generateGroupSummaryResult(messages, options = {}) {
   options.onProgress?.("analyzing");
   if (plan.shouldGenerate) {
     const generated = await generateFromSlots(plan, options);
-    if (generated.text) return { ...generated, digest };
+    if (generated.text) return { ...generated, kind: "model", digest };
     failureReason = generated.reason;
   }
-  if (plan.structured && !plan.lowData) return { text: null, provider: "none", reason: failureReason, digest };
-  return { ...plan.local(), provider: plan.lowData ? "local-low-data" : "local-fallback", digest };
+  if (plan.structured && !plan.lowData) return { kind: "unavailable", text: null, provider: "none", reason: failureReason, digest };
+  return { ...plan.local(), kind: "local", provider: plan.lowData ? "local-low-data" : "local-fallback",
+    reason: plan.lowData ? "low_data" : failureReason, digest };
 }
 
 async function generateFromSlots(plan, options) {

@@ -175,6 +175,21 @@ P1-03 已完成工程接入并上线；P1-04 已覆盖聊天入口，其他结�
 
 上线（2026-09-27）：代码 `2caec4b` 经 [GitHub Linux CI](https://github.com/awaa4962-coder/qqbot-core/actions/runs/36321444414) 与隔离候选验收，正式可执行目录与候选一致。首次切换因外部核验脚本仍要求上版“到期”文案而触发代码回滚，旧版1.4.31健康/就绪及QQ登录确认通过；修正脚本后重新保存当前状态备份、校验同一已验收镜像并完成切换。受限备份目录0700、两份状态归档0600且gzip可读；当前Bridge 1.4.32-capability-facts健康/就绪、QQ、JM与能力接口正常。配置/私有sidecar/旧梗库归档哈希保持，日报计划一份，NapCat未重启，Windows未更新；无旧数据回灌。原计划严格22/43=51.2%，本轮+2项P1-01/P1-02，剩余21项，最终2.0.0未完成。
 
+#### P1 第五批：结果契约与兼容清理（1.4.33 候选）
+
+聊天主路由原有 `reply/silence/error/cancelled` 语义不改。发送回执在本批统一按 `sent/failed/unknown/cancelled/partial` 判断，`partial` 表示多段中仅部分确认；未知或部分投递绝不宣称完整成功，也不因为回执不确定而重试。显式链接和词云的 `execute*` 返回处理与投递状态，原 `handle*` 继续为命令分发返回布尔值；自动链接保留 `sent/hadLink/reason`。小程序返回 `found/delivery/reason`，未知回执不尝试第二条载荷，主群链路按 `found` 抑制随机插话但只按确认回执标记发送。词云图片渲染失败只返回文字热词，临时图照旧清理。群报增加 `model/local/empty/unavailable` 来源种类，识图增加 `ok/reason`；原 `.text`、`.provider`、JM/资源传输的上传确认契约及模型路由不变。
+
+| 兼容入口 | 已知调用方 | 删除条件 |
+| --- | --- | --- |
+| `handleExplicitLinkPreviewCommand`、`handleWordcloudCommand` 布尔包装 | `commands/action-dispatcher.mjs`；历史命令测试 | 分发器和扩展调用全部改用 typed 结果，且不把“已识别”误当“已送达”后再删。 |
+| `handleMiniApp` 布尔包装 | 当前生产已转 `reply-group.mjs` → `handleMiniAppResult`；保留旧导入兼容 | 扩展入口核对无调用方，旧布尔契约不再需要。 |
+| `generateGroupSummary` 文本包装 | `group-summary/index.mjs` 重导出及历史摘要测试；服务/管理入口使用 `generateGroupSummaryResult` | 外部脚本、测试和重导出都迁移至带 `kind` 的结果，再删包装。 |
+| `tryMiMo`、`tryDeepSeek` 文本包装，`parseMiMoResponse` | 前两者仅历史模型测试；`parseMiMoResponse` 仍由 `model-router.mjs` 关系短评调用 | 关系短评改为明确结果、历史调用迁移和扩展导入审计完成，保留推理内容隔离回归。 |
+| `tryMiMoVision` 文本包装 | `model-mimo.mjs` 兼容工具轮次及历史 URL 测试 | 工具轮次改用 `describeVisionImages` 的 `ok/reason`，隐私和安全 URL 回归保留。 |
+| `knowledge/memes/index.mjs` 历史 facade | 仅旧 store/matcher/updater 测试；生产依赖仅 `archive.mjs` 与 `image-context.mjs` | P5 将有价值的格式、隐私与失败测试迁至只读归档/现行图片路径，并审计已知扩展调用；不得删除人工词条或安全断言。 |
+
+本批核对仓库导入图后已移除没有调用方的 `features/index.mjs` 综合包装和梗库 `initializeMemeKnowledge`/`scheduleMemeTrendUpdates` 自动启动出口；模块声明现指向实际词云处理器。旧 `runMemeTrendUpdate` 只为历史工具回归保留，生产入口图不导入它。其余兼容层有实际调用方或仍是 P5 迁移边界，不因文件名陈旧而删除。候选代码未完成 Linux 正式验收前，P1-04/P1-07 暂不勾选，进度仍为22/43。
+
 ### E. P2 对话核心与提示词
 
 入口：`bridge/reply*.mjs`、`bridge/context/`、`context-builder.mjs`、`system-prompts/`、`model-router.mjs`、`onebot-link.mjs`、`diagnostics/`。

@@ -19,7 +19,7 @@ import {
   sendMsg,
   sendMsgWithImage,
 } from "./napcat.mjs";
-import { isSuccessfulOutbound } from "./cognition/outcome.mjs";
+import { classifyOutboundDelivery } from "./cognition/outcome.mjs";
 import {
   extractLinkPreview,
   inspectAutoPreview,
@@ -143,33 +143,38 @@ export async function handleLinkPreview(gid, rawText, isLongGroup, options = {})
     return previewResult(false, Boolean(preview.bvid), true, "low_value");
   }
 
-  const sendResult = await sendPreview(gid, preview, options);
-  const sent = isSuccessfulOutbound(sendResult);
+  const delivery = await attemptPreviewSend(() => sendPreview(gid, preview, options));
+  const sent = delivery === "sent";
   if (sent) {
     markAutoPreviewSent(gid, decision.candidate, options);
     log(preview.bvid ? "bili preview sent" : "generic link preview sent", decision.candidate.host);
   }
-  return previewResult(sent, Boolean(preview.bvid), true, sent ? "sent" : "send_failed");
+  return previewResult(sent, Boolean(preview.bvid), true, delivery === "sent" ? "sent" : `send_${delivery}`);
 }
 
 export async function handleExplicitLinkPreviewCommand(ctx, options = {}) {
-  if (!ctx?.isAtMe) return false;
+  return (await executeExplicitLinkPreviewCommand(ctx, options)).handled;
+}
+
+export async function executeExplicitLinkPreviewCommand(ctx, options = {}) {
+  if (!ctx?.isAtMe) return { handled: false, delivery: "not_attempted", reason: "not_command" };
   const parsed = options.parsedCommand || parseExplicitLinkPreviewCommand(ctx.text || ctx.rawText, {
     selfUin: options.selfUin ?? CFG.selfUin,
     botNames: options.botNames ?? CFG.botNames,
   });
-  if (!parsed) return false;
+  if (!parsed) return { handled: false, delivery: "not_attempted", reason: "not_command" };
 
   const previewer = options.previewer || extractLinkPreview;
   const sender = options.sender || sendMsg;
-  const preview = await previewer(parsed.url);
+  let preview = null;
+  try { preview = await previewer(parsed.url); } catch {}
   if (!preview) {
-    await sender(ctx.group_id, "链接预览失败，网页不可访问或被安全规则拦截。", options.replyToId);
-    return true;
+    const delivery = await attemptPreviewSend(() => sender(ctx.group_id, "链接预览失败，网页不可访问或被安全规则拦截。", options.replyToId));
+    return { handled: true, previewSent: false, delivery, reason: "preview_unavailable" };
   }
 
-  await sendPreview(ctx.group_id, preview, options);
-  return true;
+  const delivery = await attemptPreviewSend(() => sendPreview(ctx.group_id, preview, options));
+  return { handled: true, previewSent: delivery === "sent", delivery, reason: delivery === "sent" ? "sent" : `send_${delivery}` };
 }
 
 export function parseExplicitLinkPreviewCommand(text, options = {}) {
@@ -182,12 +187,17 @@ export function parseExplicitLinkPreviewCommand(text, options = {}) {
 }
 
 export async function handleMiniApp(message, gid, isLongGroup) {
-  if (isLongGroup) return false;
+  return (await handleMiniAppResult(message, gid, isLongGroup)).delivery === "sent";
+}
+
+export async function handleMiniAppResult(message, gid, isLongGroup, options = {}) {
+  if (isLongGroup) return { found: false, delivery: "not_attempted", reason: "long_group" };
 
   for (const detail of parseMiniAppPayloads(message)) {
-    if (await sendMiniAppPreview(detail, gid)) return true;
+    const delivery = await sendMiniAppPreview(detail, gid, options);
+    return { found: true, delivery, reason: delivery === "sent" ? "sent" : `send_${delivery}` };
   }
-  return false;
+  return { found: false, delivery: "not_attempted", reason: "not_miniapp" };
 }
 
 function parseMiniAppPayloads(message) {
@@ -221,20 +231,26 @@ function formatMiniAppReply(detail, url) {
   return url ? miniText + "\n🔗 " + url : miniText;
 }
 
-async function sendMiniAppPreview(detail, gid) {
+async function sendMiniAppPreview(detail, gid, options = {}) {
   const url = extractMiniAppUrl(detail);
   if (url && (url.includes("bilibili.com") || url.includes("b23.tv"))) {
-    const bili = await extractLinkPreview(url);
+    let bili = null;
+    try { bili = await (options.previewer || extractLinkPreview)(url); } catch {}
     if (bili) {
-      await sendPreview(gid, bili);
-      log("miniApp bili preview sent");
-      return true;
+      const delivery = await attemptPreviewSend(() => sendPreview(gid, bili, options));
+      if (delivery === "sent") log("miniApp bili preview sent");
+      return delivery;
     }
   }
 
-  await sendMsg(gid, formatMiniAppReply(detail, url));
-  log("miniApp preview sent");
-  return true;
+  const delivery = await attemptPreviewSend(() => (options.sender || sendMsg)(gid, formatMiniAppReply(detail, url)));
+  if (delivery === "sent") log("miniApp preview sent");
+  return delivery;
+}
+
+async function attemptPreviewSend(send) {
+  try { return classifyOutboundDelivery(await send()); }
+  catch { return "unknown"; }
 }
 
 async function sendPreview(groupId, preview, options = {}) {

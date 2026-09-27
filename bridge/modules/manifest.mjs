@@ -167,7 +167,7 @@ export const MODULE_DEFINITIONS = Object.freeze([
     name: "群词云",
     category: "content",
     enabled: true,
-    entrypoints: ["bridge/features/index.mjs", "bridge/features/wordcloud/"],
+    entrypoints: ["bridge/features/wordcloud/index.mjs"],
     commands: ["词云", "今日词云", "昨日词云", "词云 7天", "wordcloud"],
     configFields: ["featureGroupWhitelist", "wordcloudMaxMessages"],
     editableConfigFields: ["featureGroupWhitelist"],

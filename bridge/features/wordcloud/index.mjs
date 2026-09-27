@@ -8,6 +8,7 @@ import { logE } from "../../logger.mjs";
 import { sendMsg, sendMsgWithImage } from "../../napcat.mjs";
 import { groupChats } from "../../storage.mjs";
 import { prepareCommandText } from "../../commands/normalize.mjs";
+import { classifyOutboundDelivery } from "../../cognition/outcome.mjs";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TOP_N = 48;
@@ -18,33 +19,45 @@ const FUTURE_SKEW_MS = 5 * 60 * 1000;
 const activeWordcloudFiles = new Set();
 
 export async function handleWordcloudCommand(ctx, options = {}) {
-  if (!ctx?.isAtMe) return false;
+  return (await executeWordcloudCommand(ctx, options)).handled;
+}
+
+export async function executeWordcloudCommand(ctx, options = {}) {
+  if (!ctx?.isAtMe) return { handled: false, delivery: "not_attempted", reason: "not_command" };
   const parsed = options.parsedCommand || parseWordcloudCommand(ctx.text || ctx.rawText, {
     selfUin: options.selfUin ?? CFG.selfUin,
     botNames: options.botNames ?? CFG.botNames,
   });
-  if (!parsed) return false;
+  if (!parsed) return { handled: false, delivery: "not_attempted", reason: "not_command" };
 
   const sender = options.sender || sendMsg;
   const imageSender = options.imageSender || sendMsgWithImage;
   const now = options.now || new Date();
   if (!isFeatureGroupAllowed(ctx.group_id, options.featureGroupWhitelist || CFG.featureGroupWhitelist)) {
-    await sender(ctx.group_id, "这个群还没开启词云功能。", options.replyToId);
-    return true;
+    const delivery = await attemptWordcloudSend(() => sender(ctx.group_id, "这个群还没开启词云功能。", options.replyToId));
+    return { handled: true, delivery, reason: "not_allowed", imageGenerated: false };
   }
 
   const result = await buildWordcloudReply(ctx.group_id, parsed, { ...options, now });
+  const delivery = await sendWordcloudReply(ctx.group_id, result, options, sender, imageSender);
+  return { handled: true, delivery, reason: delivery === "sent" ? result.reason : `send_${delivery}`, imageGenerated: Boolean(result.imagePath) };
+}
+
+async function sendWordcloudReply(groupId, result, options, sender, imageSender) {
   if (result.imagePath) {
     try {
-      await imageSender(ctx.group_id, result.text, result.imagePath);
+      return await attemptWordcloudSend(() => imageSender(groupId, result.text, result.imagePath));
     } finally {
       await fs.rm(result.imagePath, { force: true }).catch(() => {});
       activeWordcloudFiles.delete(path.resolve(result.imagePath));
     }
-  } else {
-    await sender(ctx.group_id, result.text, options.replyToId);
   }
-  return true;
+  return attemptWordcloudSend(() => sender(groupId, result.text, options.replyToId));
+}
+
+async function attemptWordcloudSend(send) {
+  try { return classifyOutboundDelivery(await send()); }
+  catch { return "unknown"; }
 }
 
 export function parseWordcloudCommand(text, options = {}) {
@@ -83,21 +96,22 @@ export async function buildWordcloudReply(groupId, parsed, options = {}) {
     return {
       text: "互动记录还不够，暂时生成不了词云。可以晚点再试。",
       imagePath: null,
+      reason: "insufficient_data",
     };
   }
 
   const title = wordcloudRangeLabel(parsed);
-  const text = [
-    "词云生成好了。",
-    "范围：" + title,
-    "热词：" + tokens.slice(0, 12).map(item => item.word).join("、"),
-  ].join("\n");
   const renderer = options.renderer || renderWordcloudPng;
   const imagePath = await renderer(tokens, { title, groupId, now }).catch((error) => {
     logE("wordcloud render failed:", error.message);
     return null;
   });
-  return { text, imagePath };
+  const text = [
+    imagePath ? "词云生成好了。" : "词云图片暂时生成不了，先给你热词。",
+    "范围：" + title,
+    "热词：" + tokens.slice(0, 12).map(item => item.word).join("、"),
+  ].join("\n");
+  return { text, imagePath, reason: imagePath ? "ready" : "render_unavailable" };
 }
 
 export function filterMessagesByRange(chats, parsed, now = new Date()) {

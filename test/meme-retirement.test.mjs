@@ -9,6 +9,8 @@ import { buildCapabilityCatalog, buildCapabilityHelpText } from "../bridge/capab
 import { adminHelpLines, helpLinesForPage } from "../bridge/commands/manifest.mjs";
 import { buildRuntimeStatus } from "../bridge/admin-api/runtime-status.mjs";
 import { buildReplyContextPacket } from "../bridge/context/index.mjs";
+import * as legacyMemeApi from "../bridge/knowledge/memes/index.mjs";
+import * as legacyUpdater from "../bridge/knowledge/memes/trend-updater.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 function fixture(value) {
@@ -95,6 +97,12 @@ test("runtime status never advertises an enabled meme updater", () => {
   assert.equal(state.retired, true);
   assert.equal(state.mode, "off");
   assert.equal(state.autoUpdate, false);
+});
+
+test("retired meme facade cannot start initialization or a background scheduler", () => {
+  assert.equal(Object.hasOwn(legacyMemeApi, "initializeMemeKnowledge"), false);
+  assert.equal(Object.hasOwn(legacyMemeApi, "scheduleMemeTrendUpdates"), false);
+  assert.equal(Object.hasOwn(legacyUpdater, "scheduleMemeTrendUpdates"), false);
 });
 
 test("active and passive context builders do not inject old term definitions", () => {

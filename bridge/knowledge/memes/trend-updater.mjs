@@ -23,12 +23,10 @@ import { collectRssHubTerms } from "./sources/rsshub.mjs";
 
 const MIN_ACCEPT_CONFIDENCE = 0.78;
 const STALE_LOCK_MS = 30 * 60 * 1000;
-const FIRST_RUN_DELAY_MS = 90 * 1000;
 const VERIFY_BATCH_SIZE = 5;
 const SYNC_SOURCE = "public-web-trends-v1";
 
 let runningPromise = null;
-let scheduleTimer = null;
 
 export function isMemeTrendUpdateDue(now = Date.now()) {
   const lastAttempt = Date.parse(getMemeStore().sync?.lastAttemptAt || "");
@@ -50,31 +48,6 @@ export async function runMemeTrendUpdate(options = {}) {
   } finally {
     runningPromise = null;
   }
-}
-
-export function scheduleMemeTrendUpdates(options = {}) {
-  stopMemeTrendUpdates();
-  if (!CFG.memeAutoUpdateEnabled) return () => {};
-
-  const tick = async () => {
-    try {
-      await runMemeTrendUpdate(options);
-    } catch (error) {
-      logE("meme web update schedule failed:", error.message);
-    } finally {
-      scheduleTimer = setTimeout(tick, CFG.memeUpdateIntervalMs);
-      scheduleTimer.unref?.();
-    }
-  };
-  scheduleTimer = setTimeout(tick, Number(options.firstDelayMs ?? FIRST_RUN_DELAY_MS));
-  scheduleTimer.unref?.();
-  return stopMemeTrendUpdates;
-}
-
-export function stopMemeTrendUpdates() {
-  if (!scheduleTimer) return;
-  clearTimeout(scheduleTimer);
-  scheduleTimer = null;
 }
 
 export async function researchMemeTerm(term, options = {}) {

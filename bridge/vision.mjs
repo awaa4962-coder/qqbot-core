@@ -17,7 +17,7 @@ export async function tryMiMoVision(imageUrls, options = {}) {
 export async function describeVisionImages(prepared, options = {}) {
   const check = options.assertCurrent || assertChatRunCurrent;
   check();
-  if (!prepared.images.length) return { text: "", cached: false };
+  if (!prepared.images.length) return { ok: false, text: "", cached: false, reason: "no_images" };
   const config = options.config || loadApiConfig();
   const route = getTaskRoute("vision", { config });
   const positions = ["primary", "fallback"].filter(position => {
@@ -37,7 +37,8 @@ export async function describeVisionImages(prepared, options = {}) {
     set: (position, text) => { check(); visionDescriptionCache.set(identity(position), text); },
   } });
   check();
-  return { text: result.ok ? result.text : "", cached: result.cached === true };
+  return { ok: result.ok, text: result.ok ? result.text : "", cached: result.cached === true,
+    reason: result.ok ? "ready" : "vision_unavailable" };
 }
 
 function objectiveImagePrompt(prepared) {

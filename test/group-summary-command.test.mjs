@@ -172,6 +172,8 @@ describe("group summary commands", () => {
       callFallbackSummary: async () => null,
     });
     assert.equal(result.provider, "local-fallback");
+    assert.equal(result.kind, "local");
+    assert.equal(result.reason, "model_unavailable");
     assert.match(result.text, /群聊日报/);
     assert.ok(result.digest);
   });
@@ -186,6 +188,7 @@ describe("group summary commands", () => {
       }),
     });
     assert.equal(result.provider, "mimo-25-pro");
+    assert.equal(result.kind, "model");
     assert.equal(result.text, "备用模型日报");
   });
 

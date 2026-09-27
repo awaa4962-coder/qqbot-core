@@ -4,22 +4,22 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.32-capability-facts";
-export const VERSION_NAME = "capability-facts";
+export const VERSION = "1.4.33-result-contracts";
+export const VERSION_NAME = "result-contracts";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "帮助、控制台和机器人自身信息使用同一能力编号与命令权限，普通用户不会看到管理员专属命令。",
-  "能力页区分是否安装、是否开启、当前会话权限与服务状态；主备模型配置分别显示，不把未探测的网络说成在线。",
-  "看图同时识别聊天模型直接看图和专用视觉路由；日报与成员总结分别说明降级及模型不可用情况。",
-  "JM、模型主备、思考档位与关系评分保持不变；Windows 继续冻结。",
+  "链接、小程序和词云区分命令已识别与消息已确认送达；未知回执不冒充发送成功，也不自动重试。",
+  "词云图片渲染失败时明确给出文字热词，不再说图片已生成；日报和识图返回无数据、降级或不可用状态。",
+  "旧梗库自动初始化与定时调度入口已移除，历史词条仍只读；JM、模型主备和关系评分不变。",
+  "本批只更新 Linux，Windows 继续冻结；2.0.0 总计划仍在进行。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Help, the console and bot self-description share capability IDs and command permissions; ordinary users cannot see admin-only commands.",
-  "Capability views separate installation, enablement, caller access and service state. Primary and fallback configuration is shown without claiming connectivity.",
-  "Image understanding recognizes direct multimodal chat and the dedicated vision route. Daily and member summaries report their different degraded modes.",
-  "JM, model routes, reasoning modes and relationship scoring remain unchanged. Windows stays frozen.",
+  "Link, mini-app and word-cloud commands distinguish recognition from confirmed delivery; uncertain receipts are not treated as sent or automatically retried.",
+  "Word-cloud image failures now return an honest text fallback. Summary and vision results expose empty, degraded and unavailable states.",
+  "Unused legacy meme initialization and scheduling entry points are removed; the historical archive remains read-only.",
+  "Only Linux is updated; Windows stays frozen. JM, model routes and relationship scoring remain unchanged; the 2.0.0 plan continues.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

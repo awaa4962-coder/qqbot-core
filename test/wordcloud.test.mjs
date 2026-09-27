@@ -102,7 +102,7 @@ test("wordcloud command sends fallback text when renderer is unavailable", async
   assert.equal(sent.length, 1);
   assert.equal(sent[0].groupId, 2000000001);
   assert.equal(sent[0].replyToId, 99);
-  assert.match(sent[0].text, /词云生成好了/);
+  assert.match(sent[0].text, /词云图片暂时生成不了/);
   assert.match(sent[0].text, /wordcloud/);
 });
 
