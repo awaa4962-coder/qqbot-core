@@ -252,7 +252,8 @@ test("objective primary and fallback share one shrinking deadline and preserve t
     callSlot: async (task, position, input, settings) => {
       calls.push({ position, input });
       assert.equal(task, "vision");
-      assert.equal(settings.config, cfg);
+      assert.deepEqual(settings.config, cfg);
+      assert.notEqual(settings.config, cfg);
       assert.equal(input.maxTokens, 512);
       assert.equal(input.maxAttempts, 1);
       assert.equal(input.maxResponseBytes, 262144);

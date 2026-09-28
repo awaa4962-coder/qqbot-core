@@ -23,7 +23,8 @@ export async function describeVisionImages(prepared, options = {}) {
   const check = options.assertCurrent || assertChatRunCurrent;
   check();
   if (!prepared.images.length) return { ok: false, text: "", cached: false, reason: "no_images" };
-  const config = options.config || loadApiConfig();
+  const config = snapshotConfiguration(options.config || loadApiConfig());
+  if (!config) return { ok: false, text: "", cached: false, reason: "vision_configuration_invalid" };
   const route = getTaskRoute("vision", { config });
   const positions = ["primary", "fallback"].filter(position => {
     const provider = getProvider(route[position], { config });
@@ -74,6 +75,11 @@ function snapshotIdentities(prepared, scope, config, route, positions) {
         promptVersion: VISION_PROMPT_VERSION })];
     } catch { return [position, null]; }
   }));
+}
+
+function snapshotConfiguration(config) {
+  try { return globalThis.structuredClone(config); }
+  catch { return null; }
 }
 
 function descriptionFlightKey(keys, privacy, revision) {

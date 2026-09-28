@@ -127,6 +127,31 @@ test("mutating provider options while awaiting cannot label the old result with 
   assert.equal(calls, 2);
 });
 
+test("queued dispatch uses the same immutable model snapshot as its cache identity", async t => {
+  const cfg = config(); cfg.providers.primary.model = "model-A";
+  const models = [];
+  t.mock.method(globalThis, "fetch", async (_url, init) => {
+    const body = JSON.parse(init.body); models.push(body.model);
+    return new globalThis.Response(JSON.stringify({ choices: [{ message: { content: "Caption from " + body.model } }] }),
+      { status: 200, headers: { "Content-Type": "application/json" } });
+  });
+  const pending = describeVisionImages(image(), settings({ config: cfg }));
+  cfg.providers.primary.model = "model-B";
+  assert.equal((await pending).text, "Caption from model-A");
+  cfg.providers.primary.model = "model-A";
+  const cached = await describeVisionImages(image(), settings({ config: cfg }));
+  assert.equal(cached.cached, true); assert.equal(cached.text, "Caption from model-A");
+  assert.deepEqual(models, ["model-A"]);
+});
+
+test("uncloneable configuration fails before transport without echoing its private function", async () => {
+  const cfg = config(); cfg.providers.primary.privateHook = () => "PRIVATE_CONFIG_SECRET";
+  const output = await describeVisionImages(image(), settings({ config: cfg,
+    callSlot: async () => assert.fail("invalid configuration must not dispatch") }));
+  assert.deepEqual(output, { ok: false, text: "", cached: false, reason: "vision_configuration_invalid" });
+  assert.doesNotMatch(JSON.stringify(output), /PRIVATE_CONFIG_SECRET|privateHook/);
+});
+
 test("real chat-run cancellation does not leak its async context into a surviving command waiter", async () => {
   const cfg = { ...CFG, groupWhitelist: [scope.groupId], blacklist: [], userBlacklist: [] };
   const hold = deferred(); let calls = 0; let signal;
