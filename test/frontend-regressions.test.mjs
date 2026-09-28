@@ -326,6 +326,21 @@ if (!vm.SourceTextModule) {
     assert.equal(h.element("cfgGroupWhitelist").value, "123456");
   });
 
+  test("objective cache reads and shared waits are distinct and missing metrics stay unknown", async () => {
+    const h = harness(); const [config] = await h.imports(["pages/configuration.js"]);
+    for (const flight of [undefined, { active: 1, waiters: 2, joined: 3 }, { active: 1, waiters: 0, joined: 3 }]) {
+      config.renderConfig({ modules: { imageContext: { enabled: true, entries: 4, hits: 5, storesImages: false, inFlight: flight } } }, {});
+      const html = h.element("configList").innerHTML;
+      assert.match(html, /4 份客观描述/); assert.match(html, /缓存读取 5 次/);
+      assert.doesNotMatch(html, /表情包指纹|\[object Object\]|NaN/);
+      if (!flight) assert.match(html, /共用状态未知/);
+      else {
+        assert.match(html, /共享等候 3 次/);
+        assert.ok(html.includes(flight.waiters ? "计算 1 项，等待 2 个请求" : "等待收尾 1 项"));
+      }
+    }
+  });
+
   test("config conflict keeps edits and successful save with failed refresh is not reported as unsaved", async () => {
     for (const outcome of ["conflict", "refresh-failed"]) {
       const h = harness(); const calls = [];

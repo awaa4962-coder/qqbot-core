@@ -35,6 +35,9 @@ export function chatRunSignal() {
   return storage.getStore()?.signal;
 }
 
+// A shared objective read has its own scope guard and must not inherit its first waiter's cancellation.
+export function runWithoutChatContext(operation) { return storage.exit(operation); }
+
 export function currentChatScope() {
   const scope = storage.getStore()?.scope;
   return scope ? { ...scope } : null;

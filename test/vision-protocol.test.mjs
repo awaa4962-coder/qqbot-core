@@ -7,6 +7,7 @@ import { callOpenAiResponses } from "../bridge/api-providers/adapters/openai-res
 import { callAnthropicMessages } from "../bridge/api-providers/adapters/anthropic-messages.mjs";
 import { callGeminiNative } from "../bridge/api-providers/adapters/gemini-native.mjs";
 import { measureVisionRequest } from "../bridge/vision/request-budget.mjs";
+import { buildObjectiveVisionMessages, VISION_PROMPT_VERSION } from "../bridge/system-prompts/vision.mjs";
 
 const SECRET = "sk-synthetic-adjacent-credential";
 const OPAQUE = "sk-synthetic-opaque-state-" + "A+/=".repeat(32);
@@ -149,6 +150,38 @@ describe("prepared vision protocol payloads", () => {
       assert.equal(conversation(protocol, bodies[0]).length, 3);
       assertInitialConversation(protocol, bodies[0]);
       assert.equal(JSON.stringify(input), original, "Transport must not mutate source evidence or its trust list");
+    });
+
+    it(protocol + " preserves stable objective system rules and indexed first-frame image data", async t => {
+      const api = provider(protocol, auth);
+      const bodies = mockTransport(t, api, [finalResponse(protocol)]);
+      const prepared = { images: fixtures.map((item, index) => ({
+        index: [2, 7, 9][index], animated: index === 1, content: imagePart(item.url),
+      })) };
+      const input = { ...request(), messages: buildObjectiveVisionMessages(prepared), promptMetadata: { promptVersion: VISION_PROMPT_VERSION } };
+      const original = JSON.stringify(input);
+      assert.deepEqual(input.messages.map(message => message.role), ["system", "user"]);
+      assert.equal(measureVisionRequest(input).images, 3);
+      assert.equal(measureVisionRequest(input).imageBytes, fixtures.reduce((sum, item) => sum + item.buffer.length, 0));
+      const result = await call(api, AUTH_KEY, input);
+      assert.equal(result.ok, true);
+      assert.equal(result.raw.choices[0].message.content, "Done.");
+      assert.equal(bodies.length, 1);
+      const body = bodies[0];
+      const system = protocol === "openai-responses" ? body.instructions : protocol === "anthropic-messages" ? body.system
+        : protocol === "gemini-native" ? body.systemInstruction.parts[0].text : body.messages[0].content;
+      assert.equal(system, input.messages[0].content);
+      assert.doesNotMatch(system, /data:image|SELECTED_HISTORY|CURRENT_INPUT|图片编号依次为/);
+      const expected = nativeImages(protocol);
+      const parts = expected[protocol === "gemini-native" ? "parts" : "content"];
+      const indices = "图片编号依次为：2、7（仅首帧）、9";
+      parts[0] = protocol === "gemini-native" ? { text: indices }
+        : { type: protocol === "openai-responses" ? "input_text" : "text", text: indices };
+      parts.pop();
+      assert.deepEqual(conversation(protocol, body), [expected]);
+      assert.equal(VISION_PROMPT_VERSION, "objective-image-v3");
+      assert.doesNotMatch(JSON.stringify(body), /promptMetadata|trustedImageUrls|providerContinuation/);
+      assert.equal(JSON.stringify(input), original, "Objective transport must not mutate rules, image evidence or its trust list");
     });
   }
 });

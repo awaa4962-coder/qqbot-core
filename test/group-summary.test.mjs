@@ -13,6 +13,7 @@ import {
   prepareSummaryEvidence,
   redactSummaryText,
   resolveSummaryDate,
+  summarySystemPrompt,
 } from "../bridge/group-summary.mjs";
 
 describe("group summary", () => {
@@ -42,9 +43,13 @@ describe("group summary", () => {
   });
 
   it("builds prompt with output safety requirements", () => {
-    const prompt = buildGroupSummaryPrompt([
+    const userPrompt = buildGroupSummaryPrompt([
       { uid: "1", nickname: "alice", text: "今天聊 bot 修复", ts: Date.parse("2026-06-23T01:00:00+08:00") },
     ], { dateText: "2026-06-23", groupName: "测试群" });
+    const system = summarySystemPrompt();
+    const prompt = system + "\n\n" + userPrompt;
+    assert.ok(prompt.indexOf("分析约束：") < prompt.indexOf("群名：测试群"));
+    assert.doesNotMatch(system, /测试群|2026-06-23|alice/);
     assert.match(prompt, /群聊分析日报/);
     assert.match(prompt, /只输出最终日报正文/);
     assert.match(prompt, /原始消息 1 条；有效分析证据 1 条；人类发言者 1 位/);

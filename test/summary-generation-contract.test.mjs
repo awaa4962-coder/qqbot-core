@@ -7,6 +7,7 @@ import { buildDiscussionBundle, buildStructuredSummaryPrompt, parseSummaryDocume
 import { budgetDiscussionEvidence } from "../bridge/group-summary/evidence-budget.mjs";
 import { generateGroupSummaryResult } from "../bridge/group-summary/providers.mjs";
 import { createSummaryPlan } from "../bridge/group-summary/generation-plans.mjs";
+import { structuredSummarySystemPrompt } from "../bridge/group-summary/prompt.mjs";
 import { sendGroupSummaryForDate } from "../bridge/group-summary/service.mjs";
 import { readReport, saveReportRevision } from "../bridge/group-summary/reports.mjs";
 import { readSummaryDelivery } from "../bridge/group-summary/publisher.mjs";
@@ -77,13 +78,18 @@ test("scoped rewrites keep a stable topic identity and cannot return multiple to
 });
 
 test("prompt uses actual identifiers and distinguishes plans from completed outcomes", () => {
-  const prompt = buildStructuredSummaryPrompt(bundle, { dateText });
+  const system = structuredSummarySystemPrompt();
+  const userPrompt = buildStructuredSummaryPrompt(bundle, { dateText });
+  const prompt = system + "\n\n" + userPrompt;
   assert.match(prompt, /"id":"D196"/);
   assert.match(prompt, /来源片段由程序计算/);
   assert.doesNotMatch(prompt, /"id":"D001"|"E0001"/);
   assert.match(prompt, /快要过万.*接近过万/);
   assert.match(prompt, /同一件事跨多个片段/);
-  assert.ok(prompt.lastIndexOf("输出前再次核对") > prompt.indexOf("E0531"));
+  assert.ok(prompt.indexOf("输出前再次核对") < prompt.indexOf("本次日报数据："));
+  assert.doesNotMatch(system, /D196|E0390|E0531|2026-09-13|测试成员/);
+  assert.match(userPrompt, /E0531/);
+  assert.match(system, /E 编号必须真实且支持对应句子/);
   assert.match(prompt, /正过去.*已到场/);
   assert.match(prompt, /不是已正式服役/);
 });

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import test from "node:test";
+import { buildObjectiveVisionMessages, VISION_PROMPT_VERSION } from "../bridge/system-prompts/vision.mjs";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-vision-task-budget-"));
 Object.assign(process.env, { NODE_ENV: "test", QQBOT_CONFIG_ROOT: root,
@@ -256,7 +257,11 @@ test("objective primary and fallback share one shrinking deadline and preserve t
       assert.equal(input.maxAttempts, 1);
       assert.equal(input.maxResponseBytes, 262144);
       assert.equal(input.beforeAttempt(), "");
-      assert.deepEqual(input.messages[0].content.slice(1), [prepared.images[0].content]);
+      assert.deepEqual(input.messages.map(message => message.role), ["system", "user"]);
+      assert.deepEqual(input.messages, buildObjectiveVisionMessages(prepared));
+      assert.deepEqual(input.messages[1].content.slice(1), [prepared.images[0].content]);
+      assert.equal(input.promptMetadata.promptVersion, VISION_PROMPT_VERSION);
+      assert.equal(VISION_PROMPT_VERSION, "objective-image-v3");
       assert.doesNotMatch(JSON.stringify(input.messages), /PRIVATE_REASONING/);
       if (position === "primary") {
         assert.equal(input.timeoutMs, 20000);

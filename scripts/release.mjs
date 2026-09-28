@@ -19,7 +19,7 @@ const PUBLIC_LINUX_FILES = new Set([
   ".env.example", "qqfriend.env.example", "compose.yaml",
   "Dockerfile", "Dockerfile.dependencies", "Dockerfile.overlay",
   "check.sh", "prepare.sh", "install-docker-host.sh", "install-summary-schedule.sh", "install-time-order.sh",
-  "README.md", "ROADMAP.md", "MEMBER-SUMMARY.md", "MODULAR-RUNTIME.md", "SUMMARY-WORKBENCH.md", "MEMORY.md", "CHAT-TOOLS.md", "VISION.md", "USAGE.md",
+  "README.md", "ROADMAP.md", "MEMBER-SUMMARY.md", "MODULAR-RUNTIME.md", "SUMMARY-WORKBENCH.md", "MEMORY.md", "CHAT-TOOLS.md", "VISION.md", "USAGE.md", "CONTEXT.md",
   "systemd/docker-chrony-wait.conf", "systemd/qqfriend-summary.service",
   "systemd/qqfriend-summary.timer", "systemd/qqfriend.service",
 ].map(file => "deploy/linux/" + file));
@@ -209,23 +209,34 @@ function run(command, args, options = {}) {
   const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
   if (result.status !== 0) {
     const cause = result.error ? result.error.message + "\n" : "";
-    throw new Error(`${command} ${args.join(" ")} failed\n${cause}${output}`);
+    const detail = options.redactOutput ? "" : "\n" + cause + output;
+    throw new Error(`${command} ${args.join(" ")} failed${detail}`);
   }
   return output;
 }
 
 function runCheck(label, command, args, checks, options = {}) {
   console.log(`[release] ${label}`);
-  const output = run(command, args, options);
+  const output = (options.runner || run)(command, args, options);
   checks[label] = "pass";
   return output;
 }
 
-function testCount(output) {
-  const tests = output.match(/(?:#|\u2139)\s*tests\s+(\d+)/)?.[1];
-  const pass = output.match(/(?:#|\u2139)\s*pass\s+(\d+)/)?.[1];
-  if (tests && pass) return `${pass}/${tests} pass`;
-  return "unknown";
+export function parseTestCounts(output) {
+  if (typeof output !== "string") return null;
+  const counts = {};
+  for (const line of output.split(/\r?\n/)) {
+    const match = line.match(/^\s*(?:#|\u2139)\s*(tests|pass|fail|cancelled|skipped|todo)(?:\s+(.+?))?\s*$/);
+    if (!match) continue;
+    const [, name, value] = match;
+    if (Object.hasOwn(counts, name) || !/^\d+$/.test(value)) return null;
+    counts[name] = Number(value);
+    if (!Number.isSafeInteger(counts[name])) return null;
+  }
+  if (["tests", "pass", "fail", "skipped"].some(name => !Object.hasOwn(counts, name))) return null;
+  const outcomes = counts.pass + counts.fail + counts.skipped + (counts.cancelled || 0) + (counts.todo || 0);
+  if (!Number.isSafeInteger(outcomes) || outcomes !== counts.tests) return null;
+  return { total: counts.tests, pass: counts.pass, fail: counts.fail, skipped: counts.skipped };
 }
 
 function readPackage(root) {
@@ -363,20 +374,26 @@ function parseArgs(argv) {
   };
 }
 
-async function runRelease(root, args) {
+async function runRelease(root, args, runner) {
   const options = parseArgs(args);
   const pkg = readPackage(root);
   const checks = {};
+  const checkOptions = { cwd: root, runner };
   let tests = "not run";
 
   ensureDist(root);
   if (!options.zipOnly) {
-    runCheck("dependencies", npmCommand(), ["run", "check:dependencies"], checks);
-    runCheck("lint", npmCommand(), ["run", "lint"], checks);
-    const testOutput = runCheck("test", npmCommand(), ["test"], checks);
-    tests = testCount(testOutput);
-    runCheck("runtime", npmCommand(), ["run", "check:runtime:ci"], checks);
+    runCheck("dependencies", npmCommand(), ["run", "check:dependencies"], checks, checkOptions);
+    runCheck("lint", npmCommand(), ["run", "lint"], checks, checkOptions);
+    const testOutput = runCheck("test", npmCommand(), ["test"], checks, { ...checkOptions, redactOutput: true });
+    const testCounts = parseTestCounts(testOutput);
+    tests = testCounts ? `${testCounts.pass}/${testCounts.total} pass` : "unknown";
+    console.log("[release] test counts " + (testCounts
+      ? `total=${testCounts.total} pass=${testCounts.pass} fail=${testCounts.fail} skipped=${testCounts.skipped}`
+      : "unknown"));
+    runCheck("runtime", npmCommand(), ["run", "check:runtime:ci"], checks, checkOptions);
     runCheck("jmRuntime", npmCommand(), ["run", "check:jm"], checks, {
+      ...checkOptions,
       env: { ...process.env, NODE_ENV: "test" },
     });
   }
@@ -417,8 +434,8 @@ async function runRelease(root, args) {
   return manifest;
 }
 
-export async function main(argv = process.argv.slice(2), root = ROOT) {
-  await runRelease(root, argv);
+export async function main(argv = process.argv.slice(2), root = ROOT, runner = run) {
+  await runRelease(root, argv, runner);
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

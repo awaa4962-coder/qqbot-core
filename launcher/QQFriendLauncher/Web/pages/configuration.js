@@ -42,7 +42,7 @@ export function renderConfig(status, configSnapshot) {
       `错误 ${linkPreview.errors || 0}`,
     ], "logs"],
     ["群词云", [wordcloud.enabled ? "已启用" : "已关闭", `${Array.isArray(wordcloud.groups) ? wordcloud.groups.length : 0} 个群`, `最多 ${wordcloud.maxMessages || 0} 条消息`], "configuration"],
-    ["图片语境", [imageContext.enabled ? "已启用" : "未启用", `${Number(imageContext.entries || 0)} 个表情包指纹`, `${Number(imageContext.hits || 0)} 次复用`, imageContext.storesImages ? "保存图片" : "不存图片"], "services"],
+    ["图片语境", imageContextDetails(imageContext), "services"],
     ["模型服务", Object.entries(modelKeys).filter(([, enabled]) => enabled).map(([name]) => modelLabel(name)), "services"],
     ["配置文件", files.length > 0 ? [`${editableFiles} 个可直接编辑`, `${createOnSaveFiles} 个保存时创建`] : ["等待配置状态"], "maintenance"],
   ];
@@ -51,6 +51,17 @@ export function renderConfig(status, configSnapshot) {
     const list = Array.isArray(values) && values.length > 0 ? values : ["-"];
     return `<div class="config-item"><b>${escapeHtml(label)}</b><div class="chips">${list.map((item) => `<span class="chip">${escapeHtml(item)}</span>`).join("")}</div><button type="button" class="row-link" data-view="${target}">管理</button></div>`;
   }).join("");
+}
+
+function imageContextDetails(context) {
+  const values = [context.enabled ? "已启用" : "未启用", `${Number(context.entries || 0)} 份客观描述`,
+    `缓存读取 ${Number(context.hits || 0)} 次`, context.storesImages ? "保存图片" : "不存图片"];
+  const flight = context.inFlight;
+  if (!flight || ![flight.active, flight.waiters, flight.joined].every(value => Number.isSafeInteger(value) && value >= 0)) {
+    return [...values, "共用状态未知"];
+  }
+  const active = flight.waiters ? `计算 ${flight.active} 项，等待 ${flight.waiters} 个请求` : `等待收尾 ${flight.active} 项`;
+  return [...values, flight.active ? active : "没有在途识图", `共享等候 ${flight.joined} 次`];
 }
 
 export function renderConfigEditor(snapshot, options = {}) {

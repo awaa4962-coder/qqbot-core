@@ -4,39 +4,25 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.38-topic-branches";
-export const VERSION_NAME = "topic-branches";
+export const VERSION = "1.4.39-stable-cache";
+export const VERSION_NAME = "stable-cache";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "同一用户在同一群的短期对话保留当前话题和最多两个旧话题，切换回来时只提供选中的分支；新主题不因共享泛词硬接旧话。",
-  "旧单线程数据兼容读取，私聊仍不持久化短期线程；分支随原会话期限与遗忘清理，不改变关系评分。",
-  "分支范围或容量校验失败时停止使用该线程，管理端只显示异常计数，不把其他会话内容带入群聊。",
-  "群聊被动插话、自动链接与小程序预览、明确链接预览命令进入有界后台运行槽；入站存储和触发判断仍按原消息顺序完成。",
-  "被动插话与预览分别限制并发，不挤占全部明确 @ 名额；被动容量满时安静跳过，明确预览命令返回忙碌提示。",
-  "词云渲染和关系短评也进入有界命令槽，生成期间不会堵住本群后续消息；命令忙碌提示不会取消正在生成的明确 @ 回复。",
-  "发送仍走持久账本，后台结束后才结案；不确定预览回执不再触发第二份小程序预览或短时重复链接发送。",
-  "已确认发送的群聊回答记录 QQ 消息号，引用夜星较早的回复时先按编号关联原轮次，避免只靠相似词接错话题。",
-  "Linux 管理页保存白名单等配置时会检查编辑版本；内容已被别处修改就拒绝覆盖并保留本页输入。",
-  "模型接口响应现在限制接收大小，异常超大返回不会被当成有效回复或自动重试。",
-  "模型接口重试共用总超时，取消后不再继续等待或采用晚到正文；主备兜底保持。",
-  "日报、成员总结、识图、关系短评、表情选择、画像和搜索摘要的主备生成共享各自总预算，超时或取消后不采用旧结果；回放与连接测试也有限额。",
+  "日报和客观识图把固定规则放在前面，群名、日期、证据与风格参数后置，减少重复前缀变化。",
+  "同一用户、会话、图片和模型版本的客观识图可共用一次在途计算；个人取消不影响其他有效等待者，全部取消才中止，不共享聊天最终答案或发送。",
+  "只读检索缓存只保留本轮有效且有界的原始资料，纠正、遗忘、到期、权限或读取配置变化后不复用旧结果。",
+  "承接已失败的步骤，只问最必要的一项；图片语气与发图者心理动机分开，不把反话自行解释成安慰或嘲讽。",
+  "诊断分别显示已完成缓存复用和在途识图共用；发布检查直接显示原次测试计数，不再为计数重跑整套。",
   "JM、模型主备、思考档位与关系评分不变；只更新 Linux，Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Each user's group conversation retains its active topic and up to two bounded earlier topics, selecting only the relevant branch for a follow-up.",
-  "Legacy single-thread data remains readable. Private threads stay volatile; topic branches retain the existing expiry and erasure boundary.",
-  "Invalid topic scope or capacity stops thread reads and writes, while local diagnostics expose only an anonymous invalid count.",
-  "Passive group interjections, automatic link and mini-app previews, and explicit link previews now use bounded background slots after ordered ingress.",
-  "Passive work has separate limits so it cannot consume all explicit mention slots. Passive overload stays quiet; an explicit preview command gets a busy notice.",
-  "Wordcloud rendering and relationship comments now use bounded command slots, and their busy notices cannot cancel an in-flight explicit mention reply.",
-  "Actual sends remain in the durable ledger and finish diagnostics only on completion. Uncertain preview delivery no longer triggers a second mini-app payload or immediate same-URL retry.",
-  "Confirmed group replies retain their QQ message IDs, so quoting an older bot reply can select that exact turn before lexical fallback.",
-  "Linux admin config saves now reject stale edits without overwriting newer changes, while the page keeps unsaved input visible.",
-  "Oversized provider responses are bounded and rejected without automatic retry or treating partial content as a reply.",
-  "Provider retries share a total deadline and stop on cancellation without accepting late content; task fallbacks remain enabled.",
-  "Summaries, vision, relationship comments, sticker selection, profiles and search summaries share bounded per-task budgets across model slots; replay and connection tests are bounded too.",
+  "Summary and objective-vision rules now precede dynamic group, date, evidence and style data for stable prefixes.",
+  "Identical objective vision work shares only within one user, conversation and input/model version; each waiter cancels independently. Final chat answers and sends are never shared.",
+  "Per-turn read caches retain only current bounded raw evidence and stop after correction, erasure, expiry, authorization or read-configuration changes.",
+  "Follow-ups do not repeat failed steps; image tone is kept separate from unsupported psychological intentions.",
+  "Diagnostics distinguish completed cache reuse from shared in-flight vision work, and release checks report counts from the original test run.",
   "Only Linux is updated; Windows stays frozen. JM, model routes, reasoning modes and relationship scoring remain unchanged.",
 ]);
 

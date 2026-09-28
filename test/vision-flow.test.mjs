@@ -5,6 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import test from "node:test";
 import sharp from "sharp";
+import { buildObjectiveVisionMessages } from "../bridge/system-prompts/vision.mjs";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-vision-flow-"));
 Object.assign(process.env, { NODE_ENV: "test", QQBOT_CONFIG_ROOT: root, QQBOT_DATA_DIR: path.join(root, "data"), QQBOT_LOG_DIR: path.join(root, "logs") });
@@ -39,6 +40,14 @@ function capture(t, modelReply) {
     if (String(url) === asset) { downloads++; return new globalThis.Response(pixel, { headers: { "content-type": "image/png" } }); }
     assert.ok(String(url).startsWith("https://example.com/"), "unexpected external request");
     const body = JSON.parse(options.body); bodies.push(body);
+    if (body.model === "objective") {
+      assert.deepEqual(body.messages.map(message => message.role), ["system", "user"]);
+      assert.equal(body.messages[0].content, buildObjectiveVisionMessages({ images: [] })[0].content);
+      assert.equal(body.messages[1].content[0].type, "text");
+      assert.match(body.messages[1].content[0].text, /^图片编号依次为：\d+(?:（仅首帧）)?(?:、\d+(?:（仅首帧）)?)*$/);
+      assert.equal(body.messages[1].content.length - 1, images(body).length);
+      assert.doesNotMatch(body.messages[0].content, /asset\.png|当前输入|合成用户|data:image/);
+    }
     return modelReply(body, bodies);
   });
   return { bodies, downloads: () => downloads };
@@ -62,6 +71,7 @@ test("vision failure uses lazy objective route then DeepSeek-style text fallback
   const result = await executeChatTask(request());
   assert.equal(result.position, "fallback"); assert.equal(downloads(), 1);
   assert.deepEqual(bodies.map(body => body.model), ["pixel-primary", "objective", "text-backup"]);
+  assert.deepEqual(images(bodies[1]), images(bodies[0]));
   assert.equal(images(bodies[2]).length, 0); assert.match(JSON.stringify(bodies[2]), /红色矩形|考试终于过了/);
   assert.doesNotMatch(JSON.stringify(bodies[1]), /考试|当前输入|合成用户/);
   assert.doesNotMatch(JSON.stringify(bodies[2]), /PRIMARY_PRIVATE|providerContinuation|data:image/);
@@ -96,7 +106,11 @@ test("objective cache is exact and scoped while interpretations always get the n
   assert.match(JSON.stringify(second), /考试没过/); assert.doesNotMatch(JSON.stringify(second), /考试终于过了/);
   assert.equal(getVisionDescriptionCacheStatus().hits, 1);
   await executeChatTask(request({ groupId: 50101 }));
-  assert.equal(bodies.filter(body => body.model === "objective").length, 2);
+  const objectiveBodies = bodies.filter(body => body.model === "objective");
+  assert.equal(objectiveBodies.length, 2);
+  assert.equal(objectiveBodies[0].messages[0].content, objectiveBodies[1].messages[0].content);
+  assert.equal(objectiveBodies[0].messages[1].content[0].text, "图片编号依次为：1");
+  assert.equal(objectiveBodies[1].messages[1].content[0].text, "图片编号依次为：1");
   invalidateMemoryPrivacyGeneration();
   assert.equal(getVisionDescriptionCacheStatus().entries, 0);
   await executeChatTask(request());
@@ -152,7 +166,11 @@ test("same image at a different original index does not reuse a misnumbered obje
   const { bodies } = capture(t, body => response({ content: body.model === "objective" ? "图2：红色矩形。" : "有一张可读图片。" }));
   await executeChatTask(request({ imageUrls: ["http://localhost/blocked", asset] }));
   await executeChatTask(request());
-  assert.equal(bodies.filter(body => body.model === "objective").length, 2);
+  const objectiveBodies = bodies.filter(body => body.model === "objective");
+  assert.equal(objectiveBodies.length, 2);
+  assert.equal(objectiveBodies[0].messages[0].content, objectiveBodies[1].messages[0].content);
+  assert.equal(objectiveBodies[0].messages[1].content[0].text, "图片编号依次为：2");
+  assert.equal(objectiveBodies[1].messages[1].content[0].text, "图片编号依次为：1");
 });
 
 test("an individual image timeout remains a readable text conversation, not a dead primary and fallback", async t => {

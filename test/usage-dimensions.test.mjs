@@ -245,12 +245,12 @@ test("summary prompt version survives the task facade and excludes dynamic text 
   for (const [index, current] of ["第一条合成材料", "第二条合成材料更长"].entries()) {
     const result = await withMessageTrace({ message_type: "group", user_id: 60100, group_id: 70100, message_id: 80100 + index },
       () => callTaskProviderResult("group_summary", "primary", { systemPrompt: "固定的摘要规则", messages: [{ role: "user", content: current }],
-        promptMetadata: { promptVersion: "group-summary-structured-v1" }, maxTokens: 100 },
+        promptMetadata: { promptVersion: "group-summary-structured-v2" }, maxTokens: 100 },
       { root, usageMetricsDir: o.dir, usageMetricsSalt: salt }), recorder);
     assert.equal(result.ok, true);
   }
   const stages = recorder.list().items.map(item => item.stages.find(stage => stage.stage === "context" && stage.promptTagged));
-  assert.ok(stages.every(stage => stage.promptVersion === "group-summary-structured-v1"));
+  assert.ok(stages.every(stage => stage.promptVersion === "group-summary-structured-v2"));
   assert.equal(stages[0].promptFingerprint, stages[1].promptFingerprint);
   assert.notEqual(stages[0].userTextChars, stages[1].userTextChars);
   assert.ok(stages.every(stage => stage.systemTextChars === "固定的摘要规则".length));
@@ -258,7 +258,7 @@ test("summary prompt version survives the task facade and excludes dynamic text 
   assert.ok(bodies.every(body => !JSON.stringify(body).includes("promptMetadata")));
   assert.ok(bodies.some(body => JSON.stringify(body).includes("合成材料")));
   const rows = getApiUsageSnapshot({ ...o, now: Date.now() + 1000 }).rows;
-  assert.ok(rows.some(row => row.promptVersion === "group-summary-structured-v1" && row.promptFingerprint === stages[0].promptFingerprint));
+  assert.ok(rows.some(row => row.promptVersion === "group-summary-structured-v2" && row.promptFingerprint === stages[0].promptFingerprint));
 });
 
 test("a retried request records both physical attempts without treating unreported failure as zero cost", async t => {

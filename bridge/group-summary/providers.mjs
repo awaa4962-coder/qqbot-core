@@ -16,7 +16,7 @@ function buildSummarySlotRequest(position, prompt, plan) {
   const slot = SLOT_SETTINGS[position];
   return {
     task: MODEL_TASKS.GROUP_SUMMARY, systemPrompt: plan.systemPrompt,
-    promptMetadata: { promptVersion: plan.structured ? "group-summary-structured-v1" : "group-summary-legacy-v1" },
+    promptMetadata: { promptVersion: plan.structured ? "group-summary-structured-v2" : "group-summary-legacy-v2" },
     messages: [{ role: "user", content: prompt }],
     maxTokens: slot.maxTokens, temperature: 0.3, timeoutMs: 120000,
   };

@@ -27,6 +27,7 @@ import { initializeDeliveries } from "./deliveries.js";
     received: "接收", admission: "准入", route: "路由", context: "上下文", vision: "看图", model: "模型", tool: "工具", output: "正文检查", send: "发送", complete: "结束",
     image_direct: "原图与对话一起理解", image_description: "客观描述兜底", image_cache: "复用同范围客观描述", image_unavailable: "图片未能读取",
     image_payload: "模型误回图片编码，已拦截",
+    image_shared: "共用同范围客观识图计算", vision_shared_capacity: "正在识别的图片过多", vision_shared_identity: "无法确认识图范围",
     task_budget: "模型任务达到调用上限", task_deadline: "模型任务已超时", task_cancelled: "模型任务已取消",
     task_input_budget: "模型任务输入超过上限", task_output_budget: "模型任务输出额度超过上限",
     started: "开始", ok: "成功", skipped: "跳过", primary: "主模型", fallback: "备用模型", local: "本地恢复", unavailable: "模型不可用", model_unavailable: "模型未产生可用正文",

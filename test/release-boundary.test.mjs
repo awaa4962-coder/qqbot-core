@@ -11,7 +11,11 @@ import { testExitCode } from "../scripts/run-tests.mjs";
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-release-boundary-"));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => {
+    const resolved = fs.realpathSync(root);
+    assert.ok(resolved.startsWith(fs.realpathSync(os.tmpdir()) + path.sep));
+    fs.rmSync(resolved, { recursive: true, force: true });
+  });
   return root;
 }
 
@@ -30,9 +34,11 @@ test("release default-denies Linux runtime, private files and nested state", t =
     "deploy/linux/private/settings.json", "deploy/linux/new-runtime.json",
     "bridge/.env.production", "bridge/custom.env", "bridge/.qqfriend/tasks/admin.json",
     "bridge/chat-delivery.json",
+    "deploy/linux/context-private.docx", "deploy/linux/context-private.key",
+    "deploy/linux/CONTEXT.md.tmp.1234", "deploy/linux/private/CONTEXT.md",
   ];
   for (const name of privatePaths) { write(root, name); assert.equal(isForbiddenPath(name), true, name); }
-  const publicPaths = ["deploy/linux/.env.example", "deploy/linux/qqfriend.env.example", "deploy/linux/compose.yaml", "deploy/linux/systemd/qqfriend.service", ".qqfriend/index.json", "bridge/help.mjs"];
+  const publicPaths = ["deploy/linux/.env.example", "deploy/linux/qqfriend.env.example", "deploy/linux/compose.yaml", "deploy/linux/CONTEXT.md", "deploy/linux/systemd/qqfriend.service", ".qqfriend/index.json", "bridge/help.mjs"];
   for (const name of publicPaths) write(root, name);
   assert.deepEqual(collectReleaseFiles(root), publicPaths.sort());
 });

@@ -7,6 +7,7 @@ import test from "node:test";
 import { formatDate } from "../bridge/group-summary/date.mjs";
 import { captureSummaryMessage, cleanupSummaryFiles, forgetSummaryUser, loadSummaryCapture } from "../bridge/group-summary/journal.mjs";
 import { buildDiscussionBundle, buildStructuredSummaryPrompt, parseSummaryDocument, renderSummaryDocument } from "../bridge/group-summary/analysis.mjs";
+import { structuredSummarySystemPrompt } from "../bridge/group-summary/prompt.mjs";
 import { prepareSummaryEvidence } from "../bridge/group-summary/evidence.mjs";
 import { createDailySummaryGuard } from "../bridge/group-summary/guard.mjs";
 import { publishSummary, readSummaryDelivery, resolveSummaryDelivery } from "../bridge/group-summary/publisher.mjs";
@@ -130,11 +131,16 @@ test("draft evidence drops legacy image URLs and sanitizes nickname credentials"
 
 test("summary prompt anchors relative dates to the report day across a year boundary", () => {
   const bundle = buildDiscussionBundle(messages());
-  const prompt = buildStructuredSummaryPrompt(bundle, { dateText: "2026-12-31" });
+  const system = structuredSummarySystemPrompt();
+  const userPrompt = buildStructuredSummaryPrompt(bundle, { dateText: "2026-12-31" });
+  const prompt = system + "\n\n" + userPrompt;
   assert.match(prompt, /今天\/今晚=2026-12-31/);
   assert.match(prompt, /昨天=2026-12-30/);
   assert.match(prompt, /明天\/明晚=2027-01-01/);
   assert.match(prompt, /不是日报发送日/);
+  assert.match(system, /月日（跨年写年份）/);
+  assert.doesNotMatch(system, /2026-12-31|2027-01-01/);
+  assert.ok(prompt.indexOf("不是日报发送日") < prompt.indexOf("今天/今晚=2026-12-31"));
 });
 
 test("preview creates private revisions without QQ sends and preserves prior versions", async t => {

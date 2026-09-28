@@ -47,14 +47,14 @@ test("trace keeps only bounded source reasons and anonymous input composition", 
   const recorder = createTraceRecorder();
   const secret = "sk-" + "syntheticprivate".repeat(3);
   await withMessageTrace(ctx, () => {
-    traceStage("context", { status: "ok", promptTagged: true, promptVersion: "group-summary-v1",
+    traceStage("context", { status: "ok", promptTagged: true, promptVersion: "group-summary-structured-v2",
       currentInputChars: 22, historyTextChars: 51, rawPrompt: secret,
       sources: [{ kind: "quote", reason: "reply_chain", messageId: "123", body: secret },
         { kind: "thread", reason: "continuation", messageId: "124", body: secret },
         { kind: "unexpected", reason: secret, body: secret }] });
   }, recorder);
   const detail = recorder.list().items[0].stages.find(stage => stage.stage === "context");
-  assert.equal(detail.promptVersion, "group-summary-v1");
+  assert.equal(detail.promptVersion, "group-summary-structured-v2");
   assert.equal(detail.currentInputChars, 22);
   assert.deepEqual(detail.sourceReasons, { reply_chain: 1, continuation: 1 });
   assert.doesNotMatch(JSON.stringify(detail), /syntheticprivate|rawPrompt|body/);

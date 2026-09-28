@@ -11,6 +11,8 @@ const TTL_MS = 600_000;
 const DESCRIPTION = "A red square is centered on a white background.";
 const EMPTY_STATUS = { enabled: true, entries: 0, hits: 0, misses: 0,
   storesImages: false, storesChatText: false, persistent: false };
+const EMPTY_FLIGHT_STATUS = { active: 0, waiters: 0, started: 0, joined: 0, cancelled: 0, rejected: 0,
+  maxActive: 8, maxWaitersPerFlight: 16, persistent: false, storesFinalReplies: false };
 const digest = number => number.toString(16).padStart(64, "0");
 
 function identity(overrides = {}) {
@@ -353,7 +355,7 @@ describe("objective vision description cache", () => {
     assert.doesNotMatch(JSON.stringify(status), /synthetic-provider|vision-test|601|description|vision\.invalid/);
     status.entries = 900;
     assert.equal(cache.status().entries, 1);
-    assert.deepEqual(Object.keys(cache).sort(), ["clear", "get", "set", "status"]);
+    assert.deepEqual(Object.keys(cache).sort(), ["clear", "get", "peek", "set", "status"]);
     cache.clear();
     assert.deepEqual(cache.status(), EMPTY_STATUS);
     assert.equal(cache.get(identity()), "");
@@ -363,17 +365,29 @@ describe("objective vision description cache", () => {
     const { cache } = fixture();
     clearVisionDescriptionCache();
     try {
-      assert.deepEqual(getVisionDescriptionCacheStatus(), EMPTY_STATUS);
+      assert.deepEqual(getVisionDescriptionCacheStatus(), { ...EMPTY_STATUS, inFlight: EMPTY_FLIGHT_STATUS });
       visionDescriptionCache.set(identity(), DESCRIPTION);
       cache.set(identity(), DESCRIPTION);
       assert.equal(visionDescriptionCache.get(identity()), DESCRIPTION);
-      assert.deepEqual(getVisionDescriptionCacheStatus(), { ...EMPTY_STATUS, entries: 1, hits: 1 });
+      assert.deepEqual(getVisionDescriptionCacheStatus(), { ...EMPTY_STATUS, entries: 1, hits: 1, inFlight: EMPTY_FLIGHT_STATUS });
       clearVisionDescriptionCache();
-      assert.deepEqual(getVisionDescriptionCacheStatus(), EMPTY_STATUS);
+      assert.deepEqual(getVisionDescriptionCacheStatus(), { ...EMPTY_STATUS, inFlight: EMPTY_FLIGHT_STATUS });
       assert.equal(visionDescriptionCache.get(identity()), "");
       assert.equal(cache.get(identity()), DESCRIPTION);
     } finally {
       clearVisionDescriptionCache();
     }
+  });
+
+  it("peek does not inflate hit or miss counts and retains the same absolute TTL", () => {
+    const { cache, advance } = fixture();
+    assert.equal(cache.peek(identity()), "");
+    assert.deepEqual(cache.status(), EMPTY_STATUS);
+    cache.set(identity(), DESCRIPTION);
+    assert.equal(cache.peek(identity()), DESCRIPTION);
+    assert.deepEqual(cache.status(), { ...EMPTY_STATUS, entries: 1 });
+    advance(TTL_MS);
+    assert.equal(cache.peek(identity()), "");
+    assert.deepEqual(cache.status(), EMPTY_STATUS);
   });
 });

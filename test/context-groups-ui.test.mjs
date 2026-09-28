@@ -77,7 +77,7 @@ if (!vm.SourceTextModule) {
     const secret = "PRIVATE-PROMPT-BODY";
     const h = await harness([
       context({ currentInputChars: 18, historyTextChars: 96, sourceReasons: { reply_chain: 1, continuation: 2 }, rawPrompt: secret }),
-      context({ promptVersion: "group-summary-structured-v1", promptFingerprint: "abcdef0123456789", promptTagged: true,
+      context({ promptVersion: "group-summary-structured-v2", promptFingerprint: "abcdef0123456789", promptTagged: true,
         systemTextChars: 72, userTextChars: 116, toolDeclarations: 1, toolSchemaChars: 51, inputTextChars: 188,
         prompt: secret }, 2),
     ]);
@@ -175,7 +175,7 @@ if (!vm.SourceTextModule) {
       currentInputChars: 183, historyTextChars: 12750, sourceReasons: { continuation: 30 },
       sources: Array.from({ length: 24 }, (_, index) => ({ kind: "thread", reason: "continuation", messageId: String(index + 1), completeness: "unknown" })),
       sourceDisplayOmitted: 6, filesTotal: 3, filesIncluded: 1, filesUnreadable: 1, filesOmitted: 1 }),
-    context({ promptVersion: "group-summary-structured-v1", promptFingerprint: "abcdef0123456789", promptTagged: true,
+    context({ promptVersion: "group-summary-structured-v2", promptFingerprint: "abcdef0123456789", promptTagged: true,
       systemTextChars: 1360, userTextChars: 18750, assistantTextChars: 430, toolTextChars: 390,
       inputTextChars: 20930, imageParts: 2, toolDeclarations: 3, toolSchemaChars: 2970 }, 2)];
     await page.route("**/*", route => {

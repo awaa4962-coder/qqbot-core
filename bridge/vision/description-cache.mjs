@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { containsSensitiveText, redactSensitiveText } from "../privacy.mjs";
+import { clearVisionDescriptionFlights, visionDescriptionFlights } from "./description-flight.mjs";
 
 const MAX_ENTRIES = 128;
 const MAX_TEXT_BYTES = 128 * 1024;
@@ -43,16 +44,16 @@ export function createVisionDescriptionCache({ now = Date.now } = {}) {
     return current;
   }
 
-  function get(identity) {
+  function get(identity, counted = true) {
     const key = identityKey(identity);
     if (!key) return "";
     prune();
     const entry = entries.get(key);
     if (!entry) {
-      misses++;
+      if (counted) misses++;
       return "";
     }
-    hits++;
+    if (counted) hits++;
     // LRU changes eviction order only, never the absolute creation time.
     entries.delete(key);
     entries.set(key, entry);
@@ -90,12 +91,14 @@ export function createVisionDescriptionCache({ now = Date.now } = {}) {
       storesImages: false, storesChatText: false, persistent: false };
   }
 
-  return Object.freeze({ get, set, clear, status });
+  return Object.freeze({ get, peek: identity => get(identity, false), set, clear, status });
 }
 
 export const visionDescriptionCache = createVisionDescriptionCache();
-export function clearVisionDescriptionCache() { visionDescriptionCache.clear(); }
-export function getVisionDescriptionCacheStatus() { return visionDescriptionCache.status(); }
+export function clearVisionDescriptionCache() { visionDescriptionCache.clear(); clearVisionDescriptionFlights(); }
+export function getVisionDescriptionCacheStatus() { return { ...visionDescriptionCache.status(), inFlight: visionDescriptionFlights.status() }; }
+
+export function visionDescriptionIdentityKey(identity) { return identityKey(identity); }
 
 function identityKey(value) {
   try {
