@@ -8,6 +8,7 @@ import { normalizeUsage } from "./usage-values.mjs";
 
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const MAX_PROVIDER_RESPONSE_BYTES = 1024 * 1024;
+const MAX_PROVIDER_REQUEST_MS = 5 * 60 * 1000;
 
 export async function postProviderJson(provider, key, body, options = {}) {
   const endpoint = validateProviderEndpoint(provider);
@@ -15,19 +16,32 @@ export async function postProviderJson(provider, key, body, options = {}) {
   const startedAt = monotonicNow();
   const maxAttempts = Math.max(1, Math.min(3, Number(options.maxAttempts || 2)));
   const safeBody = redactProviderPayload(body);
+  const signal = requestSignal(options.timeoutMs, options.signal);
+  const attemptOptions = { ...options, signal };
   let outcome = null;
   let transportAttempts = 0;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (signal.aborted) return cancelledOutcome(outcome, transportAttempts, startedAt);
     const reason = chatRunStopReason() || requestStopReason(options);
     if (reason) return { ok: false, cancelled: true, error: reason, status: 0, transportAttempts, durationMs: Math.max(0, monotonicNow() - startedAt) };
     const attemptStarted = monotonicNow();
-    outcome = await postProviderJsonOnce(endpoint, headers, safeBody, provider, options);
+    outcome = await postProviderJsonOnce(endpoint, headers, safeBody, provider, attemptOptions);
     transportAttempts++;
     reportAttempt(options, outcome, monotonicNow() - attemptStarted);
+    if (signal.aborted) return cancelledOutcome(outcome, transportAttempts, startedAt);
     if (outcome.ok || !shouldRetry(outcome, attempt, maxAttempts)) break;
-    await delay(Math.max(0, Number(options.retryDelayMs ?? 400)) * attempt);
+    try { await delay(Math.max(0, Number(options.retryDelayMs ?? 400)) * attempt, undefined, { signal }); }
+    catch (error) {
+      if (signal.aborted) return cancelledOutcome(outcome, transportAttempts, startedAt);
+      throw error;
+    }
   }
   return { ...outcome, transportAttempts, durationMs: Math.max(0, monotonicNow() - startedAt) };
+}
+
+function cancelledOutcome(outcome, transportAttempts, startedAt) {
+  return { ok: false, cancelled: true, error: chatRunStopReason() || "API 请求超时", status: outcome?.status || 0,
+    transportAttempts, durationMs: Math.max(0, monotonicNow() - startedAt) };
 }
 
 function reportAttempt(options, outcome, durationMs) {
@@ -43,7 +57,7 @@ async function postProviderJsonOnce(endpoint, headers, body, provider, options) 
       headers,
       body: JSON.stringify(body),
       redirect: "error",
-      signal: requestSignal(options.timeoutMs || 30000, options.signal),
+      signal: options.signal,
     });
     status = Number(response.status || 0);
     const data = await readResponseJson(response, options.maxResponseBytes);
@@ -75,7 +89,8 @@ async function postProviderJsonOnce(endpoint, headers, body, provider, options) 
 }
 
 function requestSignal(timeoutMs, external) {
-  const timeout = AbortSignal.timeout(timeoutMs);
+  const duration = Number.isSafeInteger(timeoutMs) && timeoutMs > 0 ? Math.min(timeoutMs, MAX_PROVIDER_REQUEST_MS) : 30000;
+  const timeout = AbortSignal.timeout(duration);
   const chatSignal = chatRunSignal();
   return AbortSignal.any([timeout, chatSignal, external].filter(Boolean));
 }

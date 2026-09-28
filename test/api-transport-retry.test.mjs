@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Buffer } from "node:buffer";
+import { setImmediate } from "node:timers/promises";
 
 import { postProviderJson } from "../bridge/api-providers/transport.mjs";
 
@@ -42,6 +43,67 @@ test("provider transport does not retry authentication failures", async () => {
   } finally {
     globalThis.fetch = original;
   }
+});
+
+test("provider retries share one bounded total deadline signal", async t => {
+  const deadline = new globalThis.AbortController();
+  const signals = []; let timeouts = 0;
+  t.mock.method(globalThis.AbortSignal, "timeout", duration => {
+    timeouts++;
+    assert.equal(duration, 5 * 60 * 1000);
+    return deadline.signal;
+  });
+  t.mock.method(globalThis, "fetch", async (_url, options) => {
+    signals.push(options.signal);
+    return response(signals.length === 1 ? 503 : 200, { ok: true });
+  });
+  const result = await postProviderJson(provider, "test-key", {}, { timeoutMs: Number.MAX_SAFE_INTEGER, retryDelayMs: 0 });
+  assert.equal(result.ok, true);
+  assert.equal(timeouts, 1);
+  assert.equal(signals.length, 2);
+  assert.equal(signals[0], signals[1]);
+});
+
+test("pre-cancelled provider requests never start a transport attempt", async t => {
+  const controller = new globalThis.AbortController();
+  controller.abort(new Error("private cancellation detail"));
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => { calls++; return response(200, { ok: true }); });
+  const result = await postProviderJson(provider, "test-key", {}, { signal: controller.signal });
+  assert.equal(result.cancelled, true);
+  assert.equal(result.transportAttempts, 0);
+  assert.equal(calls, 0);
+  assert.doesNotMatch(JSON.stringify(result), /private cancellation detail/);
+});
+
+test("cancellation during retry backoff stops without a second request", { timeout: 1000 }, async t => {
+  const controller = new globalThis.AbortController();
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => { calls++; return response(503, { error: { type: "busy" } }); });
+  const pending = postProviderJson(provider, "test-key", {}, { signal: controller.signal, retryDelayMs: 10000 });
+  await setImmediate();
+  controller.abort();
+  const result = await pending;
+  assert.equal(result.cancelled, true);
+  assert.equal(result.transportAttempts, 1);
+  assert.equal(calls, 1);
+});
+
+test("a response completed after cancellation is not success and retains no body", async t => {
+  const controller = new globalThis.AbortController();
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls++;
+    return { ok: true, status: 200, text: async () => {
+      controller.abort();
+      return JSON.stringify({ content: "late private model body" });
+    } };
+  });
+  const result = await postProviderJson(provider, "test-key", {}, { signal: controller.signal });
+  assert.equal(result.ok, false);
+  assert.equal(result.cancelled, true);
+  assert.equal(calls, 1);
+  assert.doesNotMatch(JSON.stringify(result), /late private model body/);
 });
 
 test("provider transport retries invalid JSON 200 responses without reporting success", async () => {

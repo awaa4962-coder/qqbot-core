@@ -19,6 +19,7 @@ export const VERSION_NOTES_ZH = Object.freeze([
   "已确认发送的群聊回答记录 QQ 消息号，引用夜星较早的回复时先按编号关联原轮次，避免只靠相似词接错话题。",
   "Linux 管理页保存白名单等配置时会检查编辑版本；内容已被别处修改就拒绝覆盖并保留本页输入。",
   "模型接口响应现在限制接收大小，异常超大返回不会被当成有效回复或自动重试。",
+  "模型接口重试共用总超时，取消后不再继续等待或采用晚到正文；主备兜底保持。",
   "JM、模型主备、思考档位与关系评分不变；只更新 Linux，Windows 继续冻结。",
 ]);
 
@@ -33,6 +34,7 @@ export const VERSION_NOTES_EN = Object.freeze([
   "Confirmed group replies retain their QQ message IDs, so quoting an older bot reply can select that exact turn before lexical fallback.",
   "Linux admin config saves now reject stale edits without overwriting newer changes, while the page keeps unsaved input visible.",
   "Oversized provider responses are bounded and rejected without automatic retry or treating partial content as a reply.",
+  "Provider retries share a total deadline and stop on cancellation without accepting late content; task fallbacks remain enabled.",
   "Only Linux is updated; Windows stays frozen. JM, model routes, reasoning modes and relationship scoring remain unchanged.",
 ]);
 
