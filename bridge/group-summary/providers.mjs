@@ -5,20 +5,26 @@ import { buildSummaryDigest } from "./digest.mjs";
 import { formatDate } from "./date.mjs";
 import { createSummaryPlan } from "./generation-plans.mjs";
 import { assertSummaryEpoch } from "./state.mjs";
+import { createModelTaskBudget } from "../api-providers/task-budget.mjs";
 
 const SLOT_SETTINGS = Object.freeze({
   primary: { maxTokens: 8192, hint: "deepseek" },
   fallback: { maxTokens: 3072, hint: "mimo", reasoningMode: "economy" },
 });
 
-async function callSummarySlot(position, prompt, plan) {
+function buildSummarySlotRequest(position, prompt, plan) {
   const slot = SLOT_SETTINGS[position];
-  return await callTaskProviderResult(MODEL_TASKS.GROUP_SUMMARY, position, {
+  return {
     task: MODEL_TASKS.GROUP_SUMMARY, systemPrompt: plan.systemPrompt,
     promptMetadata: { promptVersion: plan.structured ? "group-summary-structured-v1" : "group-summary-legacy-v1" },
     messages: [{ role: "user", content: prompt }],
     maxTokens: slot.maxTokens, temperature: 0.3, timeoutMs: 120000,
-  }, { reasoningMode: slot.reasoningMode });
+  };
+}
+
+async function callSummarySlot(position, request) {
+  return await callTaskProviderResult(MODEL_TASKS.GROUP_SUMMARY, position, request,
+    { reasoningMode: SLOT_SETTINGS[position].reasoningMode });
 }
 
 export async function generateGroupSummaryResult(messages, options = {}) {
@@ -40,19 +46,27 @@ export async function generateGroupSummaryResult(messages, options = {}) {
 
 async function generateFromSlots(plan, options) {
   const prompt = plan.prompt();
+  const budget = createModelTaskBudget(MODEL_TASKS.GROUP_SUMMARY, { now: options.budgetClock, signal: options.signal,
+    assertCurrent: () => { if (options.privacyEpoch !== undefined) assertSummaryEpoch(options.privacyEpoch, options); } });
   let reason = "model_unavailable";
-  for (const position of ["primary", "fallback"]) {
-    options.onProgress?.(position === "primary" ? "analyzing" : "fallback");
-    const injected = position === "primary" ? options.callPrimarySummary : options.callFallbackSummary;
-    const call = injected || (value => callSummarySlot(position, value, plan));
-    options.beforeCall?.();
-    if (options.privacyEpoch !== undefined) assertSummaryEpoch(options.privacyEpoch, options);
-    const result = await trySummarySlot(call, prompt, position, SLOT_SETTINGS[position].hint);
-    if (!result) continue;
-    const rendered = plan.parse(result.text);
-    if (rendered.ok) return { ...rendered.value, provider: result.provider };
-    reason = rendered.reason;
-    log("group summary " + position + " validation rejected:", JSON.stringify({ provider: result.provider, reason }));
+  try {
+    for (const position of ["primary", "fallback"]) {
+      options.onProgress?.(position === "primary" ? "analyzing" : "fallback");
+      const injected = position === "primary" ? options.callPrimarySummary : options.callFallbackSummary;
+      options.beforeCall?.();
+      const request = budget.prepare(buildSummarySlotRequest(position, prompt, plan));
+      const call = injected ? value => injected(value, request) : () => callSummarySlot(position, request);
+      const result = await trySummarySlot(call, prompt, position, SLOT_SETTINGS[position].hint);
+      budget.assertCurrent();
+      if (!result) continue;
+      const rendered = plan.parse(result.text);
+      if (rendered.ok) return { ...rendered.value, provider: result.provider };
+      reason = rendered.reason;
+      log("group summary " + position + " validation rejected:", JSON.stringify({ provider: result.provider, reason }));
+    }
+  } catch (error) {
+    if (error.code !== "MODEL_TASK_BUDGET") throw error;
+    reason = error.message;
   }
   return { text: null, reason };
 }

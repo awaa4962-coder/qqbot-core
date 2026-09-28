@@ -257,6 +257,10 @@ function buildRawRequest(request) {
     tools: request.options?.allowTools === false ? [] : request.tools,
     usageContext: request.options?.usageContext || request.usageContext,
     promptMetadata: request.promptMetadata,
+    signal: request.signal,
+    maxAttempts: request.maxAttempts,
+    maxResponseBytes: request.maxResponseBytes,
+    beforeAttempt: request.beforeAttempt,
   };
 }
 

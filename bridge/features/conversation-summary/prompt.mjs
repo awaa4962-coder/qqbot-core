@@ -2,6 +2,7 @@ import { buildOutputPacket } from "../../output-pipeline.mjs";
 import { MODEL_TASKS, callTaskProviderResult } from "../../model-router.mjs";
 import { redactSummaryText } from "../../group-summary/formatter.mjs";
 import { dateRange, formatDate } from "../../group-summary/date.mjs";
+import { createModelTaskBudget } from "../../api-providers/task-budget.mjs";
 
 export const CONVERSATION_SUMMARY_PROMPT = [
   "你看完了一段群聊，现在给没看聊天的人讲清楚刚才发生了什么。只输出总结正文，不输出思考过程。",
@@ -53,19 +54,30 @@ function relativeDates(bundle) {
 export async function generateConversationSummary(bundle, options = {}) {
   const request = buildConversationSummaryRequest(bundle, options);
   const call = options.callProvider || callTaskProviderResult;
+  const budget = createModelTaskBudget(MODEL_TASKS.CONVERSATION_SUMMARY,
+    { now: options.budgetClock, signal: options.signal, assertCurrent: options.assertCurrent });
   for (const position of ["primary", "fallback"]) {
     options.beforeCall?.();
     options.onProgress?.(position === "primary" ? "analyzing" : "fallback");
     try {
-      const result = await call(MODEL_TASKS.CONVERSATION_SUMMARY, position, request, position === "fallback" ? { reasoningMode: "economy" } : {});
-      if (!result?.ok || !result.raw) continue;
-      const packet = buildOutputPacket(result.raw, { provider: result.provider });
-      if (!packet.ok || packet.finishReason === "length") continue;
-      const text = redactSummaryText(packet.text).trim();
-      if (text) return { ok: true, text, provider: result.provider, position };
-    } catch { /* An unusable primary response still has the configured fallback. */ }
+      const result = await tryConversationSlot(call, position, request, budget);
+      if (result) return result;
+    } catch (error) {
+      if (error.code === "MODEL_TASK_BUDGET") return { ok: false, text: "这次总结达到处理预算，稍后再试吧。", reason: error.message };
+    }
   }
   return { ok: false, text: "这次没拿到能用的总结，稍后再试吧。", reason: "model_unavailable" };
+}
+
+async function tryConversationSlot(call, position, request, budget) {
+  const result = await call(MODEL_TASKS.CONVERSATION_SUMMARY, position, budget.prepare(request),
+    position === "fallback" ? { reasoningMode: "economy" } : {});
+  budget.assertCurrent();
+  if (!result?.ok || !result.raw) return null;
+  const packet = buildOutputPacket(result.raw, { provider: result.provider });
+  if (!packet.ok || packet.finishReason === "length") return null;
+  const text = redactSummaryText(packet.text).trim();
+  return text ? { ok: true, text, provider: result.provider, position } : null;
 }
 
 export function displayTime(ts) {

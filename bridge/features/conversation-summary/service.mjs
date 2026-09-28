@@ -47,9 +47,9 @@ export function createConversationSummaryService(options = {}) {
     const gate = new Promise(resolve => { acknowledged = resolve; });
     tasks.start({ scope: String(ctx.group_id), action: "conversation-summary", meta: {
       groupId: String(ctx.group_id), targetCount: bundle.targets.length, from: bundle.range.from, to: bundle.range.to,
-    }, run: async ({ progress }) => {
+    }, run: async ({ progress, signal }) => {
       await gate;
-      return await complete(ctx, parsed, bundle, progress);
+      return await complete(ctx, parsed, bundle, progress, signal);
     } });
     lastStarted.set(String(ctx.group_id), clock());
     if (eventKey) seen.add(eventKey);
@@ -59,15 +59,19 @@ export function createConversationSummaryService(options = {}) {
     finally { acknowledged(); }
   }
 
-  async function complete(ctx, parsed, bundle, progress) {
+  async function complete(ctx, parsed, bundle, progress, signal) {
     try {
+      const taskSignal = options.signal ? AbortSignal.any([signal, options.signal]) : signal;
+      taskSignal.throwIfAborted();
       assertSummaryEpoch(bundle.privacyEpoch, options);
       const result = await generateConversationSummary(bundle, { ...options, separate: parsed.separate, userId: ctx.user_id, onProgress: progress,
+        signal: taskSignal, assertCurrent: () => assertSummaryEpoch(bundle.privacyEpoch, options),
         beforeCall: () => assertSummaryEpoch(bundle.privacyEpoch, options) });
       const text = result.ok ? result.text + "\n\n" + summaryFooter(bundle) : result.text;
       progress("sending");
       const chunks = splitLongText(text, 900);
       for (const [index, chunk] of chunks.entries()) {
+        taskSignal.throwIfAborted();
         assertSummaryEpoch(bundle.privacyEpoch, options);
         if (!allowed(ctx.group_id)) throw new Error("group_disabled");
         const receipt = await sender({ groupId: ctx.group_id, text: chunk, replyTo: index === 0 ? ctx.message_id : undefined });
