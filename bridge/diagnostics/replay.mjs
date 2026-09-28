@@ -14,6 +14,7 @@ import { buildOutputPacket } from "../output-pipeline.mjs";
 import { REPLAY_CASES } from "./replay-cases.mjs";
 import { selectConversationThread, selectGroupConversation, selectionSource } from "../context/conversation-selection.mjs";
 import { retrieveRelevantUserMemories } from "../context-retriever.mjs";
+import { createModelTaskBudget } from "../api-providers/task-budget.mjs";
 
 const REVIEWS = new Set(["unreviewed", "better", "same", "worse", "off_topic", "wrong_person", "over_persona"]);
 const DAILY_LIMIT = 20;
@@ -133,14 +134,14 @@ export function createReplayService(options = {}) {
     };
   }
 
-  async function act(payload = {}) {
+  async function act(payload = {}, runtime = {}) {
     if (payload.action === "check") return runReplayChecks();
     const example = REPLAY_CASES.find(item => item.id === payload.caseId);
     if (!example) throw new Error("请选择已有的合成样例");
     if (busy) throw new Error("已有回放正在生成，请稍后再试");
     if (payload.action === "generate") {
       busy = true;
-      try { return await generate(example); } finally { busy = false; }
+      try { return await generate(example, runtime); } finally { busy = false; }
     }
     const saved = load();
     const entry = saved.cases[example.id];
@@ -152,7 +153,7 @@ export function createReplayService(options = {}) {
     return snapshot();
   }
 
-  async function generate(example) {
+  async function generate(example, runtime) {
     const saved = load();
     const day = dayKey(now());
     const runs = saved.day === day ? Number(saved.runs || 0) : 0;
@@ -161,7 +162,10 @@ export function createReplayService(options = {}) {
     Object.assign(saved, { day, runs: runs + 1 });
     save(saved);
     const packet = buildReplayPacket(example);
-    const answer = await generateAnswer(packet, callModel);
+    const signals = [options.signal, runtime.signal].filter(Boolean);
+    const answer = await generateAnswer(packet, callModel, {
+      ...options, signal: signals.length ? AbortSignal.any(signals) : undefined,
+    });
     const entry = saved.cases[example.id] || {};
     entry.candidate = { ...answer, fingerprint: packet.fingerprint, version: VERSION, at: new Date(now()).toISOString() };
     entry.review = "unreviewed";
@@ -173,15 +177,22 @@ export function createReplayService(options = {}) {
   return { snapshot, act };
 }
 
-async function generateAnswer(packet, callModel) {
+async function generateAnswer(packet, callModel, options) {
+  const budget = createModelTaskBudget("diagnostic_replay", {
+    now: options.budgetClock, signal: options.signal, assertCurrent: options.assertCurrent,
+  });
   for (const position of ["primary", "fallback"]) {
     let result;
     try {
-      result = await callModel("group_chat", position, {
+      result = await callModel("group_chat", position, budget.prepare({
         messages: packet.messages, maxTokens: 1200, temperature: 0.2, tools: [], timeoutMs: 45000,
         promptMetadata: packet.promptMetadata,
-      }, { reasoningMode: "economy" });
-    } catch { continue; }
+      }), { reasoningMode: "economy" });
+      budget.assertCurrent();
+    } catch (error) {
+      if (error.code === "MODEL_TASK_BUDGET") throw error;
+      continue;
+    }
     const output = result.ok ? buildOutputPacket(result.raw, { provider: result.provider }) : null;
     if (output?.ok) return {
       text: output.text.slice(0, 5000), provider: safeProvider(result.provider), position,

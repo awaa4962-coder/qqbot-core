@@ -1,4 +1,6 @@
-import { callStickerSelection } from "../../model-router.mjs";
+import { MODEL_TASKS, buildStickerSelectionRequest, callStickerSelection } from "../../model-router.mjs";
+import { createModelTaskBudget } from "../../api-providers/task-budget.mjs";
+import { assertChatRunCurrent, chatRunSignal } from "../../cognition/chat-run.mjs";
 import { listSelectableStickers } from "./catalog-store.mjs";
 import { createStickerPrivacyGuard } from "./privacy.mjs";
 
@@ -20,15 +22,26 @@ const CUE_RULES = Object.freeze([
 
 export async function selectSticker(context = {}, options = {}) {
   const check = createStickerPrivacyGuard(context.userId);
+  const budget = createModelTaskBudget(MODEL_TASKS.STICKER_SELECT, {
+    now: options.budgetClock,
+    signal: globalThis.AbortSignal.any([options.signal, chatRunSignal()].filter(Boolean)),
+    assertCurrent: () => { assertChatRunCurrent(); check(); options.assertCurrent?.(); },
+  });
+  budget.assertCurrent();
   const candidates = buildStickerCandidates(context, options);
+  budget.assertCurrent();
   if (!candidates.length) return noMatch("没有语义可靠的候选", []);
   const model = options.model || callStickerSelection;
   const prompt = buildStickerSelectionPrompt(context, candidates);
-  let output = await model(prompt, "primary");
-  check();
-  if (!output) { output = await model(prompt, "fallback"); check(); }
+  let output = await model(prompt, "primary", budget.prepare(buildStickerSelectionRequest(prompt)));
+  budget.assertCurrent();
+  if (!output) {
+    output = await model(prompt, "fallback", budget.prepare(buildStickerSelectionRequest(prompt)));
+    budget.assertCurrent();
+  }
   const selectedId = parseStickerSelection(output);
   const selected = candidates.find(candidate => candidate.id === selectedId);
+  budget.assertCurrent();
   if (!selected) return noMatch("模型选择无匹配", candidates);
   return {
     action: "send",

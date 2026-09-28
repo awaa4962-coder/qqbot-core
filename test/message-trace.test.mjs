@@ -31,6 +31,18 @@ test("trace metadata drops bodies, keys, raw errors and invalid identifiers", as
   for (const secret of ["private body", "private nickname", "secret-user", "secret-response", "secret-error", "sk-secret", "private reasoning"]) assert.equal(text.includes(secret), false);
 });
 
+test("model task diagnostics retain fixed budget reasons but never raw errors", async () => {
+  const recorder = createTraceRecorder();
+  await withMessageTrace(ctx, () => {
+    for (const reason of ["task_budget", "task_deadline", "task_cancelled", "task_input_budget", "task_output_budget"]) {
+      traceStage("model", { status: "failed", reason, raw: "private error", prompt: "private input" });
+    }
+  }, recorder);
+  const stages = recorder.list().items[0].stages.filter(stage => stage.stage === "model");
+  assert.deepEqual(stages.map(stage => stage.reason), ["task_budget", "task_deadline", "task_cancelled", "task_input_budget", "task_output_budget"]);
+  assert.doesNotMatch(JSON.stringify(stages), /private error|private input/);
+});
+
 test("trace keeps only bounded source reasons and anonymous input composition", async () => {
   const recorder = createTraceRecorder();
   const secret = "sk-" + "syntheticprivate".repeat(3);

@@ -45,12 +45,14 @@ const ACTION_HANDLERS = Object.freeze({
     const result = await (options.sync || syncStickerFavorites)({
       analyze: payload.analyze !== false,
       analysisLimit: boundedBatchSize(payload.analysisLimit),
+      signal: options.signal,
     });
     return { result, snapshot: buildStickerManagerSnapshot() };
   },
   analyze: async (payload, options) => {
     const result = await (options.analyze || analyzePendingStickers)({
       limit: boundedBatchSize(payload.limit),
+      signal: options.signal,
     });
     return { result, snapshot: buildStickerManagerSnapshot() };
   },

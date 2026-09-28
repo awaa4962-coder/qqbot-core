@@ -20,7 +20,7 @@ export const VERSION_NOTES_ZH = Object.freeze([
   "Linux 管理页保存白名单等配置时会检查编辑版本；内容已被别处修改就拒绝覆盖并保留本页输入。",
   "模型接口响应现在限制接收大小，异常超大返回不会被当成有效回复或自动重试。",
   "模型接口重试共用总超时，取消后不再继续等待或采用晚到正文；主备兜底保持。",
-  "日报和成员聊天总结的主备生成共享总预算，过期结果不采用，取消后不发送旧总结。",
+  "日报、成员总结、识图、关系短评、表情选择、画像和搜索摘要的主备生成共享各自总预算，超时或取消后不采用旧结果；回放与连接测试也有限额。",
   "JM、模型主备、思考档位与关系评分不变；只更新 Linux，Windows 继续冻结。",
 ]);
 
@@ -36,7 +36,7 @@ export const VERSION_NOTES_EN = Object.freeze([
   "Linux admin config saves now reject stale edits without overwriting newer changes, while the page keeps unsaved input visible.",
   "Oversized provider responses are bounded and rejected without automatic retry or treating partial content as a reply.",
   "Provider retries share a total deadline and stop on cancellation without accepting late content; task fallbacks remain enabled.",
-  "Daily and member-summary model slots share bounded task budgets, discarding expired results and stopping delivery after cancellation.",
+  "Summaries, vision, relationship comments, sticker selection, profiles and search summaries share bounded per-task budgets across model slots; replay and connection tests are bounded too.",
   "Only Linux is updated; Windows stays frozen. JM, model routes, reasoning modes and relationship scoring remain unchanged.",
 ]);
 

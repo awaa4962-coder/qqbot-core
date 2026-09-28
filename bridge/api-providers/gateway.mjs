@@ -34,6 +34,7 @@ export async function callApiProvider(providerId, request = {}, options = {}) {
   const usage = normalizeProviderUsage(result.raw?.usage || result.usage);
   traceStage("model", {
     ...metadata, status: result.ok ? "ok" : "failed", httpStatus: Number(result.status || 0),
+    reason: result.ok ? undefined : result.error,
     promptTokens: usage.promptTokens, cachedTokens: usage.cachedTokens, completionTokens: usage.completionTokens,
     reasoningTokens: usage.reasoningTokens, totalTokens: usage.totalTokens,
     usageReported: usage.usageReported, cacheReported: usage.cacheReported, promptReported: usage.promptReported,

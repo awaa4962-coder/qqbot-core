@@ -2,6 +2,7 @@ import { buildOutputPacket } from "../output-pipeline.mjs";
 import { callApiProvider } from "../api-providers/gateway.mjs";
 import { API_PROTOCOLS, listApiPresets } from "../api-providers/presets.mjs";
 import { applyReasoningPolicy } from "../api-providers/reasoning-policy.mjs";
+import { createModelTaskBudget } from "../api-providers/task-budget.mjs";
 import {
   buildApiConfigSnapshot,
   deleteApiProvider,
@@ -86,13 +87,7 @@ export async function testApiProvider(providerId, options = {}) {
     task: "group_chat",
     mode: "economy",
   });
-  const result = await callApiProvider(providerId, resolved.request, {
-    ...options,
-    provider,
-    reasoningPolicy: resolved.meta,
-    usageTask: "connection_test",
-    usagePosition: "direct",
-  });
+  const result = await callConnectionTest(providerId, resolved, provider, options);
   if (!result.ok) {
     return {
       ok: false,
@@ -111,4 +106,24 @@ export async function testApiProvider(providerId, options = {}) {
     output: packet.ok ? packet.text.slice(0, 120) : null,
     error: packet.ok ? null : "接口有响应，但没有得到可发送的正文",
   };
+}
+
+async function callConnectionTest(providerId, resolved, provider, options) {
+  const budget = createModelTaskBudget("connection_test", {
+    now: options.budgetClock, signal: options.signal, assertCurrent: options.assertCurrent,
+  });
+  try {
+    const result = await (options.callProvider || callApiProvider)(providerId, budget.prepare(resolved.request), {
+      ...options,
+      provider,
+      reasoningPolicy: resolved.meta,
+      usageTask: "connection_test",
+      usagePosition: "direct",
+    });
+    budget.assertCurrent();
+    return result;
+  } catch (error) {
+    if (error.code !== "MODEL_TASK_BUDGET") throw error;
+    return { ok: false, error: error.message };
+  }
 }

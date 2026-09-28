@@ -13,7 +13,8 @@ const ALLOWED = Object.freeze({
 export function createAdminTaskManager(options = {}) {
   const tasks = createTaskRunner({ filename: options.filename || path.join(CFG.dataRoot, ".qqfriend", "tasks", "admin.json"),
     maxConcurrent: 2, historyLimit: 20 });
-  const handlers = options.handlers || { stickers: applyStickerManagerAction, replay: payload => replayService.act(payload) };
+  const handlers = options.handlers || { stickers: applyStickerManagerAction,
+    replay: (payload, runtime) => replayService.act(payload, runtime) };
 
   function start(input = {}) {
     const module = String(input.module || "");

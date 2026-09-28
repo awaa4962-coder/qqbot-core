@@ -2,6 +2,7 @@ import { callVisionText } from "./vision-provider.mjs";
 import { prepareVisionImages } from "./vision/images.mjs";
 import { visionDescriptionCache } from "./vision/description-cache.mjs";
 import { getTaskRoute, getProvider, loadApiConfig } from "./api-providers/store.mjs";
+import { createModelTaskBudget } from "./api-providers/task-budget.mjs";
 import { assertChatRunCurrent, chatRunSignal, currentChatScope } from "./cognition/chat-run.mjs";
 
 export const VISION_PROMPT_VERSION = "objective-image-v2";
@@ -27,18 +28,25 @@ export async function describeVisionImages(prepared, options = {}) {
   const identity = position => ({ scope: options.scope || currentChatScope(), digests: prepared.images.map(image => image.digest),
     provider: { ...getProvider(route[position], { config }), reasoning: route.reasoning,
       imageLayout: prepared.images.map(({ index, width, height, animated }) => ({ index, width, height, animated })) }, promptVersion: VISION_PROMPT_VERSION });
-  const result = await callVisionText({
-    messages: [{ role: "user", content: [{ type: "text", text: objectiveImagePrompt(prepared) }, ...prepared.images.map(image => image.content)] }],
-    maxTokens: 512, temperature: 0.2, timeoutMs: 20000, maxAttempts: 1, maxResponseBytes: 262144,
-    signal: options.signal || chatRunSignal(), usageContext: options.usageContext,
-    promptMetadata: { promptVersion: VISION_PROMPT_VERSION },
-  }, { config, positions, assertCurrent: check, cache: {
-    get: position => visionDescriptionCache.get(identity(position)),
-    set: (position, text) => { check(); visionDescriptionCache.set(identity(position), text); },
-  } });
-  check();
-  return { ok: result.ok, text: result.ok ? result.text : "", cached: result.cached === true,
-    reason: result.ok ? "ready" : "vision_unavailable" };
+  const signal = globalThis.AbortSignal.any([options.signal, chatRunSignal()].filter(Boolean));
+  const budget = createModelTaskBudget("vision", { now: options.budgetClock, signal, assertCurrent: check });
+  try {
+    const result = await callVisionText({
+      messages: [{ role: "user", content: [{ type: "text", text: objectiveImagePrompt(prepared) }, ...prepared.images.map(image => image.content)] }],
+      maxTokens: 512, temperature: 0.2, timeoutMs: 20000, maxAttempts: 1, maxResponseBytes: 262144,
+      signal, usageContext: options.usageContext,
+      promptMetadata: { promptVersion: VISION_PROMPT_VERSION },
+    }, { config, positions, callSlot: options.callSlot, prepareRequest: budget.prepare, assertCurrent: budget.assertCurrent, cache: {
+      get: position => visionDescriptionCache.get(identity(position)),
+      set: (position, text) => { budget.assertCurrent(); visionDescriptionCache.set(identity(position), text); },
+    } });
+    budget.assertCurrent();
+    return { ok: result.ok, text: result.ok ? result.text : "", cached: result.cached === true,
+      reason: result.ok ? "ready" : result.reason || "vision_unavailable" };
+  } catch (error) {
+    if (error?.code !== "MODEL_TASK_BUDGET") throw error;
+    return { ok: false, text: "", cached: false, reason: error.message };
+  }
 }
 
 function objectiveImagePrompt(prepared) {

@@ -136,14 +136,14 @@ test("vision does not start its fallback provider after capture is disabled", as
     .png().toBuffer();
   let allowed = true;
   const positions = [];
-  await classifyStickerCandidate({ buffer, mimeType: "image/png" }, {
+  await assert.rejects(classifyStickerCandidate({ buffer, mimeType: "image/png" }, {
     ensureAllowed: () => { if (!allowed) throw new Error("sticker_off"); },
     callSlot: async (_task, position) => {
       positions.push(position);
       allowed = false;
       return { ok: false, error: "synthetic failure" };
     },
-  });
+  }), /sticker_off/);
   assert.deepEqual(positions, ["primary"]);
 });
 

@@ -1,8 +1,11 @@
 // bridge/relationship-comment.mjs - cached MiMo/DeepSeek relationship short comment
 import {
+  MODEL_TASKS,
+  buildRelationshipCommentRequest,
   callRelationshipCommentFallback,
   callRelationshipCommentPrimary,
 } from "./model-router.mjs";
+import { createModelTaskBudget } from "./api-providers/task-budget.mjs";
 import { saveUsers } from "./storage.mjs";
 import { createHash } from "node:crypto";
 import { wallAgeMs } from "./runtime-clock.mjs";
@@ -10,6 +13,7 @@ import { redactSensitiveText } from "./privacy.mjs";
 import { getUserMemoryGeneration } from "./memory-profile/generation.mjs";
 import { createMemoryReadGuard } from "./memory-profile/read-guard.mjs";
 import { earliestMemoryExpiry } from "./context/memory-dependencies.mjs";
+import { assertChatRunCurrent, chatRunSignal } from "./cognition/chat-run.mjs";
 
 const COMMENT_CACHE_MS = 6 * 60 * 60 * 1000;
 const COMMENT_CACHE_MESSAGES = 30;
@@ -25,21 +29,43 @@ export async function getRelationshipShortComment(relation, options = {}) {
   const isCurrent = () => generation === getUserMemoryGeneration(uid) &&
     !expiryGuard.reason() && !options.memoryGuard?.stopReason();
   if (!isCurrent()) return "";
-  const groupId = String(options.groupId || "0");
-  const now = options.now || Date.now();
-  const cache = getCommentCache(user, groupId);
-  const fingerprint = commentFingerprint(relation);
-  if (canUseCachedComment(cache, relation, now, fingerprint, options.forceRefresh)) {
-    return normalizeRelationshipComment(cache.text);
-  }
+  const budget = createModelTaskBudget(MODEL_TASKS.RELATIONSHIP_COMMENT, {
+    now: options.budgetClock,
+    signal: globalThis.AbortSignal.any([options.signal, chatRunSignal()].filter(Boolean)),
+    assertCurrent: () => {
+      assertChatRunCurrent();
+      options.assertCurrent?.();
+      if (!isCurrent()) throw Object.assign(new Error("relationship_comment_stale"), { code: "RELATIONSHIP_COMMENT_STALE" });
+    },
+  });
+  try {
+    budget.assertCurrent();
+    const groupId = String(options.groupId || "0");
+    const now = options.now || Date.now();
+    const cache = getCommentCache(user, groupId);
+    const fingerprint = commentFingerprint(relation);
+    if (canUseCachedComment(cache, relation, now, fingerprint, options.forceRefresh)) {
+      const text = normalizeRelationshipComment(cache.text);
+      budget.assertCurrent();
+      return text;
+    }
 
-  const prompt = redactSensitiveText(buildRelationshipCommentPrompt(relation));
-  const text = await generateRelationshipComment(prompt, options, isCurrent) || buildLocalRelationshipComment(relation);
-  if (!isCurrent()) return "";
-  const safeText = normalizeRelationshipComment(text) || buildLocalRelationshipComment(relation);
-  const expiresAt = earliestMemoryExpiry(now + COMMENT_CACHE_MS, options.memoryExpiresAt, options.memoryGuard?.expiry());
-  writeCommentCache(user, groupId, safeText, relation, now, options.source || "auto", { fingerprint, expiresAt });
-  return safeText;
+    const prompt = redactSensitiveText(buildRelationshipCommentPrompt(relation));
+    const text = await generateRelationshipComment(prompt, options, budget);
+    budget.assertCurrent();
+    const safeText = normalizeRelationshipComment(text) || buildLocalRelationshipComment(relation);
+    const expiresAt = earliestMemoryExpiry(now + COMMENT_CACHE_MS, options.memoryExpiresAt, options.memoryGuard?.expiry());
+    budget.assertCurrent();
+    writeCommentCache(user, groupId, safeText, relation, now, options.source || "auto", { fingerprint, expiresAt });
+    return safeText;
+  } catch (error) {
+    if (isRelationshipCommentStopped(error)) return "";
+    throw error;
+  }
+}
+
+function isRelationshipCommentStopped(error) {
+  return error.code === "MODEL_TASK_BUDGET" || error.code === "RELATIONSHIP_COMMENT_STALE";
 }
 
 export function buildRelationshipCommentPrompt(relation) {
@@ -88,40 +114,29 @@ export function shouldRefreshComment(cache, relation, now = Date.now()) {
   return false;
 }
 
-async function generateRelationshipComment(prompt, options, isCurrent) {
-  if (!isCurrent()) return "";
-  const mimo = await callMiMoRelationshipComment(prompt, options);
-  if (!isCurrent()) return "";
-  if (mimo) return mimo;
-  return await callDeepSeekRelationshipComment(prompt, options);
-}
-
-async function callMiMoRelationshipComment(prompt, options) {
-  const call = options.callMiMo || defaultMiMoCall;
-  try {
-    const raw = await call(prompt);
-    return normalizeRelationshipComment(raw);
-  } catch {
-    return "";
+async function generateRelationshipComment(prompt, options, budget) {
+  for (const position of ["primary", "fallback"]) {
+    const request = budget.prepare(buildRelationshipCommentRequest(prompt, position));
+    const call = position === "primary" ? options.callMiMo || defaultMiMoCall : options.callDeepSeek || defaultDeepSeekCall;
+    let raw = "";
+    try {
+      raw = await call(prompt, request);
+    } catch {
+      // Provider errors retain local/fallback behavior; task guards are checked outside this catch.
+    }
+    budget.assertCurrent();
+    const text = normalizeRelationshipComment(raw);
+    if (text) return text;
   }
+  return "";
 }
 
-async function callDeepSeekRelationshipComment(prompt, options) {
-  const call = options.callDeepSeek || defaultDeepSeekCall;
-  try {
-    const raw = await call(prompt);
-    return normalizeRelationshipComment(raw);
-  } catch {
-    return "";
-  }
+async function defaultMiMoCall(prompt, request) {
+  return await callRelationshipCommentPrimary(prompt, request);
 }
 
-async function defaultMiMoCall(prompt) {
-  return await callRelationshipCommentPrimary(prompt);
-}
-
-async function defaultDeepSeekCall(prompt) {
-  return await callRelationshipCommentFallback(prompt);
+async function defaultDeepSeekCall(prompt, request) {
+  return await callRelationshipCommentFallback(prompt, request);
 }
 
 function getCommentCache(user, groupId) {

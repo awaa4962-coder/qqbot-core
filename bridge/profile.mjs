@@ -1,17 +1,18 @@
 // bridge/profile.mjs — 用户画像生成
 import { users, saveUsers } from "./storage.mjs";
 import { callTaskApi } from "./api-providers/gateway.mjs";
+import { createModelTaskBudget } from "./api-providers/task-budget.mjs";
 import { buildOutputPacket } from "./output-pipeline.mjs";
 import { redactSensitiveText } from "./privacy.mjs";
 import { getUserMemoryGeneration, getMemoryPrivacyGeneration } from "./memory-profile/generation.mjs";
-import { chatRunStopReason } from "./cognition/chat-run.mjs";
+import { chatRunSignal, chatRunStopReason } from "./cognition/chat-run.mjs";
 import { memoryCorrectionSnapshot } from "./memory-profile/notes.mjs";
 import { excludedMemorySource } from "./memory-profile/source-exclusions.mjs";
 import { summaryPrivacy } from "./group-summary/state.mjs";
 import { bindLayerMemoryReferences, createMemoryReadGuard } from "./memory-profile/read-guard.mjs";
 
-async function generateProfileVia(prompt, position) {
-  const result = await callTaskApi("profile", position, {
+function profileRequest(prompt) {
+  return {
     messages: [
       { role: 'system', content: '你是一个用户画像生成器。请根据聊天记录总结用户特点，简洁、准确。' },
       { role: 'user', content: prompt },
@@ -20,7 +21,11 @@ async function generateProfileVia(prompt, position) {
     maxTokens: 100,
     temperature: 0.5,
     timeoutMs: 10000,
-  });
+  };
+}
+
+async function generateProfileVia(prompt, position, prepared) {
+  const result = await callTaskApi("profile", position, prepared);
   if (!result.ok) return "";
   const packet = buildOutputPacket(result.raw, { provider: result.provider });
   return packet.ok ? packet.text : "";
@@ -35,7 +40,8 @@ export async function generateProfile(uid, options = {}) {
   if (!recent.length) return '';
   const guards = profileReadGuards(uid, recent);
   const isCurrent = () => users[uid] === u && generation === getUserMemoryGeneration(uid) &&
-    privacyGeneration === getMemoryPrivacyGeneration() && !chatRunStopReason() && guards.every(guard => !guard.reason());
+    privacyGeneration === getMemoryPrivacyGeneration() && !chatRunStopReason() && guards.every(guard => !guard.reason()) &&
+    profileHistory(uid, recent).length === recent.length;
 
   const chatLog = recent.map(function(c) {
     return '[' + new Date(c.ts).toLocaleString('zh-CN') + '] 在' + c.group + '群说: ' + redactSensitiveText(c.text);
@@ -43,18 +49,28 @@ export async function generateProfile(uid, options = {}) {
 
   const prompt = '根据以下聊天记录，用一句话概括这个人的性格、兴趣和说话特点（20-50字）：\n\n' + chatLog;
 
-  for (const position of ["primary", "fallback"]) {
-    if (!isCurrent()) return '';
-    try {
-      const desc = redactSensitiveText(await (options.generate || generateProfileVia)(prompt, position));
-      if (!isCurrent()) return '';
+  try {
+    const budget = createModelTaskBudget("profile", { now: options.budgetClock,
+      signal: globalThis.AbortSignal.any([chatRunSignal(), options.signal].filter(Boolean)),
+      assertCurrent: () => {
+        if (!isCurrent()) throw Object.assign(new Error("profile_context_changed"), { code: "CHAT_MEMORY_CHANGED" });
+      },
+    });
+    for (const position of ["primary", "fallback"]) {
+      const prepared = budget.prepare(profileRequest(prompt));
+      let generated = '';
+      try { generated = await (options.generate || generateProfileVia)(prompt, position, prepared); }
+      catch {}
+      finally { budget.assertCurrent(); }
+      const desc = redactSensitiveText(generated).trim();
       if (desc) {
-        u.profile = desc.trim();
+        budget.assertCurrent();
+        u.profile = desc;
         saveUsers();
-        return desc.trim();
+        return desc;
       }
-    } catch {}
-  }
+    }
+  } catch {}
   return '';
 }
 

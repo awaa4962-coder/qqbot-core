@@ -3,11 +3,38 @@ import test from "node:test";
 import { createModelTaskBudget } from "../bridge/api-providers/task-budget.mjs";
 import { createDefaultApiConfig } from "../bridge/api-providers/store.mjs";
 import { callTaskProviderResult } from "../bridge/model-router.mjs";
+import { callTaskApi } from "../bridge/api-providers/gateway.mjs";
 import { generateGroupSummaryResult } from "../bridge/group-summary/providers.mjs";
 import { generateConversationSummary } from "../bridge/features/conversation-summary/prompt.mjs";
 
 const request = maxTokens => ({ systemPrompt: "rules", messages: [{ role: "user", content: "synthetic data" }], maxTokens, timeoutMs: 120000 });
 const raw = text => ({ choices: [{ message: { content: text } }] });
+
+for (const [task, calls, attempts, durationMs, maxTokens, responseBytes] of [
+  ["vision", 2, 2, 40000, 512, 262144],
+  ["sticker_vision", 2, 4, 60000, 512, 262144],
+  ["relationship_comment", 2, 4, 45000, 160, 131072],
+  ["sticker_select", 2, 4, 30000, 100, 131072],
+  ["profile", 2, 4, 20000, 100, 131072],
+  ["search_summary", 1, 2, 15000, 300, 131072],
+  ["diagnostic_replay", 2, 4, 90000, 1200, 262144],
+  ["connection_test", 1, 2, 15000, 24, 65536],
+]) {
+  test(task + " bounds logical calls, transport reservations and late output", () => {
+    let now = 0;
+    const budget = createModelTaskBudget(task, { now: () => now });
+    const prepared = budget.prepare(request(maxTokens));
+    assert.equal(prepared.timeoutMs, durationMs);
+    assert.equal(prepared.maxResponseBytes, responseBytes);
+    for (let i = 0; i < attempts; i++) assert.equal(prepared.beforeAttempt(), "");
+    assert.equal(prepared.beforeAttempt(), "task_budget");
+    for (let i = 1; i < calls; i++) budget.prepare(request(maxTokens));
+    assert.throws(() => budget.prepare(request(maxTokens)), /task_budget/);
+    now = durationMs;
+    assert.throws(budget.assertCurrent, /task_deadline/);
+    assert.equal(prepared.beforeAttempt(), "task_deadline");
+  });
+}
 
 test("summary task reservations bound both slots and all physical attempts", () => {
   const budget = createModelTaskBudget("group_summary", { now: () => 0 });
@@ -31,6 +58,17 @@ test("task input and output limits reject rather than mutate or truncate evidenc
   assert.equal(budget.snapshot().calls, 0);
   assert.throws(() => budget.prepare(request(4097)), /task_output_budget/);
   assert.throws(() => createModelTaskBudget("admin_command"), /unsupported_model_task_budget/);
+});
+
+test("prepared runtime facts remain inside the input limit and attempt reservation", () => {
+  const budget = createModelTaskBudget("search_summary", { now: () => 0 });
+  const prepared = budget.prepare(request(300));
+  const messages = [{ role: "system", content: "runtime facts" }, ...prepared.messages];
+  prepared.validatePrepared({ ...prepared, messages });
+  assert.equal(prepared.beforeAttempt(), "");
+  assert.equal(budget.snapshot().requestedInputChars, 32);
+  assert.throws(() => prepared.validatePrepared({ ...prepared,
+    messages: [{ role: "user", content: "x".repeat(16001) }] }), /task_input_budget/);
 });
 
 test("both model slots share deadline and cancellation with shrinking time", () => {
@@ -60,6 +98,23 @@ test("task facade forwards attempt guards so rejected budgets make no network re
   }, { config });
   assert.equal(result.ok, false);
   assert.equal(calls, 0);
+});
+
+test("runtime self facts cannot push a limit-sized search prompt past its cap", async t => {
+  const config = createDefaultApiConfig();
+  config.providers.deepseek.auth = "none";
+  config.providers.deepseek.endpoint = "https://example.com/task-budget";
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => { calls++; throw new Error("must not fetch"); });
+  const budget = createModelTaskBudget("search_summary", { now: () => 0 });
+  const prepared = budget.prepare({ messages: [{ role: "system", content: "rules" },
+    { role: "user", content: "x".repeat(15995) }], maxTokens: 300,
+    selfContext: { surface: "group", userId: "123456", groupId: "234567" } });
+  const result = await callTaskApi("search_summary", "primary", prepared, { config });
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "task_input_budget");
+  assert.equal(calls, 0);
+  assert.equal(budget.snapshot().transportAttempts, 0);
 });
 
 test("daily summary discards late primary text and never starts fallback after task deadline", async () => {

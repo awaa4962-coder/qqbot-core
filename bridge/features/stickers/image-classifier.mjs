@@ -11,11 +11,12 @@ const KINDS = new Set(["sticker", "photo", "screenshot", "other", "unknown"]);
 
 export async function classifyStickerCandidate(image = {}, options = {}) {
   const privacyGuard = createStickerPrivacyGuard();
-  const ensureAllowed = () => { privacyGuard(); options.ensureAllowed?.(); };
+  const ensureAllowed = () => { privacyGuard(); options.signal?.throwIfAborted(); options.ensureAllowed?.(); };
   ensureAllowed();
   const buffer = Buffer.isBuffer(image.buffer) ? image.buffer : null;
   if (!buffer?.length) throw new Error("候选图片为空");
   const metadata = await sharp(buffer, { animated: true }).metadata();
+  ensureAllowed();
   const fingerprint = await perceptualImageHash(buffer);
   ensureAllowed();
   const md5 = crypto.createHash("md5").update(buffer).digest("hex");
@@ -35,20 +36,22 @@ export async function classifyStickerCandidate(image = {}, options = {}) {
   try {
     ensureAllowed();
     const classify = options.classify || (input => classifyWithVision(input, { ...options, ensureAllowed }));
-    const model = normalizeClassification(await classify({
+    const value = await classify({
       buffer,
       mimeType: image.mimeType,
       metadata,
-    }));
+    }, { signal: options.signal, assertCurrent: ensureAllowed });
     ensureAllowed();
+    const model = normalizeClassification(value);
     return {
       ...model,
       fingerprint,
       md5,
       metadata: publicMetadata(metadata),
     };
-  } catch {
-    privacyGuard();
+  } catch (error) {
+    ensureAllowed();
+    if (classificationCancelled(error)) throw error;
     return {
       ...heuristicClassification(metadata, buffer.length),
       fingerprint,
@@ -56,6 +59,11 @@ export async function classifyStickerCandidate(image = {}, options = {}) {
       metadata: publicMetadata(metadata),
     };
   }
+}
+
+function classificationCancelled(error) {
+  return error?.name === "AbortError" || error?.code === "STICKER_PRIVACY_CHANGED" || error?.code === "CHAT_CANCELLED" ||
+    (error?.code === "MODEL_TASK_BUDGET" && error.message === "task_cancelled");
 }
 
 export function normalizeClassification(value) {
@@ -104,6 +112,8 @@ async function classifyWithVision(image, options) {
     tools: [],
   };
   const result = await callVisionText(request, {
+    ...options,
+    signal: options.signal,
     assertCurrent: options.ensureAllowed,
     callSlot: (...args) => {
       options.ensureAllowed?.();

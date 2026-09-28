@@ -9,7 +9,7 @@ import { invalidateMemoryPrivacyGeneration } from "../bridge/memory-profile/gene
 describe("vision provider fallback", () => {
   it("discards late visual text and does not try another provider after privacy changes", async () => {
     let calls = 0;
-    const result = await withChatRun({ surface: "private", userId: 601 }, () => callVisionText({}, {
+    const result = await withChatRun({ surface: "private", userId: 601 }, () => callVisionText({ maxTokens: 512 }, {
       callSlot: async () => {
         calls++;
         invalidateMemoryPrivacyGeneration();
@@ -22,7 +22,7 @@ describe("vision provider fallback", () => {
   });
   it("uses fallback when primary returns reasoning without usable content", async () => {
     const calls = [];
-    const result = await callVisionText({}, {
+    const result = await callVisionText({ maxTokens: 512 }, {
       callSlot: async (_task, position) => {
         calls.push(position);
         if (position === "primary") {
@@ -47,7 +47,7 @@ describe("vision provider fallback", () => {
   });
 
   it("returns no text when both vision slots are unusable", async () => {
-    const result = await callVisionText({}, {
+    const result = await callVisionText({ maxTokens: 512 }, {
       callSlot: async (_task, position) => ({
         ok: position === "primary",
         provider: position,

@@ -25,11 +25,12 @@ export async function analyzePendingStickers(options = {}) {
 }
 
 export async function analyzeStickerEntry(entry, options = {}) {
-  const check = options.privacyGuard || createStickerPrivacyGuard();
+  const privacyGuard = options.privacyGuard || createStickerPrivacyGuard();
+  const check = () => { privacyGuard(); options.signal?.throwIfAborted(); options.assertCurrent?.(); };
   check();
   const download = options.download
-    ? () => options.download(entry.url)
-    : () => downloadStickerEntry(entry);
+    ? () => options.download(entry.url, { signal: options.signal, assertCurrent: check })
+    : () => downloadStickerEntry(entry, { ...options, assertCurrent: check });
   const describe = options.describe || describeStickerWithVision;
   const data = await download();
   check();
@@ -51,7 +52,7 @@ export async function analyzeStickerEntry(entry, options = {}) {
     buffer: data.buffer,
     mimeType: data.mimeType,
     url: entry.url,
-  }, { assertCurrent: check });
+  }, { ...options, assertCurrent: check });
   check();
   const normalized = normalizeAnalysis(modelResult);
   if (!normalized.description) throw new Error("视觉模型没有返回可用描述");
@@ -98,6 +99,7 @@ export function inferStickerTags(text) {
 
 async function runPendingAnalysis(options) {
   const privacyGuard = createStickerPrivacyGuard();
+  const check = () => { privacyGuard(); options.signal?.throwIfAborted(); options.assertCurrent?.(); };
   const entries = listPendingStickerAnalysis({
     limit: options.limit || 6,
     now: options.now,
@@ -105,31 +107,59 @@ async function runPendingAnalysis(options) {
   let analyzed = 0;
   let reused = 0;
   let failed = 0;
-  for (const entry of entries) {
-    try {
-      privacyGuard();
-      const result = await analyzeStickerEntry(entry, { ...options, privacyGuard });
-      privacyGuard();
-      applyStickerAnalysis(entry.id, result, { now: options.now });
-      if (result.reused) reused++;
-      else analyzed++;
-    } catch (error) {
-      if (error.code === "STICKER_PRIVACY_CHANGED") return { ok: false, error: "资料已更新，旧表情分析已停止", requested: entries.length, analyzed, reused, failed, cancelled: true, reason: "privacy_changed" };
-      failed++;
-      markStickerAnalysisFailure(entry.id, error, { now: options.now });
-      logE("sticker analysis failed:", entry.id, error.message);
+  try {
+    check();
+    for (const entry of entries) {
+      try {
+        check();
+        const result = await analyzeStickerEntry(entry, { ...options, privacyGuard });
+        check();
+        applyStickerAnalysis(entry.id, result, { now: options.now });
+        check();
+        if (result.reused) reused++;
+        else analyzed++;
+      } catch (error) {
+        check();
+        if (analysisCancellation(error, options.signal)) throw error;
+        failed++;
+        markStickerAnalysisFailure(entry.id, error, { now: options.now });
+        logE("sticker analysis failed:", entry.id, error.message);
+      }
     }
+    check();
+  } catch (error) {
+    const cancelled = analysisCancellation(error, options.signal);
+    if (!cancelled) throw error;
+    return { ...cancelled, requested: entries.length, analyzed, reused, failed };
   }
   if (entries.length) log("sticker analysis batch:", analyzed, "analyzed,", reused, "reused,", failed, "failed");
   return { requested: entries.length, analyzed, reused, failed };
 }
 
-async function downloadStickerEntry(entry) {
+function analysisCancellation(error, signal) {
+  if (error?.code === "STICKER_PRIVACY_CHANGED") {
+    return { ok: false, error: "资料已更新，旧表情分析已停止", cancelled: true, reason: "privacy_changed" };
+  }
+  if (signal?.aborted || error?.name === "AbortError" || error?.code === "CHAT_CANCELLED" ||
+      (error?.code === "MODEL_TASK_BUDGET" && error.message === "task_cancelled")) {
+    return { ok: false, error: "表情分析已取消", cancelled: true, reason: "task_cancelled" };
+  }
+  return null;
+}
+
+async function downloadStickerEntry(entry, options) {
+  options.assertCurrent();
   const preview = await loadStickerPreview(entry.id, {
     timeoutMs: 12000,
     maxBytes: MAX_IMAGE_BYTES,
-    fetchImage: fetchSafeBuffer,
+    fetchImage: async (url, downloadOptions) => {
+      options.assertCurrent();
+      const data = await (options.fetchImage || fetchSafeBuffer)(url, { ...downloadOptions, signal: options.signal });
+      options.assertCurrent();
+      return data;
+    },
   });
+  options.assertCurrent();
   if (!preview.ok) throw new Error("表情图片下载失败或被安全策略拦截");
   return preview;
 }

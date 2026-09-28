@@ -202,33 +202,30 @@ export async function callTaskProviderResult(task, position, request = {}, optio
   return await callTaskApi(task, position, buildRawRequest(request), options);
 }
 
-export async function callRelationshipCommentPrimary(prompt) {
-  const raw = await callTaskRawProvider(MODEL_TASKS.RELATIONSHIP_COMMENT, "primary", {
+export function buildRelationshipCommentRequest(prompt, position = "primary") {
+  return {
     task: MODEL_TASKS.RELATIONSHIP_COMMENT,
     systemPrompt: "你是夜星的关系短评生成器。只输出一段中文短评，不要解释。",
     promptMetadata: { promptVersion: "relationship-comment-v1" },
     messages: [{ role: "user", content: prompt }],
     maxTokens: 160,
-    options: { allowTools: false, thinking: { type: "disabled" } },
-  });
+    ...(position === "fallback" ? { temperature: 0.5, timeoutMs: 15000 }
+      : { options: { allowTools: false, thinking: { type: "disabled" } } }),
+  };
+}
+
+export async function callRelationshipCommentPrimary(prompt, request = buildRelationshipCommentRequest(prompt)) {
+  const raw = await callTaskRawProvider(MODEL_TASKS.RELATIONSHIP_COMMENT, "primary", request);
   return parseMiMoResponse(raw) || "";
 }
 
-export async function callRelationshipCommentFallback(prompt) {
-  const raw = await callTaskRawProvider(MODEL_TASKS.RELATIONSHIP_COMMENT, "fallback", {
-    task: MODEL_TASKS.RELATIONSHIP_COMMENT,
-    systemPrompt: "你是夜星的关系短评生成器。只输出一段中文短评，不要解释。",
-    promptMetadata: { promptVersion: "relationship-comment-v1" },
-    messages: [{ role: "user", content: prompt }],
-    maxTokens: 160,
-    temperature: 0.5,
-    timeoutMs: 15000,
-  });
+export async function callRelationshipCommentFallback(prompt, request = buildRelationshipCommentRequest(prompt, "fallback")) {
+  const raw = await callTaskRawProvider(MODEL_TASKS.RELATIONSHIP_COMMENT, "fallback", request);
   return parseRawText(raw, MODEL_PROVIDERS.FALLBACK);
 }
 
-export async function callStickerSelection(prompt, position = "primary") {
-  const result = await callTaskApi(MODEL_TASKS.STICKER_SELECT, position, buildRawRequest({
+export function buildStickerSelectionRequest(prompt) {
+  return {
     systemPrompt: [
       "你是聊天表情选择器，只能从候选中选择一张真正符合当前语境的图片。",
       "没有可靠匹配时必须选择 null。只输出严格 JSON，不要解释。",
@@ -239,7 +236,11 @@ export async function callStickerSelection(prompt, position = "primary") {
     temperature: 0.2,
     timeoutMs: 15000,
     options: { allowTools: false, thinking: { type: "disabled" } },
-  }));
+  };
+}
+
+export async function callStickerSelection(prompt, position = "primary", request = buildStickerSelectionRequest(prompt)) {
+  const result = await callTaskApi(MODEL_TASKS.STICKER_SELECT, position, buildRawRequest(request));
   if (!result.ok) return "";
   return parseRawText(result.raw, result.provider);
 }
@@ -261,6 +262,7 @@ function buildRawRequest(request) {
     maxAttempts: request.maxAttempts,
     maxResponseBytes: request.maxResponseBytes,
     beforeAttempt: request.beforeAttempt,
+    validatePrepared: request.validatePrepared,
   };
 }
 

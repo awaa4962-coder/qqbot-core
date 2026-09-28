@@ -2,10 +2,12 @@
 import { CFG } from './config.mjs';
 import { log, logE } from './logger.mjs';
 import { callTaskApi } from './api-providers/gateway.mjs';
+import { createModelTaskBudget } from './api-providers/task-budget.mjs';
 import { buildOutputPacket } from './output-pipeline.mjs';
 import { CORE_IDENTITY, CONTEXT_SAFETY } from './system-prompts/identity.mjs';
 import { redactSensitiveText } from './privacy.mjs';
 import { assertChatRunCurrent, chatRunSignal } from './cognition/chat-run.mjs';
+import { getMemoryPrivacyGeneration } from './memory-profile/generation.mjs';
 
 // Tool definition
 export const MIMO_TOOLS = [
@@ -85,17 +87,28 @@ export async function bingSearch(query, options = {}) {
 }
 
 function searchSignal(timeoutMs, external) {
-  return AbortSignal.any([AbortSignal.timeout(timeoutMs), chatRunSignal(), external].filter(Boolean));
+  return globalThis.AbortSignal.any([globalThis.AbortSignal.timeout(timeoutMs), chatRunSignal(), external].filter(Boolean));
 }
 
 function assertSearchCurrent(options) { assertChatRunCurrent(); options.signal?.throwIfAborted(); }
 
-export async function buildSearchFallback(toolResults, toolResults2, userMsg, userName, selfContext) {
+export async function buildSearchFallback(toolResults, toolResults2, userMsg, userName, selfContext, options = {}) {
+  const privacyGeneration = getMemoryPrivacyGeneration();
+  const assertCurrent = () => {
+    assertSearchCurrent(options);
+    options.assertCurrent?.();
+    if (privacyGeneration !== getMemoryPrivacyGeneration()) {
+      throw Object.assign(new Error('privacy_changed'), { code: 'CHAT_MEMORY_CHANGED' });
+    }
+  };
+  assertCurrent();
   const allResults = (toolResults || []).concat(toolResults2 || []);
   const rawText = redactSensitiveText(allResults.map(t => typeof t.content === 'string' ? t.content : '').filter(c => c && c !== '未找到相关结果' && c !== '搜索功能未配置' && !c.startsWith('搜索暂时不可用')).join('\n\n'));
   if (!rawText.trim()) return '唔…好像没找到什么有用的结果呢，换个关键词试试叭～';
   try {
-    const result = await callTaskApi("search_summary", "primary", {
+    const budget = createModelTaskBudget("search_summary", { now: options.budgetClock,
+      signal: globalThis.AbortSignal.any([chatRunSignal(), options.signal].filter(Boolean)), assertCurrent });
+    const prepared = budget.prepare({
       messages: [
         { role: 'system', content: [CORE_IDENTITY, CONTEXT_SAFETY, '用2-3句话基于搜索结果回答用户，结果不足或不相关时明确说明。自然表达，不强加口癖或颜文字。'].join('\n') },
         { role: 'user', content: redactSensitiveText('用户' + (userName||'') + '问了：' + userMsg) + '\n\n搜索结果：\n' + rawText.slice(0, 3000) },
@@ -106,10 +119,17 @@ export async function buildSearchFallback(toolResults, toolResults2, userMsg, us
       timeoutMs: 15000,
       selfContext,
     });
+    let result;
+    try { result = await (options.callProvider || callTaskApi)("search_summary", "primary", prepared); }
+    finally { budget.assertCurrent(); }
     const packet = result.ok ? buildOutputPacket(result.raw, { provider: result.provider }) : null;
     const summary = packet?.ok ? packet.text : "";
     if (summary) return summary;
-  } catch (e) { logE('buildSearchFallback DS summary failed:', e.message); }
+  } catch (e) {
+    assertCurrent();
+    logE('buildSearchFallback DS summary failed:', e.message);
+  }
+  assertCurrent();
   const short = rawText.slice(0, 300).trim();
   return '夜星搜到了一些结果喵，大概是：' + short + (rawText.length > 300 ? '…' : '');
 }

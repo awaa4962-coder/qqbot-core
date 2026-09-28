@@ -120,6 +120,18 @@ if (!vm.SourceTextModule) {
     assert.doesNotMatch(h.text(), /undefined|NaN|token|工具调用/);
   });
 
+  for (const [reason, chinese] of [
+    ["task_budget", "模型任务达到调用上限"], ["task_deadline", "模型任务已超时"],
+    ["task_cancelled", "模型任务已取消"], ["task_input_budget", "模型任务输入超过上限"],
+    ["task_output_budget", "模型任务输出额度超过上限"],
+  ]) test("model task reason renders without raw code: " + reason, async () => {
+    const h = await harness([trace([{ stage: "model", status: "failed", reason, elapsedMs: 10 }], { status: "no_reply", reason })]);
+    assert.equal(h.element("traceDetail").children[2].textContent, chinese);
+    assert.equal(h.steps()[0].children[0].textContent, chinese);
+    assert.ok(h.steps()[0].textContent.startsWith("模型 · 失败 · +10 ms"));
+    assert.ok(!h.text().includes(reason));
+  });
+
   test("zero counts and standalone limits render without inventing missing values", async () => {
     const h = await harness([trace([
       { stage: "tool", status: "started", elapsedMs: 0, ...Object.fromEntries(COUNTERS.map(key => [key, 0])) },

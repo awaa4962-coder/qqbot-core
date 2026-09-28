@@ -19,6 +19,7 @@ const REASONS = new Set([
   "tool_model_round", "tool_completed", "tool_empty", "tool_denied", "tool_arguments", "tool_unavailable", "tool_reused", "tool_budget", "output_budget",
   "image_direct", "image_description", "image_cache", "image_unavailable", "image_payload",
   "context_history_pruned", "context_wire_selected",
+  "task_budget", "task_deadline", "task_cancelled", "task_input_budget", "task_output_budget",
 ]);
 const ROUTES = new Set(["group_at", "interjection", "private_chat", "private_file", "command", "jm", "resource-transfer", "link-preview", "wordcloud", "preview", "file"]);
 const SOURCE_KINDS = new Set(["quote", "thread", "memory", "group", "image", "note", "file"]);

@@ -129,10 +129,11 @@ async function runSync(options) {
       : await analyzePendingStickers({
         limit: options.analysisLimit || 4,
         ...(options.analyzerOptions || {}),
+        signal: globalThis.AbortSignal.any([options.signal, options.analyzerOptions?.signal].filter(Boolean)),
       });
     const result = {
       ok: analysis.cancelled !== true,
-      ...(analysis.cancelled ? { error: "收藏已读取，但旧表情分析因资料更新停止" } : {}),
+      ...(analysis.cancelled ? { error: cancelledAnalysisMessage(analysis) } : {}),
       items: remote.items.length,
       ...merged,
       analysis,
@@ -151,6 +152,10 @@ async function runSync(options) {
   } finally {
     status.syncing = false;
   }
+}
+
+function cancelledAnalysisMessage(analysis) {
+  return analysis.reason === "privacy_changed" ? "收藏已读取，但旧表情分析因资料更新停止" : "收藏已读取，但表情分析已取消";
 }
 
 async function runScheduledAnalysis() {
