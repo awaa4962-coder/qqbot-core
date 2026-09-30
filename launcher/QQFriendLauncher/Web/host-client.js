@@ -197,7 +197,10 @@
       if (entered && entered.trim()) {
         try { global.sessionStorage.setItem(TOKEN_KEY, entered.trim()); }
         catch { throw Object.assign(new Error("当前标签页无法保存管理令牌，请允许会话存储后重试。"), { status: 403 }); }
-        return apiRequest(path, options, false);
+        if (["GET", "HEAD"].includes((options.method || "GET").toUpperCase())) {
+          return apiRequest(path, options, false);
+        }
+        throw Object.assign(new Error("管理令牌已更新，请重新确认并提交操作；本次请求未自动重发。"), { status: 403 });
       }
     }
     if (!response.ok) {

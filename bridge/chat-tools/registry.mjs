@@ -40,13 +40,13 @@ export function registeredTool(name) {
 export function toolDefinition(name) { return registeredTool(name)?.definition; }
 export function isRegisteredToolName(name) { return Boolean(registeredTool(name)); }
 
-export function buildAgentToolSnapshot(cfg = {}) {
+export function buildAgentToolSnapshot(cfg = {}, compatibility = { status: "unknown" }) {
   const groups = (cfg.agentGroupWhitelist || []).filter(id => /^[1-9]\d{0,19}$/.test(String(id))).map(String);
   return {
     tools: CHAT_TOOL_REGISTRY.map(entry => ({ name: entry.definition.function.name, label: entry.label, mode: entry.mode,
       available: !entry.access.startsWith("agent_") || groups.length > 0, access: entry.access,
       timeoutMs: entry.timeoutMs, resultChars: entry.resultChars })),
     rollout: { groups, privateEnabled: false, mentionedOnly: true },
-    compatibility: { status: "unknown" },
+    compatibility,
   };
 }

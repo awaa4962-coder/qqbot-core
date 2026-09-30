@@ -4,6 +4,8 @@ import { beginAction, endAction, finishActivity, showActivity } from "./activity
 import { ACTION_LABELS } from "./metadata.js";
 import { taskPhaseLabel, taskResultError } from "./tasks.js";
 import { renderStickers, setStickerCatalogAvailability } from "../pages/stickers.js";
+import { capabilityReadFailed, renderCapabilities, setCapabilityNotice } from "../pages/capabilities.js";
+import { hasVerifiedNativeTools } from "../agent-tools.js";
 
 const ACTIONS = { sync: "syncStickers", analyze: "analyzeStickers", capabilities: "refreshStickerCapabilities", cleanup: "cleanupStickerTemp" };
 
@@ -18,6 +20,7 @@ async function handle({ type, task }) {
     $("memeStatus").textContent = "自动梗库已停用，旧任务不会恢复或回填归档。";
     return;
   }
+  if (task.module === "agent_tools") { await handleAgentTools(type, task); return; }
   if (task.module !== "stickers") return;
   const action = ACTIONS[task.action];
   if (!action) return;
@@ -49,4 +52,39 @@ async function handle({ type, task }) {
     endAction(action);
     setStickerCatalogAvailability();
   }
+}
+
+async function handleAgentTools(type, task) {
+  if (task.action !== "probe") return;
+  const action = "probeAgentTools";
+  if (type === "started") beginAction(action, null, true);
+  if (type === "started" || type === "progress") {
+    const uncertain = ["unknown", "pending"].includes(task.phase);
+    const terminal = ["done", "failed", "interrupted", "cancelled"].includes(task.phase);
+    const message = terminal ? "验证任务已结束，正在读取任务记录…" : taskPhaseLabel(task.phase);
+    setCapabilityNotice(message, uncertain ? "error" : "loading");
+    showActivity(uncertain ? "验证任务状态尚未确认" : terminal ? "正在读取工具验证任务" : ACTION_LABELS[action], uncertain ? "error" : "working", message);
+    return;
+  }
+  let refreshed = false;
+  try {
+    if (task.taskStateUnknown || task.phase === "unknown") {
+      const message = task.error || "验证任务结果尚未确认，请刷新任务状态，勿重复提交。";
+      setCapabilityNotice(message, "error");
+      finishActivity("验证任务结果尚未确认", "error", message);
+      return;
+    }
+    const problem = taskResultError(task) || (task.result?.ok === true ? "" : "验证任务结果尚未完整确认，请核对任务记录。");
+    const snapshot = await host.call("getCapabilities");
+    renderCapabilities(snapshot);
+    refreshed = true;
+    if (problem) throw new Error(problem);
+    if (!hasVerifiedNativeTools(snapshot.agentTools?.compatibility)) throw new Error("验证任务已结束，主备模型证据尚未完整确认，请查看能力状态。");
+    setCapabilityNotice("后台工具验证已确认完成，能力状态已刷新。", "ready");
+    finishActivity("后台工具验证已确认完成，能力状态已刷新");
+  } catch (error) {
+    if (refreshed) setCapabilityNotice(error.message, "error");
+    else capabilityReadFailed(error);
+    finishActivity(error.message, "error");
+  } finally { endAction(action); }
 }

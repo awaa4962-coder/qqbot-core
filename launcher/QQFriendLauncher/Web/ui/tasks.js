@@ -6,13 +6,15 @@ const blocked = new Map();
 const visibleTasks = new Map();
 const PENDING_KEY = "qqfriend-pending-tasks-v1";
 const SCOPES_KEY = "qqfriend-pending-task-scopes-v1";
+const MODULE_LABELS = { stickers: "表情", replay: "对话回放", agent_tools: "模型工具验证" };
 const SUPPORTED = {
   manageStickers: ["stickers", ["sync", "analyze", "capabilities", "cleanup"]],
   replayAction: ["replay", ["generate"]],
+  probeAgentTools: ["agent_tools", ["probe"]],
 };
 
 export function taskPhaseLabel(phase) {
-  return ({ unknown: "任务状态暂不可读，正在重试查询，请勿重复提交", queued: "等待执行", running: "正在处理", analyzing: "正在分析", overdue: "等待较久，任务仍在收尾，尚未确认停止，请勿重复提交", done: "任务已结束", failed: "任务失败", cancelled: "任务已取消，未完成这次操作", interrupted: "服务已重启，原任务中断，不会自动重做" })[phase] || "任务阶段未知，请刷新核实";
+  return ({ unknown: "任务状态尚未确认，请刷新核实，勿重复提交", pending: "任务结果待确认，请刷新核实，勿重复提交", queued: "等待执行", running: "正在处理", analyzing: "正在分析", overdue: "等待较久，任务仍在收尾，尚未确认停止，请勿重复提交", done: "任务已结束", failed: "任务失败", cancelled: "任务已取消，未完成这次操作", interrupted: "服务已重启，原任务中断，不会自动重做" })[phase] || "任务阶段未知，请刷新核实";
 }
 
 export function managedTaskIsBlocked(module) { return blocked.has(module); }
@@ -53,7 +55,9 @@ function renderManagedTasks() {
   body.replaceChildren();
   for (const task of [...visibleTasks.values()].reverse()) {
     const row = body.insertRow();
-    const values = [task.module === "replay" ? "对话回放" : "表情", task.id || "提交结果未知", task.error || (TERMINAL.has(task.phase) ? taskResultError(task) || "操作已确认完成" : taskPhaseLabel(task.phase))];
+    const label = Object.hasOwn(MODULE_LABELS, task.module) ? MODULE_LABELS[task.module] : "未知模块";
+    const done = task.module === "agent_tools" ? "验证任务已结束，请查看主备模型证据" : "操作已确认完成";
+    const values = [label, task.id || "提交结果未知", task.error || (TERMINAL.has(task.phase) ? taskResultError(task) || done : taskPhaseLabel(task.phase))];
     values.forEach((value, index) => { const cell = row.insertCell(); cell.textContent = value; cell.dataset.label = ["模块", "任务编号", "真实状态"][index]; });
   }
   if (!visibleTasks.size) { const cell = body.insertRow().insertCell(); cell.colSpan = 3; cell.textContent = "暂无后台任务"; }
@@ -69,7 +73,7 @@ export function initializeManagedTaskPanel() {
   try {
     const saved = JSON.parse(window.sessionStorage.getItem(SCOPES_KEY) || "[]");
     if (Array.isArray(saved)) for (const task of saved) {
-      if (task && ["stickers", "replay"].includes(task.module)) block({ ...task, phase: "unknown" });
+      if (task && Object.hasOwn(MODULE_LABELS, task.module)) block({ ...task, phase: "unknown" });
     }
   } catch { /* A later server snapshot is authoritative. */ }
 }
@@ -120,16 +124,20 @@ function watch(jobId, onProgress) {
       const previous = visibleTasks.get(jobId) || {};
       if (task.id && task.id !== jobId) throw new Error("任务响应编号不符，请刷新核实。");
       if (typeof task.phase !== "string" || !task.phase) throw new Error("任务响应不完整，请刷新核实。");
-      recordTask({ ...previous, ...task, id: jobId });
+      recordTask({ ...previous, ...task, id: jobId, error: task.error || "" });
       onProgress?.(task);
     },
-    onReadError: () => onProgress?.({ id: jobId, phase: "unknown" }),
+    onReadError: () => {
+      const previous = visibleTasks.get(jobId);
+      if (previous) recordTask({ ...previous, phase: "unknown", error: taskPhaseLabel("unknown") });
+      onProgress?.({ id: jobId, phase: "unknown" });
+    },
   })
     .then(task => {
       remember(jobId, false);
       for (const [module, pending] of blocked) if (pending.id === jobId) blocked.delete(module);
       persistScopes();
-      return task;
+      return visibleTasks.get(jobId) || task;
     })
     .catch(cause => {
       const task = visibleTasks.get(jobId) || { id: jobId };
@@ -162,7 +170,7 @@ export async function callManagedAction(action, payload, options = {}) {
   options.onStarted?.(started.jobId);
   const task = await watch(started.jobId, options.onProgress);
   const problem = taskResultError(task);
-  if (problem) throw new Error(problem);
+  if (problem) throw Object.assign(new Error(problem), { taskTerminal: true });
   return task.result;
 }
 
@@ -177,7 +185,7 @@ export async function resumeManagedTasks() {
   let snapshot;
   try {
     snapshot = await host.call("getTasks");
-    if (!Array.isArray(snapshot?.tasks) || snapshot.tasks.some(task => !task || typeof task.id !== "string" || typeof task.phase !== "string")) throw new Error("任务目录响应不完整");
+    if (!Array.isArray(snapshot?.tasks) || snapshot.tasks.some(task => !task || typeof task.id !== "string" || !task.id || typeof task.phase !== "string" || !task.phase || typeof task.module !== "string" || !task.module)) throw new Error("任务目录响应不完整");
   } catch (error) {
     taskNotice(`任务读取失败：${error.message}；以下状态未更新，勿重复提交。`, true);
     throw error;
@@ -185,26 +193,41 @@ export async function resumeManagedTasks() {
     panel?.setAttribute?.("aria-busy", "false");
     if (button) button.disabled = false;
   }
+  const tasks = snapshot.tasks.filter(task => Object.hasOwn(MODULE_LABELS, task.module));
   visibleTasks.clear();
-  for (const task of snapshot.tasks.filter(item => ["stickers", "replay"].includes(item.module))) recordTask(task);
+  for (const task of tasks) recordTask(task);
   let unknownSubmission = false;
+  let unresolvedProbe = false;
   for (const [module, pending] of blocked) {
-    const active = snapshot.tasks.find(task => task.module === module && !TERMINAL.has(task.phase));
+    const active = tasks.find(task => task.module === module && !TERMINAL.has(task.phase) &&
+      (module !== "agent_tools" || !pending.id || task.id === pending.id));
     if (active) block(active);
     else {
+      // Absence from a bounded history does not resolve an uncertain paid submission.
+      const completed = tasks.find(task => task.module === module && task.id === pending.id && TERMINAL.has(task.phase));
+      if (module === "agent_tools" && !completed) {
+        block({ ...pending, phase: "unknown", error: "验证任务记录尚未确认，请刷新核实，勿重复提交。" });
+        unresolvedProbe = true;
+        continue;
+      }
       blocked.delete(module);
       if (!pending.id) unknownSubmission = true;
     }
   }
   persistScopes();
   renderManagedTasks();
-  if (unknownSubmission) taskNotice("暂无仍在运行的同类任务；先前提交结果无法确认，请核对对应页面。", true);
-  else if (snapshot.tasks.length) taskNotice(`${snapshot.tasks.length} 条任务记录；刷新只查询状态，不重做任务。`);
+  if (unresolvedProbe) taskNotice("验证任务结果仍未确认；未知范围继续阻止重复提交，请核对任务记录。", true);
+  else if (unknownSubmission) taskNotice("暂无仍在运行的同类任务；先前提交结果无法确认，请核对对应页面。", true);
+  else if (tasks.length) taskNotice(`${tasks.length} 条任务记录；刷新只查询状态，不重做任务。`);
   else taskNotice("暂无后台任务");
   const present = new Set(snapshot.tasks.map(task => task.id));
   for (const task of snapshot.tasks) if (task.module === "memes") remember(task.id, false);
-  for (const id of known) if (!present.has(id)) remember(id, false);
-  for (const task of snapshot.tasks.filter(item => item.module !== "memes" && (!TERMINAL.has(item.phase) || known.has(item.id)))) {
+  for (const id of known) if (!present.has(id) && ![...blocked.values()].some(task => task.id === id)) remember(id, false);
+  // Refresh proof for the latest completed probe without replaying historical work.
+  const latestProbe = blocked.has("agent_tools") ? null : tasks.filter(task => task.module === "agent_tools").at(-1);
+  for (const task of tasks.filter(item => !TERMINAL.has(item.phase) || known.has(item.id) || item.id === latestProbe?.id)) {
+    const pending = blocked.get(task.module);
+    if (task.module === "agent_tools" && pending && pending.id !== task.id) continue;
     if (watched.has(task.id)) continue;
     remember(task.id, true);
     if (!TERMINAL.has(task.phase)) block(task);

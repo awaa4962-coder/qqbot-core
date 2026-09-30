@@ -91,7 +91,7 @@ async function appendTools(context, message) {
   return true;
 }
 
-function assistantToolMessage(message, provider) {
+export function assistantToolMessage(message, provider) {
   const continuation = ["openai-responses", "anthropic-messages"].includes(provider.protocol) && message.providerContinuation?.protocol === provider.protocol;
   return { role: "assistant", content: typeof message.content === "string" ? message.content : null,
     tool_calls: message.tool_calls,

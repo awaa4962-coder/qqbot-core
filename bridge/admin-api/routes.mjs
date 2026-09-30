@@ -31,6 +31,7 @@ import { buildMemoryManagerSnapshot, applyMemoryManagerAction } from "./memory-m
 import { getApiUsageSnapshot } from "../api-providers/usage-metrics.mjs";
 import { buildAgentToolSnapshot } from "../chat-tools/registry.mjs";
 import { CHAT_TOOL_LIMITS } from "../chat-tools/policy.mjs";
+import { buildNativeToolCompatibilitySnapshot } from "../chat-tools/compatibility.mjs";
 
 const GET_ROUTES = new Map([
   ["/admin/status", handleStatusRoute],
@@ -156,7 +157,7 @@ function handleCapabilitiesRoute(_req, res, context) {
     surface: "console",
     moduleStates: buildModuleCatalog().modules,
   });
-  context.sendJson(res, 200, { ...catalog, agentTools: { ...buildAgentToolSnapshot(CFG), limits: CHAT_TOOL_LIMITS } }, 2);
+  context.sendJson(res, 200, { ...catalog, agentTools: { ...buildAgentToolSnapshot(CFG, buildNativeToolCompatibilitySnapshot()), limits: CHAT_TOOL_LIMITS } }, 2);
 }
 
 function handleModulesRoute(_req, res, context) {

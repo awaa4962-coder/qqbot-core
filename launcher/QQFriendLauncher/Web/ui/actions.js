@@ -12,11 +12,51 @@ import { $, setOutput, splitList } from "./dom.js";
 import { ACTION_DONE, ACTION_LABELS, STICKER_ACTIONS } from "./metadata.js";
 import { host, uiState } from "./state.js";
 import { callManagedAction, managedTaskIsBlocked, resumeManagedTasks, taskPhaseLabel } from "./tasks.js";
+import { hasVerifiedNativeTools } from "../agent-tools.js";
+
+async function runAgentToolsProbe(silent) {
+  let terminalError;
+  try {
+    await callManagedAction("probeAgentTools", { action: "probe" }, {
+      onProgress: task => {
+        setCapabilityNotice(taskPhaseLabel(task.phase), "loading");
+        showActivity(ACTION_LABELS.probeAgentTools, "working", taskPhaseLabel(task.phase));
+      },
+    });
+  } catch (error) {
+    if (!error.taskTerminal || error.taskStateUnknown) throw error;
+    terminalError = error;
+  }
+  let snapshot;
+  try {
+    snapshot = await host.call("getCapabilities");
+    renderCapabilities(snapshot);
+  } catch (error) {
+    throw Object.assign(error, { nativeProofReadFailed: true });
+  }
+  if (terminalError || !hasVerifiedNativeTools(snapshot.agentTools?.compatibility)) {
+    throw terminalError || new Error("工具验证尚未完整通过，请查看主备模型状态。");
+  }
+  setCapabilityNotice("当前主备模型工具验证已完成。", "ready");
+  if (!silent) toast(ACTION_DONE.probeAgentTools, "success");
+}
 
 export function validateAction(action) {
   if (RETIRED_MEME_ACTIONS.has(action)) {
     toast("自动梗库已停用，旧词条只读保留。", "error");
     return false;
+  }
+  if (action === "probeAgentTools") {
+    const compatibility = uiState.capabilitySnapshot.agentTools?.compatibility;
+    if (host.mode !== "browser" || compatibility?.provenance !== "live" || compatibility?.probeAllowed !== true) {
+      setCapabilityNotice("当前不能发起工具验证，请刷新能力状态核实。", "error");
+      return false;
+    }
+    if (managedTaskIsBlocked("agent_tools")) {
+      setCapabilityNotice("已有验证任务结果未确认，请刷新任务状态，勿重复提交。", "error");
+      return false;
+    }
+    return window.confirm("将用合成数据验证当前主备模型，最多4次模型请求，不发送QQ消息、不修改模型配置。继续吗？");
   }
   if (action === "refreshConfig" && uiState.configDirty) {
     return window.confirm("当前配置有未保存修改。确定重新读取并放弃这些修改吗？");
@@ -145,6 +185,7 @@ export async function runAction(action, button = null, options = {}) {
   let failure = null;
 
   if (action === "refreshCapabilities") setCapabilityNotice("正在读取能力目录…", "loading");
+  if (action === "probeAgentTools") setCapabilityNotice("正在提交工具验证请求，结果尚未确认…", "loading");
   if (actionGroup(action) === "api-providers") {
     setApiNotice(ACTION_LABELS[action] || "正在处理…", "loading");
     syncApiControls();
@@ -182,6 +223,10 @@ export async function runAction(action, button = null, options = {}) {
     if (action === "refreshCapabilities") {
       renderCapabilities(await host.call("getCapabilities"));
       if (!silent) toast("能力状态已刷新", "success");
+      return;
+    }
+    if (action === "probeAgentTools") {
+      await runAgentToolsProbe(silent);
       return;
     }
     if (action === "refreshApiProviders") {
@@ -354,6 +399,11 @@ export async function runAction(action, button = null, options = {}) {
 
 export function showActionError(action, error) {
   const message = error.message || String(error);
+  if (action === "probeAgentTools") {
+    if (error.nativeProofReadFailed || [401, 403].includes(error.status)) capabilityReadFailed(error);
+    else setCapabilityNotice(message, "error");
+    return;
+  }
   if (error.taskStateUnknown) {
     const group = actionGroup(action);
     setOutput(group === "memes" ? "memeStatus" : group === "stickers" ? "stickerStatus" : operationOutputId(action), message, true);

@@ -4,11 +4,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.40-final-integration";
-export const VERSION_NAME = "final-integration";
+export const VERSION = "1.4.41-native-tool-proof";
+export const VERSION_NAME = "native-tool-proof";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
+  "管理员可明确验证当前主备原生工具往返，最多4次合成模型请求；模拟证据与真实证据分开，不在每次聊天中付费探测。",
+  "工具验证区分部分通过、失败和未确认；后台任务刷新恢复状态，重新认证不会自动重发付费或写入请求。",
+  "损坏记忆不再当作空库覆盖，保存或停止失败如实报错；发送接口报告真实回执，长文本不会切断Unicode字符。",
   "有限工具第一阶段候选：新增计算与本轮公开原文读取，只对白名单群主动@开放，默认关闭；不执行系统操作或自动写入。",
   "图片解读区分画面字面、已提供的原话和结论，只把有明确来源的意图归给发言人；新规则先单群试运行，实际质量仍按样例验收。",
   "控制台补齐加载、空数据、失败和版本冲突反馈，刷新不把未保存的草稿当作已保存。",
@@ -19,6 +22,9 @@ export const VERSION_NOTES_ZH = Object.freeze([
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
+  "Explicit admin diagnostics test both configured native-tool slots with at most four synthetic requests. QA and live proof are separate; ordinary chats never trigger paid probes.",
+  "Tool verification distinguishes partial, failed and unknown outcomes. Task recovery preserves uncertainty, and renewed authentication never automatically replays a write or paid action.",
+  "Corrupt memory is never replaced by empty state. Save and drain failures remain failures; reply receipts are accurate and long-text splitting preserves Unicode characters.",
   "Limited-tool phase-one candidate adds bounded calculation and current-turn public excerpts. New tools default off and require a direct mention in an allowed group; no system operations or automatic writes.",
   "Image interpretation separates visible content, supplied statements and conclusions, attributing intent only to explicit sources. New rules start in one group and require quality acceptance.",
   "The console distinguishes loading, empty data, failed actions and conflicts; refresh never pretends an unsaved draft was saved.",

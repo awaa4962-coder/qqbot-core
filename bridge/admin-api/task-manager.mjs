@@ -4,24 +4,26 @@ import { createTaskRunner } from "../tasks/runner.mjs";
 import { MEME_RETIRED_MESSAGE } from "../knowledge/memes/archive.mjs";
 import { applyStickerManagerAction } from "./sticker-manager.mjs";
 import { replayService } from "../diagnostics/replay.mjs";
+import { probeNativeChatTools } from "../chat-tools/native-probe.mjs";
 
 const ALLOWED = Object.freeze({
   stickers: ["sync", "analyze", "capabilities", "cleanup"],
   replay: ["generate"],
+  agent_tools: ["probe"],
 });
 
 export function createAdminTaskManager(options = {}) {
   const tasks = createTaskRunner({ filename: options.filename || path.join(CFG.dataRoot, ".qqfriend", "tasks", "admin.json"),
     maxConcurrent: 2, historyLimit: 20 });
   const handlers = options.handlers || { stickers: applyStickerManagerAction,
-    replay: (payload, runtime) => replayService.act(payload, runtime) };
+    replay: (payload, runtime) => replayService.act(payload, runtime), agent_tools: probeNativeChatTools };
 
   function start(input = {}) {
     const module = String(input.module || "");
     if (module === "memes") throw new Error(MEME_RETIRED_MESSAGE);
     const payload = normalizePayload(module, input.payload);
     return tasks.start({
-      scope: module, meta: { module }, action: payload.action, timeoutMs: options.timeoutMs,
+      scope: module, meta: { module }, action: payload.action, timeoutMs: module === "agent_tools" ? 90000 : options.timeoutMs,
       run: async ({ progress, signal }) => {
         progress("running");
         const result = await handlers[module](payload, { signal, onProgress: progress });
@@ -38,6 +40,10 @@ function normalizePayload(module, value) {
   const input = value && typeof value === "object" ? value : {};
   const action = String(input.action || "");
   if (!Object.hasOwn(ALLOWED, module) || !ALLOWED[module].includes(action)) throw new Error("不支持的后台任务");
+  if (module === "agent_tools") {
+    if (Object.keys(input).some(key => key !== "action")) throw new Error("工具验证参数无效");
+    return { action };
+  }
   if (module === "replay") return { action, caseId: String(input.caseId || "").slice(0, 80) };
   return batchPayload(input, action);
 }

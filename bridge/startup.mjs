@@ -6,6 +6,7 @@ import { CFG } from "./config.mjs";
 import { log, logE, cleanupLogger, getStormStatus } from "./logger.mjs";
 import { stopChatRuns } from "./cognition/chat-run.mjs";
 import { chatWorkScheduler } from "./cognition/chat-work.mjs";
+import { classifyOutboundDelivery } from "./cognition/outcome.mjs";
 import { users, groupChats, flushSavesSync, persistLoadedStorageRepairs } from "./storage.mjs";
 import { persistLoadedProfileRepairs } from "./memory-profile/store.mjs";
 import { sendMsg, getImages, getFiles, getReplyData } from "./napcat.mjs";
@@ -109,8 +110,12 @@ async function handleReply(req, res) {
       sendJson(res, 400, { error: 'group_id and message required' });
       return;
     }
-    const result = await sendMsg(group_id, message, reply_to);
-    sendJson(res, 200, { status: 'sent', result: result });
+    let result;
+    try { result = await sendMsg(group_id, message, reply_to); }
+    catch { sendJson(res, 502, { status: 'unknown', result: null }); return; }
+    const status = classifyOutboundDelivery(result);
+    const statusCode = status === 'sent' ? 200 : status === 'cancelled' ? 409 : 502;
+    sendJson(res, statusCode, { status, result });
   } catch (e) {
     sendRequestError(req, res, e);
   }
@@ -243,26 +248,46 @@ wss.on('connection', function(ws) {
 // ── Start ──
 // 进程退出前强制存档
 function flushRuntimeState() {
-  dailySummaryCatchUp.stop();
-  runtimeMaintenance.stop();
-  shutdownStickerSystem();
-  flushSavesSync();
-  flushMemoryProfilesSync();
-  cleanupLogger();
+  let complete = true;
+  const steps = [
+    ['summary stop', () => dailySummaryCatchUp.stop()],
+    ['maintenance stop', () => runtimeMaintenance.stop()],
+    ['stickers save', shutdownStickerSystem],
+    ['storage save', flushSavesSync],
+    ['profiles save', flushMemoryProfilesSync],
+    ['logger cleanup', cleanupLogger],
+  ];
+  for (const [label, run] of steps) {
+    try {
+      if (run() !== false) continue;
+    } catch { /* A failed store must not prevent the remaining saves. */ }
+    complete = false;
+    logE('shutdown state incomplete:', label);
+  }
+  if (!complete) process.exitCode = 1;
+  return complete;
 }
 
 let shuttingDown = false;
 async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
-  stopChatRuns();
-  log('shutdown requested:', signal);
-  const workDrain = chatWorkScheduler.stop({ drainMs: 10000 });
-  await oneBotLink.stop({ drainMs: 10000 });
-  await workDrain;
-  await new Promise(resolve => server.close(resolve));
-  flushRuntimeState();
-  process.exit(0);
+  let drained = false;
+  try {
+    stopChatRuns();
+    log('shutdown requested:', signal);
+    const drainResults = await Promise.allSettled([
+      Promise.resolve().then(() => oneBotLink.stop({ drainMs: 10000 })),
+      Promise.resolve().then(() => chatWorkScheduler.stop({ drainMs: 10000 })),
+    ]);
+    await new Promise(resolve => server.close(resolve));
+    drained = drainResults.every(result => result.status === 'fulfilled' && result.value !== false);
+    if (!drained) logE('shutdown drain incomplete');
+  } catch { logE('shutdown drain incomplete'); }
+  finally {
+    const saved = flushRuntimeState();
+    process.exit(drained && saved ? 0 : 1);
+  }
 }
 
 process.on('SIGINT', () => { shutdown('SIGINT').catch(() => process.exit(1)); });

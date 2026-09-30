@@ -179,6 +179,84 @@ if (!vm.SourceTextModule) {
     assert.equal(h.calls.filter(call => call.action === "startTask").length, 1);
   });
 
+  test("native-tool verification asks once, retains task scope, and never marks partial evidence successful", async () => {
+    const h = consoleHarness();
+    const [actions, state, tasks] = await h.imports(["ui/actions.js", "ui/state.js", "ui/tasks.js"]);
+    const data = uiFixtureData();
+    data.capabilities.agentTools.compatibility.probeAllowed = true;
+    data.capabilities.agentTools.compatibility.provenance = "live";
+    state.uiState.capabilitySnapshot = data.capabilities;
+    h.confirmationAnswers.push(false);
+    await actions.runAction("probeAgentTools");
+    assert.equal(h.calls.length, 0);
+    const id = "00000000-0000-0000-0000-000000000041";
+    h.setReply(action => action === "startTask" ? { jobId: id } : action === "getTasks"
+      ? { task: { id, module: "agent_tools", phase: "done", resultAvailable: true, result: { ok: true } } }
+      : data.capabilities);
+    await actions.runAction("probeAgentTools");
+    assert.equal(h.calls.filter(call => call.action === "startTask").length, 1);
+    assert.deepEqual(JSON.parse(JSON.stringify(h.calls[0].payload)), { module: "agent_tools", payload: { action: "probe" } });
+    assert.match(h.get("capabilityNotice").textContent, /未完整通过/);
+    assert.equal(h.get("activityBar").classes.has("success"), false);
+    assert.equal(tasks.managedTaskIsBlocked("agent_tools"), false);
+    assert.equal(h.confirmations.length, 2);
+  });
+
+  test("uncertain native-probe submission cannot be repeated or confused with a failed model", async () => {
+    const h = consoleHarness(); const [actions, state] = await h.imports(["ui/actions.js", "ui/state.js"]);
+    const data = uiFixtureData(); data.capabilities.agentTools.compatibility.probeAllowed = true;
+    data.capabilities.agentTools.compatibility.provenance = "live";
+    state.uiState.capabilitySnapshot = data.capabilities;
+    h.setReply(() => { throw failure(); });
+    await actions.runAction("probeAgentTools");
+    assert.match(h.get("capabilityNotice").textContent, /结果尚未确认/);
+    assert.equal(h.get("capabilityPanel").attributes["aria-busy"], "false");
+    await actions.runAction("probeAgentTools");
+    assert.equal(h.calls.filter(call => call.action === "startTask").length, 1);
+    assert.match(h.get("capabilityNotice").textContent, /勿重复提交/);
+    assert.equal(h.get("activityBar").classes.has("success"), false);
+  });
+
+  test("known failed native-probe task refreshes partial proof without claiming a read failure", async () => {
+    const h = consoleHarness(); const [actions, state] = await h.imports(["ui/actions.js", "ui/state.js"]);
+    const data = uiFixtureData(); data.capabilities.agentTools.compatibility.probeAllowed = true;
+    data.capabilities.agentTools.compatibility.provenance = "live";
+    state.uiState.capabilitySnapshot = data.capabilities;
+    const id = "00000000-0000-0000-0000-000000000042";
+    const partial = { ...data.capabilities, agentTools: { ...data.capabilities.agentTools,
+      compatibility: { ...data.capabilities.agentTools.compatibility, status: "partial" } } };
+    h.setReply(action => action === "startTask" ? { jobId: id } : action === "getTasks"
+      ? { task: { id, module: "agent_tools", phase: "failed", error: "验证未完整通过", resultAvailable: true, result: { ok: false } } }
+      : partial);
+    await actions.runAction("probeAgentTools");
+    assert.equal(h.calls.filter(call => call.action === "getCapabilities").length, 1);
+    assert.equal(state.uiState.capabilitySnapshot.agentTools.compatibility.status, "partial");
+    assert.equal(state.uiState.capabilitiesLoaded, true);
+    assert.match(h.get("capabilityNotice").textContent, /未完整通过/);
+    assert.doesNotMatch(h.get("capabilityNotice").textContent, /读取失败/);
+    assert.equal(h.get("activityBar").classes.has("success"), false);
+  });
+
+  test("native-probe success must match the exact proof rendered, not just aggregate status", async () => {
+    for (const overrides of [{ model: "x".repeat(81) }, { expiresAt: 1 }, { provenance: "qa" }]) {
+      const h = consoleHarness(); const [actions, state] = await h.imports(["ui/actions.js", "ui/state.js"]);
+      const data = uiFixtureData(); data.capabilities.agentTools.compatibility.probeAllowed = true;
+      data.capabilities.agentTools.compatibility.provenance = "live";
+      state.uiState.capabilitySnapshot = data.capabilities;
+      const now = Date.now();
+      const compatibility = { status: "verified", provenance: overrides.provenance || "live", probeAllowed: false,
+        slots: ["primary", "fallback"].map(position => ({ position, status: "verified", model: "synthetic-model",
+          checkedAt: now - 1000, expiresAt: now + 60000, ...overrides })) };
+      const id = "00000000-0000-0000-0000-000000000043";
+      h.setReply(action => action === "startTask" ? { jobId: id } : action === "getTasks"
+        ? { task: { id, module: "agent_tools", phase: "done", resultAvailable: true, result: { ok: true } } }
+        : { ...data.capabilities, agentTools: { ...data.capabilities.agentTools, compatibility } });
+      await actions.runAction("probeAgentTools");
+      assert.equal(h.get("activityBar").classes.has("success"), false);
+      assert.match(h.get("capabilityNotice").textContent, /未完整通过/);
+    }
+  });
+
   for (const outcome of ["failed", "cancelled", "expired", "nested-false", "nested-cancelled"]) {
     test("managed task " + outcome + " is not an operation success", async () => {
       const h = consoleHarness(); const [tasks] = await h.imports(["ui/tasks.js"]);

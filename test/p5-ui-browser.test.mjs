@@ -35,6 +35,7 @@ async function screen(t, page, name) {
   const original = page.viewportSize();
   for (const width of name.startsWith("ready-") ? [original.width] : UI_WIDTHS) {
     await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
+    await page.evaluate(() => new Promise(resolve => globalThis.requestAnimationFrame(() => globalThis.requestAnimationFrame(resolve))));
     await assertFits(page, width);
     const filename = name.startsWith("ready-") ? name : name.replace(/-\d+$/, "") + "-" + width;
     await page.screenshot({ path: path.join(output, `${filename}.png`), fullPage: true, animations: "disabled" });
@@ -68,6 +69,56 @@ async function assertFits(page, width) {
   assert.deepEqual(problems, [], `${width}px active-view overflow`);
 }
 function assertClean(mock) { assert.deepEqual(mock.errors, [], "rendered JS errors"); assert.deepEqual(mock.unexpected, [], "all network traffic must remain mocked"); }
+
+function nativeProof(status = "verified") {
+  const now = Date.now();
+  return { status, provenance: "live", probeAllowed: false, requestLimit: 4,
+    slots: ["primary", "fallback"].map(position => ({ position, model: "synthetic-model", checkedAt: now - 1000,
+      expiresAt: now + 60000, status: status === "partial" && position === "fallback" ? "failed" : "verified",
+      reason: status === "partial" && position === "fallback" ? "transport_unavailable" : "" })) };
+}
+
+for (const width of UI_WIDTHS) {
+  test(`rendered ${width}px native-tool verification and accurate partial failure`, optional, async t => {
+    const { page, mock } = await setup(t, width);
+    mock.data.capabilities.agentTools.compatibility = { status: "unknown", provenance: "live", probeAllowed: true };
+    await view(page, "capabilities"); await waitText(page, "#capabilityNotice", "已刷新");
+    await assertFits(page, width);
+    mock.data.capabilities.agentTools.compatibility = nativeProof();
+    await page.locator('[data-action="probeAgentTools"]').click();
+    await waitText(page, "#capabilityNotice", "工具验证已完成");
+    assert.equal(mock.calls.filter(call => call.method === "POST" && call.path === "/admin/tasks").length, 1);
+    await assertFits(page, width); await screen(t, page, `native-verified-${width}`);
+    mock.data.capabilities.agentTools.compatibility = { status: "unknown", provenance: "live", probeAllowed: true };
+    await page.locator('[data-action="refreshCapabilities"]').click();
+    await waitText(page, "#capabilityNotice", "已刷新");
+    mock.setJobMode("result-false");
+    mock.data.capabilities.agentTools.compatibility = nativeProof("partial");
+    await page.locator('[data-action="probeAgentTools"]').click();
+    await waitText(page, "#capabilityNotice", "synthetic operation failure");
+    assert.equal(await page.locator("#capabilityPanel").getAttribute("aria-busy"), "false");
+    assert.match(await page.locator("#agentToolsPanel").textContent(), /部分验证/);
+    assert.doesNotMatch(await page.locator("#capabilityNotice").textContent(), /能力读取失败/);
+    assert.equal(await page.locator("#activityBar").evaluate(node => node.classList.contains("success")), false);
+    await assertFits(page, width); await screen(t, page, `native-partial-${width}`); assertClean(mock);
+  });
+}
+
+test("rendered unknown paid submission remains nonbusy and blocked across reload without rePOST", optional, async t => {
+  const { page, mock } = await setup(t);
+  mock.data.capabilities.agentTools.compatibility = { status: "unknown", provenance: "live", probeAllowed: true };
+  await view(page, "capabilities"); await waitText(page, "#capabilityNotice", "已刷新");
+  mock.setFault("POST", "/admin/tasks", { abort: true });
+  await page.locator('[data-action="probeAgentTools"]').click();
+  await waitText(page, "#capabilityNotice", "结果尚未确认");
+  assert.equal(await page.locator("#capabilityPanel").getAttribute("aria-busy"), "false");
+  await page.reload(); await waitText(page, "#lastUpdated", "刷新");
+  await view(page, "capabilities"); await waitText(page, "#capabilityNotice", "已刷新");
+  await page.locator('[data-action="probeAgentTools"]').click();
+  await waitText(page, "#capabilityNotice", "勿重复提交");
+  assert.equal(mock.calls.filter(call => call.method === "POST" && call.path === "/admin/tasks").length, 1);
+  await screen(t, page, "native-unknown-390"); assertClean(mock);
+});
 
 for (const width of UI_WIDTHS) {
   test(`P5 rendered ${width}px ready/empty full-console layout`, optional, async t => {

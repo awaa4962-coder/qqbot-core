@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import { CFG } from './config.mjs';
 import { logE } from './logger.mjs';
-import { createJsonSaver } from './persistence/json-file.mjs';
+import { createJsonSaver, readJsonFile } from './persistence/json-file.mjs';
 import { redactSensitiveText } from './privacy.mjs';
 import { redactMemoryTextFields } from './memory-profile/privacy.mjs';
 import { normalizeSourceMessageIds } from './memory-profile/source-exclusions.mjs';
@@ -13,21 +13,35 @@ export let groupChats = {};
 let _usersNeedTimestampRepair = false;
 let _groupChatsNeedTimestampRepair = false;
 
-try {
-  const raw = fs.readFileSync(CFG.memoryFile, 'utf-8');
-  users = JSON.parse(raw);
-  if (!users || typeof users !== 'object' || Array.isArray(users)) users = {};
-  _usersNeedTimestampRepair = repairUserTimestamps(users);
-  _usersNeedTimestampRepair = redactMemoryTextFields(users) || _usersNeedTimestampRepair;
-} catch { users = {}; }
+// Validate both stores before scheduling any repair or allowing runtime writes.
+users = loadStorage(CFG.memoryFile, 'user_memory');
+groupChats = loadStorage(CFG.chatLogFile, 'group_chats');
+_usersNeedTimestampRepair = repairUserTimestamps(users);
+_usersNeedTimestampRepair = redactMemoryTextFields(users) || _usersNeedTimestampRepair;
+_groupChatsNeedTimestampRepair = repairGroupChatTimestamps(groupChats);
+_groupChatsNeedTimestampRepair = redactMemoryTextFields(groupChats) || _groupChatsNeedTimestampRepair;
 
-try {
-  const raw = fs.readFileSync(CFG.chatLogFile, 'utf-8');
-  groupChats = JSON.parse(raw);
-  if (!groupChats || typeof groupChats !== 'object' || Array.isArray(groupChats)) groupChats = {};
-  _groupChatsNeedTimestampRepair = repairGroupChatTimestamps(groupChats);
-  _groupChatsNeedTimestampRepair = redactMemoryTextFields(groupChats) || _groupChatsNeedTimestampRepair;
-} catch { groupChats = {}; }
+function loadStorage(filename, label) {
+  let parsed;
+  try {
+    try { fs.lstatSync(filename); }
+    catch (error) {
+      if (error.code === 'ENOENT') return {};
+      throw error;
+    }
+    // Once the path exists, the helper's ENOENT fallback is a failed read, not first boot.
+    const missing = Symbol('storage_read_missing');
+    parsed = readJsonFile(filename, missing, { maxBytes: 64 * 1024 * 1024 });
+    if (parsed === missing) throw new Error('Storage disappeared during read');
+  } catch (error) {
+    const reason = error instanceof SyntaxError ? 'invalid_json' : 'read_failed';
+    throw new Error('Storage initialization failed: ' + label + ' (' + reason + ')');
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Storage initialization failed: ' + label + ' (invalid_root)');
+  }
+  return parsed;
+}
 
 // ── 防抖存档（v17: 异步批量，避免每条消息都同步写盘）──
 const SAVE_DEBOUNCE_MS = 5000;

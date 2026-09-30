@@ -43,7 +43,14 @@ export function splitLongText(text, maxLen = DEFAULT_MAX_LEN) {
   const chunks = [];
 
   while (rest.length > limit) {
-    const cut = findSplitIndex(rest, limit);
+    let cut = Math.trunc(findSplitIndex(rest, limit));
+    const before = rest.charCodeAt(cut - 1);
+    const after = rest.charCodeAt(cut);
+    if (before >= 0xD800 && before <= 0xDBFF && after >= 0xDC00 && after <= 0xDFFF) {
+      // A whole code point is the minimum semantic unit at maxLen=1.
+      // Otherwise retreat within the cap without splitting a surrogate pair.
+      cut = cut === 1 ? 2 : cut - 1;
+    }
     const chunk = rest.slice(0, cut).trim();
     if (chunk) chunks.push(chunk);
     rest = rest.slice(cut).trim();
