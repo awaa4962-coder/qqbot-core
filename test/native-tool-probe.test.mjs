@@ -69,6 +69,33 @@ test("actual configured modes are preserved and each native slot gets one tool/c
   }
 });
 
+test("real gateway serialization preserves both tool declarations and the configured thinking mode", async t => {
+  const f = fixture(); const wire = [];
+  t.mock.method(globalThis, "fetch", async (_url, options) => {
+    const body = JSON.parse(options.body);
+    wire.push(body);
+    const raw = response(body.messages.some(item => item.role === "tool") ? { content: "56" } : tool()).raw;
+    return { ok: true, status: 200, json: async () => raw };
+  });
+  const result = await probeNativeChatTools({ action: "probe" }, f);
+  assert.equal(result.ok, true);
+  assert.equal(result.provenance, "qa");
+  assert.equal(result.attempts, 4);
+  assert.equal(wire.length, 4);
+  for (const index of [0, 2]) {
+    assert.equal(wire[index].tools.length, 5);
+    assert.equal(wire[index].tool_choice, "auto");
+    assert.equal(wire[index].thinking.type, "enabled");
+    assert.equal(wire[index].messages[0].role, "system");
+  }
+  for (const index of [1, 3]) {
+    assert.equal(wire[index].tools, undefined);
+    assert.equal(wire[index].thinking.type, "enabled");
+    assert.match(JSON.stringify(wire[index].messages), /PRIVATE_REASONING/);
+  }
+  assert.doesNotMatch(JSON.stringify(result), /PRIVATE_REASONING/);
+});
+
 test("repeated admin actions reuse quota/result and never issue another paid attempt", async () => {
   const f = fixture(); const calls = [];
   const runtime = { ...f, callProvider: mockProvider(calls) };
