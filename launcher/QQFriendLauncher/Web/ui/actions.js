@@ -2,10 +2,10 @@ import { apiProviderPayload, apiRoutesPayload, apiReadFailed, canDiscardApiDraft
 import { capabilityReadFailed, renderCapabilities, setCapabilityNotice } from "../pages/capabilities.js";
 import { configPayload, configReadFailed, renderConfig, renderConfigEditor, syncConfigControls } from "../pages/configuration.js";
 import { diagnosePayload, formatDiagnoseResult, renderDiagnoseSummary } from "../pages/diagnose-message.js";
-import { renderLogs } from "../pages/logs.js";
+import { logsReadFailed, renderLogs, setLogsLoading } from "../pages/logs.js";
 import { renderMemes, RETIRED_MEME_ACTIONS } from "../pages/memes.js";
 import { markStatusStale, renderSnapshot, renderStoppedStatus } from "../pages/overview.js";
-import { renderStickerSimulation, renderStickers, setStickerCatalogAvailability, stickerEntryPayload, stickerSettingsPayload, stickerSimulationPayload } from "../pages/stickers.js";
+import { canDiscardStickerDrafts, canWriteStickers, renderStickerSimulation, renderStickers, stickerReadFailed, stickerRemovalPayload, syncStickerControls, stickerEntryPayload, stickerSettingsPayload, stickerSimulationPayload, validStickerSettings } from "../pages/stickers.js";
 import { actionGroup, beginAction, endAction, finishActivity, showActivity, toast } from "./activity.js";
 import { applyBackground } from "./appearance.js";
 import { $, setOutput, splitList } from "./dom.js";
@@ -85,6 +85,10 @@ export function validateAction(action) {
   }
   if (["syncStickers", "analyzeStickers", "refreshStickerCapabilities", "cleanupStickerTemp"].includes(action) && managedTaskIsBlocked("stickers")) {
     $("stickerStatus").textContent = "已有表情任务仍在运行或结果未确认，请刷新后台任务核实，勿重复提交。";
+    return false;
+  }
+  if (host.mode === "browser" && STICKER_ACTIONS.includes(action) && !canWriteStickers(action)) {
+    $("stickerStatus").textContent = "表情状态尚未确认，请先重新读取目录。";
     return false;
   }
   if (action === "stopBridge") {
@@ -167,12 +171,18 @@ export function configureRuntimeUi() {
     button.disabled = true;
     button.title = "Windows 桌面版专用入口";
   });
+  document.querySelectorAll('[data-action="openLogs"]').forEach(button => {
+    button.textContent = "查看日志";
+    button.dataset.view = "logs";
+    button.removeAttribute("data-action");
+  });
   const saveButton = document.querySelector('[data-action="saveConfig"]');
   if (saveButton) saveButton.textContent = "保存配置";
 }
 
 export async function runAction(action, button = null, options = {}) {
   const silent = options.silent === true;
+  if (action === "refreshStickers" && !silent && !canDiscardStickerDrafts()) return;
   if (action === "newApiProvider") {
     startNewApiProvider();
     return;
@@ -183,6 +193,8 @@ export async function runAction(action, button = null, options = {}) {
   }
   if (!validateAction(action) || !beginAction(action, button, silent)) return;
   let failure = null;
+  let cancelled = false;
+  if (actionGroup(action) === "stickers") syncStickerControls();
 
   if (action === "refreshCapabilities") setCapabilityNotice("正在读取能力目录…", "loading");
   if (action === "probeAgentTools") setCapabilityNotice("正在提交工具验证请求，结果尚未确认…", "loading");
@@ -195,7 +207,7 @@ export async function runAction(action, button = null, options = {}) {
     $("configStatus").dataset.state = "loading";
     syncConfigControls();
   }
-  if (action === "refreshLogs") setOutput("logsOutput", "正在读取日志…", true);
+  if (action === "refreshLogs") setLogsLoading();
 
   if (action === "diagnose") {
     setOutput("diagnoseOutput", "正在检查消息格式、白名单、@目标和命令路由...", true);
@@ -215,7 +227,7 @@ export async function runAction(action, button = null, options = {}) {
     if (action === "refreshManagedTasks") { await resumeManagedTasks(); return; }
     if (action === "refreshStickers") {
       const snapshot = await host.call("getStickers");
-      renderStickers(snapshot);
+      renderStickers(snapshot, { force: !silent });
       if (snapshot.available === false) throw new Error("表情目录暂不可读，原文件已保留");
       if (!silent) toast(ACTION_DONE[action], "success");
       return;
@@ -250,7 +262,7 @@ export async function runAction(action, button = null, options = {}) {
     if (action === "refreshStickerCapabilities") payload = { action: "capabilities" };
     if (action === "cleanupStickerTemp") payload = { action: "cleanup" };
     if (action === "removeCapturedSticker") {
-      payload = { action: "remove", id: $("stickerId").value };
+      payload = stickerRemovalPayload();
     }
     if (action === "saveSticker") payload = stickerEntryPayload();
     if (action === "simulateSticker") payload = stickerSimulationPayload();
@@ -271,8 +283,9 @@ export async function runAction(action, button = null, options = {}) {
     }
     if (action === "chooseBackgroundImage") {
       const background = await host.call("chooseBackgroundImage");
-      if (!background.uri) {
-        toast("未选择图片", "error");
+      if (background.cancelled || !background.uri) {
+        cancelled = true;
+        toast("已取消选择，背景未更改。", "error");
         return;
       }
       applyBackground(background);
@@ -299,11 +312,17 @@ export async function runAction(action, button = null, options = {}) {
     if (host.mode === "browser" && (action === "saveConfig" || apiActions.includes(action) && action !== "testApiProvider") && result?.ok !== true) {
       throw Object.assign(new Error("操作响应不完整，结果未确认；请刷新核实，勿重复提交。"), { responseInvalid: true });
     }
+    assertStickerMutationResult(action, result, payload);
+    assertBrowserOperationResult(action, result);
 
     if (action === "refresh") {
       renderSnapshot(result);
-      await resumeManagedTasks();
-      if (Object.keys(result.errors || {}).length) throw Object.assign(new Error("运行状态已更新；配置或日志未能刷新，请查看对应页面。"), { partialRefresh: true });
+      let tasksFailed = false;
+      try { await resumeManagedTasks(); } catch { tasksFailed = true; }
+      if (Object.keys(result.errors || {}).length || tasksFailed) {
+        throw Object.assign(new Error(tasksFailed ? "运行状态已更新；后台任务未能刷新，请查看任务页。"
+          : "运行状态已更新；配置或日志未能刷新，请查看对应页面。"), { partialRefresh: true });
+      }
     } else if (STICKER_ACTIONS.includes(action)) {
       if (action === "simulateSticker") {
         renderStickerSimulation(result);
@@ -312,6 +331,8 @@ export async function runAction(action, button = null, options = {}) {
         const snapshot = result.snapshot || await host.call("getStickers");
         renderStickers(snapshot, {
           selectId: uiState.selectedStickerId,
+          confirmed: action === "saveSticker" || action === "removeCapturedSticker" ? "entry"
+            : ["saveStickerSettings", "setStickerMode", "setStickerCaptureMode"].includes(action) ? "settings" : undefined,
         });
         if (snapshot.available === false) throw new Error("表情目录暂不可读，原文件已保留");
         const operation = result.result || {};
@@ -374,7 +395,9 @@ export async function runAction(action, button = null, options = {}) {
       renderDiagnoseSummary(formatted.summary);
       setOutput("diagnoseRaw", formatted.raw, true);
     } else if (["createBackup", "openLogs", "stopBridge", "stopAll"].includes(action)) {
-      setOutput(operationOutputId(action), formatOperationResult(result), true);
+      setOutput(operationOutputId(action), action === "createBackup" && host.mode === "browser"
+        ? `备份已创建\n名称：${result.name}\n文件：${result.included.length} 份\n类型：非密钥资料`
+        : formatOperationResult(result), true);
       if (action === "stopBridge" || action === "stopAll") {
         renderStoppedStatus(result.generatedAt);
       }
@@ -389,10 +412,10 @@ export async function runAction(action, button = null, options = {}) {
     endAction(action);
     if (actionGroup(action) === "config") syncConfigControls();
     if (actionGroup(action) === "api-providers") syncApiControls();
-    if (actionGroup(action) === "stickers") setStickerCatalogAvailability();
+    if (actionGroup(action) === "stickers") syncStickerControls();
     if (!silent) finishActivity(
-      failure?.taskStateUnknown ? "任务结果尚未确认" : failure?.partialRefresh ? "部分刷新未完成" : failure ? `${ACTION_LABELS[action] || "操作"}失败` : ACTION_DONE[action] || "操作完成",
-      failure ? "error" : "success", failure?.taskStateUnknown || failure?.partialRefresh ? failure.message : undefined,
+      cancelled ? "已取消，未更改背景" : failure?.taskStateUnknown ? "任务结果尚未确认" : failure?.partialRefresh ? "部分刷新未完成" : failure ? `${ACTION_LABELS[action] || "操作"}失败` : ACTION_DONE[action] || "操作完成",
+      failure || cancelled ? "error" : "success", failure?.taskStateUnknown || failure?.partialRefresh ? failure.message : undefined,
     );
   }
 }
@@ -447,16 +470,75 @@ export function showActionError(action, error) {
     return;
   }
   if (actionGroup(action) === "stickers") {
+    if (action === "refreshStickers" || [401, 403, 409].includes(error.status) || error.transportFailure || error.responseInvalid || error.status >= 500) stickerReadFailed(error);
     $("stickerStatus").textContent = `操作失败：${message}`;
     return;
   }
   if (action === "refreshCapabilities") { capabilityReadFailed(error); return; }
   if (action === "refreshLogs") {
-    uiState.logsLoaded = false;
-    setOutput("logsOutput", `日志读取失败：${message}；请刷新重试。`, true);
+    logsReadFailed(error);
     return;
   }
   setOutput(operationOutputId(action), `操作失败：${message}`, true);
+}
+
+function assertStickerMutationResult(action, result, payload) {
+  if (host.mode !== "browser") return;
+  const settings = ["saveStickerSettings", "setStickerMode", "setStickerCaptureMode"].includes(action);
+  const entry = action === "saveSticker";
+  const removal = action === "removeCapturedSticker";
+  if (!settings && !entry && !removal) return;
+  const snapshot = result?.snapshot;
+  const matchingEntry = Array.isArray(snapshot?.entries) ? snapshot.entries.find(item => item?.id === payload.id) : null;
+  const requested = settings ? normalizedStickerSettingsRequest(payload.settings) : entry ? normalizedStickerEntryRequest(payload.patch) : null;
+  const confirmed = settings ? validStickerSettings(result?.settings) && snapshot?.settings &&
+    Object.keys(requested).every(key => JSON.stringify(result.settings[key]) === JSON.stringify(requested[key]) &&
+      JSON.stringify(result.settings[key]) === JSON.stringify(snapshot.settings[key]))
+    : entry ? validEditableSticker(result?.entry) && result.entry.id === payload.id && matchingEntry &&
+      Object.keys(requested).every(key => JSON.stringify(result.entry[key]) === JSON.stringify(requested[key]) &&
+        JSON.stringify(result.entry[key]) === JSON.stringify(matchingEntry[key]))
+      : result?.removed?.id === payload.id && result?.cloud?.ok === true && !matchingEntry;
+  if (!confirmed || !Array.isArray(snapshot?.entries) || snapshot.available === false) {
+    throw Object.assign(new Error("表情写入响应不完整，结果未确认；草稿已保留，请刷新核实，勿重复提交。"), { responseInvalid: true });
+  }
+}
+
+function validEditableSticker(entry) {
+  return typeof entry?.id === "string" && entry.id !== "" && typeof entry.description === "string" && typeof entry.enabled === "boolean" &&
+    Array.isArray(entry.tags) && entry.tags.every(tag => typeof tag === "string") && Array.isArray(entry.allowedGroups);
+}
+
+function normalizedStickerGroups(values) {
+  return [...new Set(values.map(Number).filter(value => Number.isSafeInteger(value) && value > 0))];
+}
+
+function normalizedStickerSettingsRequest(settings) {
+  const value = { ...settings, allowedGroups: normalizedStickerGroups(settings.allowedGroups) };
+  const limits = [["chance", 0, 1], ["strongChance", 0, 1], ["captureMinConfidence", 0, 1],
+    ["cooldownMs", 0, 86400000], ["captureDailyLimit", 0, 200], ["captureCatalogLimit", 1, 2000], ["captureMinDistinctSenders", 1, 20]];
+  for (const [key, min, max] of limits) {
+    const number = Math.max(min, Math.min(max, value[key]));
+    value[key] = max === 1 ? number : Math.round(number);
+  }
+  return value;
+}
+
+function normalizedStickerEntryRequest(patch) {
+  const clean = value => [...String(value)].map(character => character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127 ? " " : character).join("").trim();
+  const tags = values => [...new Set(values.map(tag => clean(tag).slice(0, 20)).filter(Boolean))].slice(0, 8);
+  // The store caps the edit first, then the public record performs its text projection.
+  return { description: clean(String(patch.description).trim().slice(0, 240)).slice(0, 240), enabled: patch.enabled !== false,
+    tags: tags(tags(patch.tags)),
+    allowedGroups: normalizedStickerGroups(patch.allowedGroups) };
+}
+
+function assertBrowserOperationResult(action, result) {
+  if (host.mode !== "browser") return;
+  const confirmed = action === "createBackup" ? result?.schemaVersion === 1 && result?.mode === "safe-non-secret" &&
+    typeof result.name === "string" && result.name !== "" && Number.isFinite(Date.parse(result.createdAt)) &&
+    Array.isArray(result.included) && result.included.every(file => typeof file === "string")
+    : action !== "health" || typeof result?.health?.status === "string" && typeof result?.snapshot?.status?.status === "string";
+  if (!confirmed) throw Object.assign(new Error("操作响应不完整，结果未确认；请刷新核实，勿重复提交。"), { responseInvalid: true });
 }
 
 export function formatOperationResult(result) {

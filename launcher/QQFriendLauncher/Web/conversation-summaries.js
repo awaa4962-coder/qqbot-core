@@ -10,9 +10,13 @@ if (host.mode === "browser") {
   panel.hidden = false;
   const finished = task => ["done", "failed", "interrupted", "cancelled"].includes(task.phase);
   const time = value => new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
+  const validTime = value => Number.isSafeInteger(value) && value >= 0 && value < 8640000000000000;
+  const validTask = task => task && typeof task.id === "string" && task.id.length > 0 && task.id.length <= 80 &&
+    typeof task.phase === "string" && task.phase.length > 0 && task.phase.length <= 40 && /^\d{1,20}$/.test(String(task.groupId || "")) &&
+    Number.isSafeInteger(task.targetCount) && task.targetCount > 0 && [task.startedAt, task.from, task.to].every(validTime) && task.from <= task.to;
 
   function render(snapshot) {
-    if (!Array.isArray(snapshot?.tasks) || snapshot.tasks.some(task => !task || typeof task.phase !== "string")) throw new Error("成员总结任务响应不完整，请刷新核实。");
+    if (!Array.isArray(snapshot?.tasks) || snapshot.tasks.some(task => !validTask(task))) throw new Error("成员总结任务响应不完整，请刷新核实。");
     const body = document.getElementById("conversationSummaryRows");
     body.replaceChildren();
     for (const task of [...snapshot.tasks].reverse()) {
@@ -38,7 +42,11 @@ if (host.mode === "browser") {
         onReadError: () => { notice.textContent = "任务状态暂不可读，正在重试；现有记录未更新。"; notice.dataset.error = "true"; },
       });
       notice.dataset.error = "false";
-    } catch (error) { notice.textContent = error.message || "读取任务失败"; notice.dataset.error = "true"; }
+    } catch (error) {
+      const body = document.getElementById("conversationSummaryRows");
+      body.replaceChildren(); const cell = body.insertRow().insertCell(); cell.colSpan = 4; cell.textContent = "成员总结任务尚未读取，请刷新核实。";
+      notice.textContent = error.message || "读取任务失败"; notice.dataset.error = "true";
+    }
     finally { polling = false; button.disabled = false; panel.setAttribute("aria-busy", "false"); }
   }
   button.addEventListener("click", refresh);

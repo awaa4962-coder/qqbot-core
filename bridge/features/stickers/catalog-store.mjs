@@ -476,7 +476,12 @@ function persistCatalog(options = {}) {
   catalogDirty = true;
   store.revision = Math.max(1, Number(store.revision || 0) + 1);
   store.updatedAt = new Date().toISOString();
-  writeJsonFileSync(catalogPath, store, { spacing: 2, durable: options.durable === true });
+  try { writeJsonFileSync(catalogPath, store, { spacing: 2, durable: options.durable === true }); }
+  catch (error) {
+    // The cache may include a write that never reached disk; it is not an authoritative snapshot.
+    catalogReadReliable = false;
+    throw error;
+  }
   catalogDirty = false;
 }
 

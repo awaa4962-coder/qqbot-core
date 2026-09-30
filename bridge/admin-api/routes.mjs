@@ -250,9 +250,9 @@ async function handleStickersSaveRoute(req, res, context) {
   const { sendJson } = context;
   try {
     const payload = await readJsonRequestBody(req);
-    sendJson(res, 200, await applyStickerManagerAction(payload), 2);
+    sendJson(res, 200, await applyStickerManagerAction(payload, { requireExpected: true }), 2);
   } catch (error) {
-    sendJson(res, 400, { error: error.message });
+    sendJson(res, [409, 503].includes(error.statusCode) ? error.statusCode : 400, { error: error.message });
   }
 }
 

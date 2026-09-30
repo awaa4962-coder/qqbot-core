@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
+import { Buffer } from "node:buffer";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, URL } from "node:url";
+import { isDeepStrictEqual } from "node:util";
+import sharp from "sharp";
+import { normalizeStickerSettings, normalizeStickerTags, normalizeNumberList } from "../bridge/features/stickers/schema.mjs";
+
+const previewPixels = Buffer.alloc(32 * 32 * 3);
+for (let index = 0; index < 32 * 32; index++) {
+  const light = (Math.floor(index / 32 / 8) + Math.floor(index % 32 / 8)) % 2;
+  previewPixels.set(light ? [245, 245, 245] : [30, 100, 160], index * 3);
+}
+export const UI_PREVIEW_PNG = await sharp(previewPixels, { raw: { width: 32, height: 32, channels: 3 } }).png().toBuffer();
 
 export const UI_WIDTHS = [320, 390, 1440];
 export const UI_ORIGIN = "http://p5-ui.test";
@@ -74,7 +85,11 @@ export function uiFixtureData() {
     traces: { items: [{ id: "trace-1", scope: "group", groupId: "2000000001", userId: "1000000002", messageId: "message-1", at: AT, route: "group_at", status: "unknown", durationMs: 42,
       stages: [{ stage: "send", status: "failed", reason: "send_unknown", elapsedMs: 42 }] }], total: 1, capacity: 100, retentionHours: 24 },
     deliveries: { health: "ready", items: [{ id: "delivery-1", createdAt: AT, surface: "group", status: "unknown", confirmed: 1, uncertain: 1, active: false }], total: 1, stored: 1, capacity: 100, retentionHours: 24 },
-    conversation: { tasks: [] }, stickers: { available: true, entries: [], settings: {}, counts: { total: 0, sendable: 0, candidates: 0 }, stats: {}, sync: {} },
+    conversation: { tasks: [] }, stickers: { available: true, entries: [], settings: {
+      mode: "steady", groupEnabled: true, privateEnabled: true, chance: 0.1, strongChance: 0.25, cooldownMs: 300000,
+      allowedGroups: [2000000001], captureMode: "observe", captureDailyLimit: 20, captureCatalogLimit: 300,
+      captureMinConfidence: 0.82, captureMinDistinctSenders: 2,
+    }, counts: { total: 0, sendable: 0, candidates: 0 }, stats: {}, sync: {} },
     logs: { current: { lines: ["[INFO] synthetic UI fixture"] } }, memes: { available: true, entries: [], count: 0 },
   };
 }
@@ -114,6 +129,10 @@ export async function installMockConsole(page) {
     }
     const respond = async (value, status = 200) => route.fulfill({ status, json: clone(value) });
     if (url.pathname === "/health") { await respond({ status: "ok", uptime: 123 }); return; }
+    if (url.pathname === "/admin/stickers/image") {
+      await route.fulfill({ status: 200, contentType: "image/png", body: UI_PREVIEW_PNG });
+      return;
+    }
     if (url.pathname === "/admin/tasks") {
       if (request.method() === "POST") {
         const id = `00000000-0000-0000-0000-${String(sequence++).padStart(12, "0")}`;
@@ -131,6 +150,32 @@ export async function installMockConsole(page) {
       if (payload.revision !== data.config.revision) { await respond({ error: "synthetic config conflict" }, 409); return; }
       data.config.editable = { ...data.config.editable, ...payload.editable }; data.config.revision = "d".repeat(64); data.config.pendingRestart = true;
       await respond({ ok: true, message: "配置已保存", revision: data.config.revision }); return;
+    }
+    if (request.method() === "POST" && url.pathname === "/admin/stickers") {
+      const entry = data.stickers.entries.find(item => item.id === payload.id);
+      const current = payload.action === "settings" ? data.stickers.settings : entry && {
+        id: entry.id, description: entry.description, tags: entry.tags, allowedGroups: entry.allowedGroups, enabled: entry.enabled,
+      };
+      if (["settings", "update", "remove"].includes(payload.action) && !isDeepStrictEqual(payload.expected, current)) {
+        await respond({ error: "synthetic sticker value conflict" }, 409); return;
+      }
+      if (payload.action === "settings") {
+        data.stickers.settings = normalizeStickerSettings(payload.settings, data.stickers.settings);
+        await respond({ settings: data.stickers.settings, snapshot: data.stickers }); return;
+      }
+      if (payload.action === "update") {
+        Object.assign(entry, payload.patch, { description: String(payload.patch.description).trim().slice(0, 240),
+          tags: normalizeStickerTags(payload.patch.tags), allowedGroups: normalizeNumberList(payload.patch.allowedGroups) });
+        await respond({ entry, snapshot: data.stickers }); return;
+      }
+      if (payload.action === "remove") {
+        data.stickers.entries = data.stickers.entries.filter(item => item.id !== payload.id);
+        await respond({ removed: entry, cloud: { ok: true, skipped: true }, snapshot: data.stickers }); return;
+      }
+      await respond({ result: { action: "skip", reason: "synthetic no match" }, snapshot: data.stickers }); return;
+    }
+    if (request.method() === "POST" && url.pathname === "/admin/backups") {
+      await respond({ schemaVersion: 1, mode: "safe-non-secret", name: "safe-synthetic", createdAt: new Date(AT).toISOString(), included: ["package.json"] }); return;
     }
     if (request.method() === "POST" && url.pathname === "/admin/api-providers") {
       if (payload.action === "test-provider") { await respond({ ok: true, durationMs: 10, output: "OK" }); return; }

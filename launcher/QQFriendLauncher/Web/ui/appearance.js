@@ -1,5 +1,8 @@
 import { $ } from "./dom.js";
 import { UI_PREFS_KEY } from "./metadata.js";
+import { toast } from "./activity.js";
+
+let appliedPreferences;
 
 export function readUiPreferences() {
   try {
@@ -15,6 +18,7 @@ export function readUiPreferences() {
 }
 
 export function applyUiPreferences(next = readUiPreferences()) {
+  if (window.QQFriendHost?.mode === "browser") appliedPreferences = { ...next };
   document.documentElement.dataset.theme = next.theme;
   document.documentElement.dataset.density = next.density;
   document.documentElement.style.setProperty("--backdrop-blur", `${next.blur}px`);
@@ -24,9 +28,17 @@ export function applyUiPreferences(next = readUiPreferences()) {
 }
 
 export function saveUiPreferences(changes) {
-  const next = { ...readUiPreferences(), ...changes };
-  window.localStorage.setItem(UI_PREFS_KEY, JSON.stringify(next));
+  const baseline = window.QQFriendHost?.mode === "browser" && appliedPreferences ? appliedPreferences : readUiPreferences();
+  const next = { ...baseline, ...changes };
+  try { window.localStorage.setItem(UI_PREFS_KEY, JSON.stringify(next)); }
+  catch (error) {
+    if (window.QQFriendHost?.mode !== "browser") throw error;
+    applyUiPreferences(next);
+    toast("外观已应用，但本机保存失败。", "error");
+    return false;
+  }
   applyUiPreferences(next);
+  return true;
 }
 
 export function applyBackground(state) {

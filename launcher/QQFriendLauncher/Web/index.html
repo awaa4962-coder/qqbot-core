@@ -53,12 +53,6 @@
         </div>
       </header>
 
-      <div class="activity-bar" id="activityBar" role="status" aria-live="polite">
-        <span class="activity-spinner" aria-hidden="true"></span>
-        <div class="activity-copy"><strong id="activityTitle">正在处理</strong><small id="activityDetail">完成后会自动更新当前页面。</small></div>
-        <span class="activity-progress" aria-hidden="true"><i></i></span>
-      </div>
-
       <main class="content">
         <section class="view active" data-view-panel="overview">
           <div class="notice-strip ok" id="systemNotice"><strong>正在检查服务</strong><span>稍候会显示需要处理的事项。</span></div>
@@ -294,6 +288,7 @@
               <div class="action-row"><button type="button" data-action="refreshStickers">刷新</button><button type="button" data-action="analyzeStickers">分析待处理</button><button type="button" class="primary" data-action="syncStickers">同步收藏</button></div>
             </div>
             <div class="sticker-summary" id="stickerSummary"></div>
+            <p class="page-notice" id="stickerDraftState" role="status" aria-live="polite">尚未读取</p>
             <div class="sticker-capture-panel">
               <div class="sticker-capture-head">
                 <div>
@@ -547,7 +542,14 @@
     </section>
   </div>
 
-  <div class="toast" id="toast" role="status" aria-live="polite">就绪</div>
+  <div class="feedback-stack">
+    <div class="activity-bar" id="activityBar" role="status" aria-live="polite">
+      <span class="activity-spinner" aria-hidden="true"></span>
+      <div class="activity-copy"><strong id="activityTitle">正在处理</strong><small id="activityDetail">完成后会自动更新当前页面。</small></div>
+      <span class="activity-progress" aria-hidden="true"><i></i></span>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite">就绪</div>
+  </div>
   <script src="./host-client.js?v=20260819-linux"></script>
   <link rel="stylesheet" href="./api-usage.css?v=20260923">
   <script type="module" src="./api-usage.js?v=20260923"></script>

@@ -4,11 +4,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.43-image-input";
-export const VERSION_NAME = "image-input";
+export const VERSION = "1.4.44-console-state";
+export const VERSION_NAME = "console-state";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
+  "控制台表情编辑保留独立草稿并校验原值，完整响应须匹配本次提交；日志失败不会被筛选隐藏，手机导航与操作反馈避免遮挡。",
+  "表情保存失败关闭目录读写，删除响应不暴露发送凭据或发送者摘要；JM、模型及工具预算不变，正式2.0.0仍待整体验收。",
   "图片v5候选把本轮提问与图片放在同一条输入，标明消息发送人及原消息编号；历史原话和工具协议保持完整，真实解读质量仍待验收。",
   "图片候选只约束图相关解读，不限制普通方案长度；解释字面与语境关系，不固定追加动机免责声明，反话不等于祝贺或安慰。",
   "原生工具探测区分自答、无调用、结构错误、参数不符和截断；保留旧额度与真实结果，不为澄清提示词重置探测机会。",
@@ -25,6 +27,8 @@ export const VERSION_NOTES_ZH = Object.freeze([
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
+  "The console preserves independent sticker drafts and checks original values. Confirmations match the submitted edit; log filters retain failure notices, and mobile navigation and feedback avoid overlap.",
+  "Failed catalog persistence disables authoritative reads and writes. Removal responses hide send credentials and sender hashes; JM, models and tool limits remain unchanged. Version2.0.0 is not yet released.",
   "The image-v5 candidate keeps the current question beside its image and identifies the message sender and source ID. History and tool transcripts remain intact; semantic acceptance is still pending.",
   "Candidate image rules apply only to image interpretation, not ordinary plan length. Literal/context relations do not imply congratulations or comfort, and no fixed motive disclaimer is required.",
   "Native diagnostics distinguish direct answers, absent calls, malformed structures, wrong arguments and truncation. Prompt clarification never resets quota or reclassifies an unknown old response.",

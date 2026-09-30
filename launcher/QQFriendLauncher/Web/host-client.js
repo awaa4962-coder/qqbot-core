@@ -269,7 +269,7 @@
 
   async function chooseBrowserBackground() {
     const file = await chooseImageFile();
-    if (!file) return getBrowserBackground();
+    if (!file) return { cancelled: true };
     await writeBackgroundBlob(file);
     global.localStorage.setItem(BACKGROUND_MODE_KEY, "image");
     return getBrowserBackground();

@@ -1,8 +1,125 @@
 import { $, escapeHtml, fmt, splitList } from "../ui/dom.js";
+import { groupIsBusy } from "../ui/activity.js";
 import { host, uiState } from "../ui/state.js";
+
+const settingsValueIds = ["stickerChance", "stickerStrongChance", "stickerCooldown", "stickerGroups",
+  "stickerCaptureDailyLimit", "stickerCaptureCatalogLimit", "stickerCaptureConfidence", "stickerCaptureSenders"];
+const settingsCheckIds = ["stickerGroupEnabled", "stickerPrivateEnabled"];
+const entryValueIds = ["stickerId", "stickerDescription", "stickerTags", "stickerAllowedGroups"];
+const entryCheckIds = ["stickerEntryEnabled"];
+const stickerActions = ["analyzeStickers", "syncStickers", "setStickerCaptureMode", "saveStickerSettings",
+  "setStickerMode", "saveSticker", "removeCapturedSticker", "simulateSticker", "refreshStickerCapabilities", "cleanupStickerTemp"];
+let settingsBaseline = null;
+let entryBaseline = null;
+let settingsExpected = null;
+let entryExpected = null;
+let entryId = "";
+let settingsModes = {};
+let readReady = false;
+let blockedReason = "";
+let selectionLost = false;
+let accessDenied = false;
 
 const previewSessions = new Map();
 window.addEventListener("pagehide", disposeStickerPreviews);
+
+export function validStickerSettings(settings) {
+  return ["steady", "shadow", "off"].includes(settings?.mode) && ["off", "observe", "auto"].includes(settings?.captureMode) &&
+    typeof settings.groupEnabled === "boolean" && typeof settings.privateEnabled === "boolean" &&
+    ["chance", "strongChance", "captureMinConfidence"].every(key => Number.isFinite(settings[key]) && settings[key] >= 0 && settings[key] <= 1) &&
+    [["cooldownMs", 0, 86400000], ["captureDailyLimit", 0, 200], ["captureCatalogLimit", 1, 2000], ["captureMinDistinctSenders", 1, 20]]
+      .every(([key, min, max]) => Number.isSafeInteger(settings[key]) && settings[key] >= min && settings[key] <= max) &&
+    Array.isArray(settings.allowedGroups) && settings.allowedGroups.every(group => Number.isSafeInteger(group) && group > 0);
+}
+
+function formFingerprint(valueIds, checkIds) {
+  return JSON.stringify([valueIds.map(id => String($(id)?.value ?? "")), checkIds.map(id => Boolean($(id)?.checked))]);
+}
+
+function copyExpected(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function stickerDrafts() {
+  return {
+    settings: host.mode === "browser" && settingsBaseline !== null && formFingerprint(settingsValueIds, settingsCheckIds) !== settingsBaseline,
+    entry: host.mode === "browser" && entryBaseline !== null && formFingerprint(entryValueIds, entryCheckIds) !== entryBaseline,
+  };
+}
+
+export function stickerHasDrafts() {
+  const drafts = stickerDrafts();
+  return drafts.settings || drafts.entry;
+}
+
+export function canDiscardStickerDrafts({ section } = {}) {
+  const drafts = stickerDrafts();
+  const dirty = section === "settings" ? drafts.settings : section === "entry" ? drafts.entry : drafts.settings || drafts.entry;
+  return !dirty || window.confirm("表情有未保存修改。确定放弃这些修改吗？");
+}
+
+function stickerReadIsWritable() {
+  return readReady && uiState.stickersLoaded && !blockedReason && !selectionLost && uiState.stickerSnapshot?.available !== false &&
+    (entryBaseline === null || $("stickerId")?.value === entryId && uiState.selectedStickerId === entryId);
+}
+
+export function canWriteStickers(action) {
+  if (host.mode !== "browser") return uiState.stickerSnapshot?.available !== false;
+  if (!stickerReadIsWritable() || groupIsBusy("saveSticker")) return false;
+  return !["saveSticker", "removeCapturedSticker", "update", "remove"].includes(action) || Boolean(entryId &&
+    uiState.stickerSnapshot.entries.some(entry => entry.id === entryId));
+}
+
+function renderStickerDraftState() {
+  const drafts = stickerDrafts();
+  const node = $("stickerDraftState");
+  if (node && host.mode === "browser") {
+    const sections = [drafts.settings ? "设置未保存" : "", drafts.entry ? "表情未保存" : ""].filter(Boolean);
+    node.textContent = selectionLost
+      ? "当前表情已移除或选择不匹配；草稿已保留，请明确重新读取。"
+      : blockedReason
+        ? `状态未确认：${blockedReason}；草稿已保留，请重新读取。`
+        : !readReady || !uiState.stickersLoaded
+          ? "表情目录尚未读取，暂不能修改。"
+          : [...sections, groupIsBusy("saveSticker") ? "正在处理，暂不能修改" : ""].filter(Boolean).join(" · ") || "已读取";
+    node.dataset.state = selectionLost || blockedReason ? "error" : !readReady || !uiState.stickersLoaded || groupIsBusy("saveSticker")
+      ? "loading" : sections.length ? "dirty" : "ready";
+  }
+  return drafts;
+}
+
+export function updateStickerDirty() {
+  syncStickerControls();
+  return stickerDrafts();
+}
+
+export function stickerReadFailed(error) {
+  if (host.mode !== "browser") return;
+  readReady = false;
+  blockedReason = error?.message || "读取失败或写入结果未确认";
+  uiState.stickersLoaded = false;
+  if ([401, 403].includes(error?.status)) {
+    accessDenied = true;
+    renderUnavailableStickerCatalog();
+  }
+  syncStickerControls();
+}
+
+export function syncStickerControls() {
+  if (host.mode !== "browser") return;
+  if (entryBaseline !== null && ($("stickerId")?.value !== entryId || uiState.selectedStickerId !== entryId)) selectionLost = true;
+  const locked = !canWriteStickers();
+  for (const id of [...settingsValueIds, ...settingsCheckIds, ...entryValueIds, ...entryCheckIds,
+    "stickerSimGroup", "stickerSimUser", "stickerSimAssistant", "stickerFilter"]) {
+    const node = $(id);
+    if (node) node.disabled = locked;
+  }
+  for (const action of stickerActions) {
+    document.querySelectorAll(`[data-action='${action}']`).forEach(node => { node.disabled = !canWriteStickers(action); });
+  }
+  document.querySelectorAll("[data-sticker-id]").forEach(node => { node.disabled = locked; });
+  renderStickerDraftState();
+}
 
 export function disposeStickerPreviews() {
   for (const session of previewSessions.values()) session.dispose();
@@ -10,16 +127,44 @@ export function disposeStickerPreviews() {
 }
 
 export function renderStickers(snapshot, options = {}) {
-  setStickerCatalogAvailability(snapshot?.available !== false);
-  if (snapshot?.available === false) { renderUnavailableStickerCatalog(); return; }
+  const browser = host.mode === "browser";
+  const forceReload = options.force === true && !options.section;
+  if (browser && accessDenied && !forceReload) return updateStickerDirty();
+  if (browser && snapshot?.available !== false && (!snapshot || snapshot.ok === false || !Array.isArray(snapshot.entries) ||
+      !validStickerSettings(snapshot.settings) ||
+      snapshot.entries.some(entry => !entry || typeof entry.id !== "string" || !entry.id) ||
+      new Set(snapshot.entries.map(entry => entry.id)).size !== snapshot.entries.length)) {
+    const error = new Error("表情目录响应不完整");
+    stickerReadFailed(error);
+    throw error;
+  }
+  const drafts = stickerDrafts();
+  if (!browser || snapshot?.available === false) setStickerCatalogAvailability(snapshot?.available !== false);
+  if (snapshot?.available === false) { renderUnavailableStickerCatalog(); return updateStickerDirty(); }
+  // Only a full, authoritative reload releases a failed-read/write or lost-target block.
+  if (browser && forceReload) {
+    blockedReason = "";
+    selectionLost = false;
+    readReady = true;
+    accessDenied = false;
+  } else if (browser && !blockedReason) readReady = true;
+  const requestedId = options.selectId || uiState.selectedStickerId;
+  const confirmedEntry = options.confirmed === "entry" && (!options.selectId || options.selectId === entryId);
+  const replaceEntry = !browser || forceReload || !blockedReason && !selectionLost &&
+    (confirmedEntry || options.discard === "entry" || options.force === true && options.section === "entry");
+  if (browser && !replaceEntry && entryId && (!snapshot.entries.some(entry => entry.id === entryId) ||
+      drafts.entry && requestedId !== entryId || options.confirmed === "entry" && !confirmedEntry)) selectionLost = true;
+  const preserveEntry = browser && !replaceEntry && (drafts.entry || selectionLost || options.confirmed === "settings");
+  const preserveSettings = browser && !forceReload && (options.confirmed === "entry" ||
+    options.force === true && options.section === "entry" || options.discard === "entry" ||
+    drafts.settings && (options.confirmed !== "settings" || blockedReason));
   uiState.stickerSnapshot = snapshot || { entries: [], settings: {}, counts: {}, stats: {} };
   const allEntries = Array.isArray(uiState.stickerSnapshot.entries) ? uiState.stickerSnapshot.entries : [];
   const counts = uiState.stickerSnapshot.counts || {};
   const settings = uiState.stickerSnapshot.settings || {};
   uiState.stickerFilter = $("stickerFilter")?.value || uiState.stickerFilter;
   const entries = filterStickerEntries(allEntries, uiState.stickerFilter);
-  const requestedId = options.selectId || uiState.selectedStickerId;
-  uiState.selectedStickerId = entries.some((entry) => entry.id === requestedId)
+  uiState.selectedStickerId = preserveEntry ? entryId : entries.some((entry) => entry.id === requestedId)
     ? requestedId
     : entries[0]?.id || "";
   document.querySelector(".sticker-workbench")?.classList.toggle("empty", !uiState.selectedStickerId);
@@ -36,6 +181,85 @@ export function renderStickers(snapshot, options = {}) {
     ["已发送", uiState.stickerSnapshot.stats?.sent || 0],
   ].map(([label, value]) => `<div><span>${label}</span><b>${fmt.format(value)}</b></div>`).join("");
 
+  if (!preserveSettings) fillStickerSettings(settings);
+  $("stickerGrid").innerHTML = entries.length
+    ? entries.map((entry) => `
+      <button type="button" class="sticker-tile${entry.id === uiState.selectedStickerId ? " active" : ""}${entry.enabled ? "" : " disabled"}" data-sticker-id="${escapeHtml(entry.id)}" title="${escapeHtml(entry.description || "待分析")}">
+        <span class="sticker-tile-media">${stickerImageMarkup(entry, "")}</span>
+        <span class="sticker-tile-label">${entry.indexed ? escapeHtml(entry.tags?.[0] || "已分析") : "待分析"}</span>
+      </button>`).join("")
+    : '<div class="empty-state"><b>还没有同步收藏表情</b><span>点右上角“同步收藏”。</span></div>';
+  bindStickerImageFallbacks($("stickerGrid"));
+
+  if (!preserveEntry) writeStickerDetail(entries.find((entry) => entry.id === uiState.selectedStickerId));
+  else renderStickerDetailPreview(readReady ? allEntries.find(entry => entry.id === entryId) : undefined);
+  const syncLabel = uiState.stickerSnapshot.sync?.syncing
+    ? "正在同步"
+    : uiState.stickerSnapshot.sync?.lastSyncAt
+      ? new Date(uiState.stickerSnapshot.sync.lastSyncAt).toLocaleString("zh-CN")
+      : "尚未同步";
+  $("stickerStatus").textContent = [
+    `模式：${stickerModeLabel(settings.mode)}`,
+    `同步：${syncLabel}`,
+    `发送成功 ${uiState.stickerSnapshot.stats?.sent || 0} · 失败 ${uiState.stickerSnapshot.stats?.sendFailures || 0}`,
+    uiState.stickerSnapshot.sync?.lastError ? `最近错误：${uiState.stickerSnapshot.sync.lastError}` : "图片文件不会保存到本地",
+  ].join("\n");
+  renderStickerCaptureStatus(uiState.stickerSnapshot);
+  uiState.stickersLoaded = !browser || readReady && !blockedReason;
+  return updateStickerDirty();
+}
+
+export function setStickerCatalogAvailability(available = uiState.stickerSnapshot?.available !== false) {
+  if (host.mode === "browser") {
+    if (!available) stickerReadFailed(new Error("表情目录暂不可读"));
+    else syncStickerControls();
+    return;
+  }
+  const actions = ["analyzeStickers", "syncStickers", "setStickerCaptureMode", "saveStickerSettings", "setStickerMode", "saveSticker", "removeCapturedSticker", "simulateSticker"];
+  for (const action of actions) for (const button of document.querySelectorAll(`[data-action='${action}']`)) {
+    if (!available) {
+      if (button.dataset.stickerUnavailable === undefined) button.dataset.stickerUnavailable = String(button.disabled);
+      button.disabled = true;
+    } else if (button.dataset.stickerUnavailable !== undefined) {
+      button.disabled = button.dataset.stickerUnavailable === "true";
+      delete button.dataset.stickerUnavailable;
+    }
+  }
+}
+
+function renderUnavailableStickerCatalog() {
+  disposeStickerPreviews();
+  uiState.stickerSnapshot = { available: false, entries: [], settings: {}, counts: {}, stats: {} };
+  const browser = host.mode === "browser";
+  uiState.selectedStickerId = browser ? entryId : "";
+  uiState.stickersLoaded = !browser;
+  $("stickerDetailPanel").hidden = !browser || !entryId;
+  if (browser) {
+    $("stickerPreview").textContent = "预览暂不可用";
+    $("stickerEntryMeta").textContent = "目录状态未知，请重新读取";
+    $("removeCapturedStickerButton").hidden = true;
+  }
+  $("stickerNavCount").textContent = "?";
+  $("stickerListCount").textContent = "未知";
+  $("stickerSummary").textContent = "表情目录暂不可读";
+  $("stickerGrid").innerHTML = '<div class="empty-state" role="alert"><b>表情目录读取失败</b><span>原文件已保留，写入操作已停止。</span></div>';
+  $("stickerStatus").textContent = "表情目录暂不可读；未按空目录处理。";
+  $("stickerCaptureCapability").textContent = "目录状态未知";
+  $("stickerCaptureStatus").textContent = "目录不可用，采集统计暂不可确认。";
+}
+
+export function fillStickerDetail(entry) {
+  if (host.mode === "browser" && (stickerDrafts().entry || blockedReason || selectionLost)) {
+    if (entry?.id !== entryId) selectionLost = true;
+    syncStickerControls();
+    return;
+  }
+  writeStickerDetail(entry);
+  if (host.mode === "browser") uiState.selectedStickerId = entryId;
+  syncStickerControls();
+}
+
+function fillStickerSettings(settings) {
   document.querySelectorAll("[data-action='setStickerMode']").forEach((button) => {
     button.classList.toggle("active", button.dataset.mode === settings.mode);
   });
@@ -52,85 +276,53 @@ export function renderStickers(snapshot, options = {}) {
   $("stickerCaptureCatalogLimit").value = Number(settings.captureCatalogLimit ?? 300);
   $("stickerCaptureConfidence").value = Math.round(Number(settings.captureMinConfidence ?? 0.82) * 100);
   $("stickerCaptureSenders").value = Number(settings.captureMinDistinctSenders ?? 2);
-  $("stickerGrid").innerHTML = entries.length
-    ? entries.map((entry) => `
-      <button type="button" class="sticker-tile${entry.id === uiState.selectedStickerId ? " active" : ""}${entry.enabled ? "" : " disabled"}" data-sticker-id="${escapeHtml(entry.id)}" title="${escapeHtml(entry.description || "待分析")}">
-        <span class="sticker-tile-media">${stickerImageMarkup(entry, "")}</span>
-        <span class="sticker-tile-label">${entry.indexed ? escapeHtml(entry.tags?.[0] || "已分析") : "待分析"}</span>
-      </button>`).join("")
-    : '<div class="empty-state"><b>还没有同步收藏表情</b><span>点右上角“同步收藏”。</span></div>';
-  bindStickerImageFallbacks($("stickerGrid"));
-
-  fillStickerDetail(entries.find((entry) => entry.id === uiState.selectedStickerId));
-  const syncLabel = uiState.stickerSnapshot.sync?.syncing
-    ? "正在同步"
-    : uiState.stickerSnapshot.sync?.lastSyncAt
-      ? new Date(uiState.stickerSnapshot.sync.lastSyncAt).toLocaleString("zh-CN")
-      : "尚未同步";
-  $("stickerStatus").textContent = [
-    `模式：${stickerModeLabel(settings.mode)}`,
-    `同步：${syncLabel}`,
-    `发送成功 ${uiState.stickerSnapshot.stats?.sent || 0} · 失败 ${uiState.stickerSnapshot.stats?.sendFailures || 0}`,
-    uiState.stickerSnapshot.sync?.lastError ? `最近错误：${uiState.stickerSnapshot.sync.lastError}` : "图片文件不会保存到本地",
-  ].join("\n");
-  renderStickerCaptureStatus(uiState.stickerSnapshot);
-  uiState.stickersLoaded = true;
-}
-
-export function setStickerCatalogAvailability(available = uiState.stickerSnapshot?.available !== false) {
-  const actions = ["analyzeStickers", "syncStickers", "setStickerCaptureMode", "saveStickerSettings", "setStickerMode", "saveSticker", "removeCapturedSticker", "simulateSticker"];
-  for (const action of actions) for (const button of document.querySelectorAll(`[data-action='${action}']`)) {
-    if (!available) {
-      if (button.dataset.stickerUnavailable === undefined) button.dataset.stickerUnavailable = String(button.disabled);
-      button.disabled = true;
-    } else if (button.dataset.stickerUnavailable !== undefined) {
-      button.disabled = button.dataset.stickerUnavailable === "true";
-      delete button.dataset.stickerUnavailable;
-    }
+  if (host.mode === "browser") {
+    settingsModes = { mode: settings.mode, captureMode: settings.captureMode };
+    settingsExpected = copyExpected(settings);
+    settingsBaseline = formFingerprint(settingsValueIds, settingsCheckIds);
   }
 }
 
-function renderUnavailableStickerCatalog() {
-  disposeStickerPreviews();
-  uiState.stickerSnapshot = { available: false, entries: [], settings: {}, counts: {}, stats: {} };
-  uiState.selectedStickerId = "";
-  uiState.stickersLoaded = true;
-  $("stickerDetailPanel").hidden = true;
-  $("stickerNavCount").textContent = "?";
-  $("stickerListCount").textContent = "未知";
-  $("stickerSummary").textContent = "表情目录暂不可读";
-  $("stickerGrid").innerHTML = '<div class="empty-state" role="alert"><b>表情目录读取失败</b><span>原文件已保留，写入操作已停止。</span></div>';
-  $("stickerStatus").textContent = "表情目录暂不可读；未按空目录处理。";
-  $("stickerCaptureCapability").textContent = "目录状态未知";
-  $("stickerCaptureStatus").textContent = "目录不可用，采集统计暂不可确认。";
-}
-
-export function fillStickerDetail(entry) {
+function writeStickerDetail(entry) {
   $("stickerId").value = entry?.id || "";
   $("stickerDescription").value = entry?.description || "";
   $("stickerTags").value = Array.isArray(entry?.tags) ? entry.tags.join(" ") : "";
   $("stickerAllowedGroups").value = Array.isArray(entry?.allowedGroups) ? entry.allowedGroups.join(" ") : "";
   $("stickerEntryEnabled").checked = entry?.enabled !== false;
+  if (host.mode === "browser") entryId = entry?.id || "";
+  renderStickerDetailPreview(entry);
+  if (host.mode === "browser") {
+    entryExpected = entry ? copyExpected({ id: entry.id, description: entry.description, tags: entry.tags,
+      allowedGroups: entry.allowedGroups, enabled: entry.enabled }) : null;
+    entryBaseline = formFingerprint(entryValueIds, entryCheckIds);
+  }
+}
+
+function renderStickerDetailPreview(entry) {
   $("stickerPreview").innerHTML = entry?.id
     ? stickerImageMarkup(entry, "选中的收藏表情", false)
-    : "<span>选择一张表情</span>";
+    : host.mode === "browser" && entryId ? "<span>当前表情预览暂不可用，请重新读取</span>" : "<span>选择一张表情</span>";
   bindStickerImageFallbacks($("stickerPreview"));
-  $("stickerEntryMeta").textContent = stickerEntryMeta(entry);
+  $("stickerEntryMeta").textContent = !entry && host.mode === "browser" && entryId
+    ? "当前表情不可确认，请重新读取" : stickerEntryMeta(entry);
   $("removeCapturedStickerButton").hidden = entry?.source !== "group-capture";
 }
 
 export function stickerSettingsPayload(mode, captureMode) {
+  if (host.mode === "browser" && !stickerReadIsWritable()) throw new Error("表情状态未确认，请重新读取后再修改。");
+  const modes = host.mode === "browser" ? settingsModes : uiState.stickerSnapshot.settings || {};
   return {
     action: "settings",
+    ...(host.mode === "browser" ? { expected: copyExpected(settingsExpected) } : {}),
     settings: {
-      mode: mode || uiState.stickerSnapshot.settings?.mode || "steady",
+      mode: mode || modes.mode || "steady",
       groupEnabled: $("stickerGroupEnabled").checked,
       privateEnabled: $("stickerPrivateEnabled").checked,
       chance: Number($("stickerChance").value || 0) / 100,
       strongChance: Number($("stickerStrongChance").value || 0) / 100,
       cooldownMs: Number($("stickerCooldown").value || 0) * 60000,
       allowedGroups: splitList($("stickerGroups").value),
-      captureMode: captureMode || uiState.stickerSnapshot.settings?.captureMode || "observe",
+      captureMode: captureMode || modes.captureMode || "observe",
       captureDailyLimit: Number($("stickerCaptureDailyLimit").value || 0),
       captureCatalogLimit: Number($("stickerCaptureCatalogLimit").value || 300),
       captureMinConfidence: Number($("stickerCaptureConfidence").value || 0) / 100,
@@ -140,9 +332,11 @@ export function stickerSettingsPayload(mode, captureMode) {
 }
 
 export function stickerEntryPayload() {
+  assertStickerEntryWritable();
   return {
     action: "update",
     id: $("stickerId").value,
+    ...(host.mode === "browser" ? { expected: copyExpected(entryExpected) } : {}),
     patch: {
       description: $("stickerDescription").value.trim(),
       tags: splitList($("stickerTags").value),
@@ -152,7 +346,19 @@ export function stickerEntryPayload() {
   };
 }
 
+function assertStickerEntryWritable() {
+  if (host.mode === "browser" && (!stickerReadIsWritable() || !entryId || !entryExpected ||
+      !uiState.stickerSnapshot.entries.some(entry => entry.id === entryId))) throw new Error("当前表情未确认，请重新读取后再修改。");
+}
+
+export function stickerRemovalPayload() {
+  assertStickerEntryWritable();
+  return { action: "remove", id: $("stickerId").value,
+    ...(host.mode === "browser" ? { expected: copyExpected(entryExpected) } : {}) };
+}
+
 export function stickerSimulationPayload() {
+  if (host.mode === "browser" && !stickerReadIsWritable()) throw new Error("表情状态未确认，请重新读取后再预演。");
   return {
     action: "simulate",
     groupId: Number($("stickerSimGroup").value || 0),
@@ -167,8 +373,8 @@ export function renderStickerSimulation(result) {
     $("stickerStatus").textContent = `预演结果：不发送\n原因：${decision.reason || "没有可靠匹配"}`;
     return;
   }
-  uiState.selectedStickerId = decision.stickerId;
-  renderStickers(result.snapshot || uiState.stickerSnapshot, { selectId: uiState.selectedStickerId });
+  if (host.mode !== "browser") uiState.selectedStickerId = decision.stickerId;
+  renderStickers(result.snapshot || uiState.stickerSnapshot, { selectId: host.mode === "browser" && stickerDrafts().entry ? entryId : decision.stickerId });
   $("stickerStatus").textContent = [
     "预演结果：会发送",
     `表情：${decision.sticker?.description || decision.stickerId}`,
@@ -248,7 +454,11 @@ export function bindStickerImageFallbacks(root) {
           urls.add(url);
           image.src = url;
         })
-        .catch(() => showFallback(image))
+        .catch(error => {
+          if (disposed) return;
+          if ([401, 403].includes(error?.status)) stickerReadFailed(error);
+          else showFallback(image);
+        })
         .finally(() => { active--; pump(); });
     }
   };

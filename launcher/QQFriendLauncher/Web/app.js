@@ -4,7 +4,7 @@ import { commitListEditor, removeListEditorValue, renderConfigEditor, renderList
 import { applyLogFilter } from "./pages/logs.js";
 import { filterMemeArchive, showMemeArchiveEntry } from "./pages/memes.js";
 import { markStatusStale, renderSnapshot, renderStatus } from "./pages/overview.js";
-import { disposeStickerPreviews, renderStickers } from "./pages/stickers.js";
+import { canDiscardStickerDrafts, disposeStickerPreviews, renderStickers, stickerHasDrafts, updateStickerDirty } from "./pages/stickers.js";
 import { configureRuntimeUi, runAction, showActionError } from "./ui/actions.js";
 import { beginAction, endAction, groupIsBusy, toast } from "./ui/activity.js";
 import { applyBackground, applyUiPreferences, saveUiPreferences } from "./ui/appearance.js";
@@ -36,6 +36,8 @@ async function openMemory() {
 export function canLeaveCurrentView(nextView) {
   if (nextView === uiState.currentView) return true;
   if (uiState.currentView === "memory" && memoryController && !memoryController.canLeave()) return false;
+  if (host.mode === "browser" && uiState.currentView === "stickers" && stickerHasDrafts() &&
+      !window.confirm("表情有未保存修改。仍然离开吗？草稿会留在本页，尚未保存。")) return false;
   if (["configuration", "api-center"].includes(uiState.currentView) && groupIsBusy(uiState.currentView === "configuration" ? "saveConfig" : "saveApiProvider")) {
     toast("正在提交或读取配置，请等待结果后再离开。", "error");
     return false;
@@ -104,8 +106,9 @@ document.addEventListener("click", (event) => {
   }
   const stickerTile = event.target.closest("[data-sticker-id]");
   if (stickerTile) {
+    if (!canDiscardStickerDrafts({ section: "entry" })) return;
     uiState.selectedStickerId = stickerTile.dataset.stickerId;
-    renderStickers(uiState.stickerSnapshot, { selectId: uiState.selectedStickerId });
+    renderStickers(uiState.stickerSnapshot, { selectId: uiState.selectedStickerId, force: true, section: "entry" });
     return;
   }
   const apiProvider = event.target.closest("[data-api-provider]");
@@ -175,6 +178,7 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("input", (event) => {
+  if (event.target?.id?.startsWith("sticker")) updateStickerDirty();
   if (event.target && event.target.id === "logFilter") applyLogFilter();
   if (event.target && event.target.id === "capabilitySearch") applyCapabilityFilter();
   if (event.target && event.target.id === "blurStrength") {
@@ -203,11 +207,16 @@ document.addEventListener("change", (event) => {
     return;
   }
   if (event.target.id === "stickerFilter") {
+    if (!canDiscardStickerDrafts({ section: "entry" })) {
+      event.target.value = uiState.stickerFilter;
+      return;
+    }
     uiState.stickerFilter = event.target.value;
     uiState.selectedStickerId = "";
-    renderStickers(uiState.stickerSnapshot);
+    renderStickers(uiState.stickerSnapshot, { force: true, section: "entry" });
     return;
   }
+  if (event.target.id.startsWith("sticker")) updateStickerDirty();
   if (event.target.id === "apiPreset") {
     applyApiPreset(event.target.value);
     return;
@@ -261,7 +270,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 window.addEventListener("beforeunload", event => {
-  if (!uiState.configDirty && !apiHasDrafts() && !groupIsBusy("saveConfig") && !groupIsBusy("saveApiProvider")) return;
+  if (!uiState.configDirty && !apiHasDrafts() && !stickerHasDrafts() && !groupIsBusy("saveConfig") && !groupIsBusy("saveApiProvider") && !groupIsBusy("saveSticker")) return;
   event.preventDefault(); event.returnValue = "";
 });
 

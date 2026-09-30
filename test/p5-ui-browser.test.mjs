@@ -5,7 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
-import { installMockConsole, UI_WIDTHS } from "./p5-ui-fixtures.mjs";
+import { installMockConsole, UI_WIDTHS, UI_PREVIEW_PNG } from "./p5-ui-fixtures.mjs";
 
 const modulePath = process.env.QQFRIEND_PLAYWRIGHT_MODULE;
 const optional = { skip: !modulePath, timeout: 45000 };
@@ -35,6 +35,7 @@ async function screen(t, page, name) {
   const original = page.viewportSize();
   for (const width of name.startsWith("ready-") ? [original.width] : UI_WIDTHS) {
     await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
+    await page.evaluate(() => globalThis.window.scrollTo({ top: 0, behavior: "instant" }));
     await page.evaluate(() => new Promise(resolve => globalThis.requestAnimationFrame(() => globalThis.requestAnimationFrame(resolve))));
     await assertFits(page, width);
     const filename = name.startsWith("ready-") ? name : name.replace(/-\d+$/, "") + "-" + width;
@@ -69,6 +70,169 @@ async function assertFits(page, width) {
   assert.deepEqual(problems, [], `${width}px active-view overflow`);
 }
 function assertClean(mock) { assert.deepEqual(mock.errors, [], "rendered JS errors"); assert.deepEqual(mock.unexpected, [], "all network traffic must remain mocked"); }
+
+function fixtureStickers(mock) {
+  mock.data.stickers.entries = ["one", "two"].map(id => ({ id: "fixture-" + id, description: "合成表情 " + id,
+    tags: ["合成"], allowedGroups: [2000000001], enabled: true, indexed: true, sendable: true,
+    source: id === "one" ? "group-capture" : "qq-favorite" }));
+  mock.data.stickers.counts = { total: 2, sendable: 2, candidates: 0 };
+}
+
+test("P5 rendered sticker drafts survive background refresh, navigation cancellation and independent commits", optional, async t => {
+  const { page, mock } = await setup(t); fixtureStickers(mock);
+  await view(page, "stickers"); await waitText(page, "#stickerDraftState", "已读取");
+  await page.locator("#stickerDescription").fill("合成未保存短评"); await page.locator("#stickerChance").fill("37");
+  await waitText(page, "#stickerDraftState", "设置未保存");
+  mock.setConfirm(false); await page.locator('[data-sticker-id="fixture-two"]').click();
+  assert.equal(await page.locator("#stickerId").inputValue(), "fixture-one");
+  await view(page, "logs"); assert.equal(await page.locator('[data-view-panel="stickers"]').isVisible(), true);
+  await page.locator('[data-action="refreshStickers"]').click();
+  assert.equal(mock.calls.filter(call => call.method === "GET" && call.path === "/admin/stickers").length, 1);
+  mock.setConfirm(true); await page.locator('[data-action="saveSticker"]').click(); await waitText(page, "#stickerStatus", "已保存");
+  assert.match(await page.locator("#stickerDraftState").textContent(), /设置未保存/);
+  assert.doesNotMatch(await page.locator("#stickerDraftState").textContent(), /表情未保存/);
+  await page.locator('[data-action="saveStickerSettings"]').first().click(); await waitText(page, "#stickerDraftState", "已读取");
+  assert.equal(mock.data.stickers.settings.chance, 0.37);
+  assert.equal(mock.data.stickers.entries[0].description, "合成未保存短评");
+  const posts = mock.calls.filter(call => call.method === "POST" && call.path === "/admin/stickers");
+  assert.equal(posts.length, 2); assert.equal(posts[0].payload.expected.description, "合成表情 one");
+  assert.equal(posts[1].payload.expected.chance, 0.1);
+  await page.waitForFunction(() => [...globalThis.document.querySelectorAll("#stickerPreview img")].every(image => image.complete && image.naturalWidth === 32));
+  await screen(t, page, "stickers-drafts-390"); assertClean(mock);
+});
+
+test("P5 rendered sticker conflict and unknown acknowledgement block writes without erasing drafts", optional, async t => {
+  const { page, mock } = await setup(t); fixtureStickers(mock);
+  await view(page, "stickers"); await waitText(page, "#stickerDraftState", "已读取");
+  await page.locator("#stickerDescription").fill("合成冲突草稿");
+  mock.data.stickers.entries[0].description = "别处的新编辑";
+  await page.locator('[data-action="saveSticker"]').click(); await waitText(page, "#stickerDraftState", "状态未确认");
+  assert.equal(await page.locator("#stickerDescription").inputValue(), "合成冲突草稿");
+  assert.equal(await page.locator('[data-action="saveSticker"]').isDisabled(), true);
+  assert.equal(mock.data.stickers.entries[0].description, "别处的新编辑");
+  await screen(t, page, "stickers-conflict-390");
+  await page.locator('[data-action="refreshStickers"]').click(); await waitText(page, "#stickerDraftState", "已读取");
+  await page.locator("#stickerDescription").fill("合成未知草稿");
+  mock.setFault("POST", "/admin/stickers", { body: {} });
+  await page.locator('[data-action="saveSticker"]').click(); await waitText(page, "#stickerStatus", "结果未确认");
+  assert.equal(await page.locator('[data-action="saveSticker"]').isDisabled(), true);
+  assert.equal(await page.locator("#stickerDescription").inputValue(), "合成未知草稿");
+  assert.equal(await page.locator("#activityBar").evaluate(node => node.classList.contains("success")), false);
+  assert.equal(mock.calls.filter(call => call.method === "POST" && call.path === "/admin/stickers").length, 2);
+  const feedback = await page.evaluate(() => {
+    const rect = id => globalThis.document.getElementById(id).getBoundingClientRect();
+    return { activityBottom: rect("activityBar").bottom, toastTop: rect("toast").top,
+      activityTop: rect("activityBar").top, toastBottom: rect("toast").bottom, viewportHeight: globalThis.innerHeight,
+      navBottom: globalThis.document.querySelector(".sidebar").getBoundingClientRect().bottom };
+  });
+  assert.ok(feedback.activityBottom <= feedback.toastTop && feedback.activityTop >= feedback.navBottom && feedback.toastBottom <= feedback.viewportHeight,
+    "mobile feedback must stay in the viewport without covering navigation or overlapping itself");
+  await screen(t, page, "stickers-unknown-390"); assertClean(mock);
+});
+
+test("P5 rendered denied sticker reads revoke previews and cannot show a stale photo grid", optional, async t => {
+  const { page, mock } = await setup(t); fixtureStickers(mock);
+  await view(page, "stickers"); await waitText(page, "#stickerDraftState", "已读取");
+  mock.setFault("GET", "/admin/stickers", { status: 403 });
+  await page.locator('[data-action="refreshStickers"]').click(); await waitText(page, "#stickerDraftState", "状态未确认");
+  assert.equal(await page.locator("#stickerGrid img").count(), 0);
+  assert.equal(await page.locator('[data-action="saveSticker"]').isDisabled(), true);
+  assert.equal(mock.calls.some(call => call.method === "POST" && call.path === "/admin/stickers"), false);
+  await screen(t, page, "stickers-denied-390"); assertClean(mock);
+});
+
+test("P5 rendered preview permission loss invalidates the entire editor, not just one image", optional, async t => {
+  const { page, mock } = await setup(t); fixtureStickers(mock);
+  mock.setFault("GET", "/admin/stickers/image", { status: 403 });
+  await view(page, "stickers"); await waitText(page, "#stickerDraftState", "状态未确认");
+  assert.equal(await page.locator("#stickerGrid img").count(), 0);
+  assert.equal(await page.locator('[data-action="saveSticker"]').isDisabled(), true);
+  assert.equal(mock.calls.some(call => call.method === "POST"), false);
+  mock.setFault("GET", "/admin/stickers/image", null);
+  await page.locator('[data-action="refreshStickers"]').click(); await waitText(page, "#stickerDraftState", "已读取");
+  await page.waitForFunction(() => [...globalThis.document.querySelectorAll("#stickerPreview img")].every(image => image.complete && image.naturalWidth === 32));
+  assert.equal(await page.locator('[data-action="saveSticker"]').isDisabled(), false); assertClean(mock);
+});
+
+test("P5 rendered logs keep failure and stale counts under filters, then recover or clear denied data", optional, async t => {
+  const { page, mock } = await setup(t); await view(page, "logs");
+  await waitText(page, "#logsOutput", "synthetic");
+  mock.setFault("GET", "/admin/logs", { status: 503 }); await page.locator('[data-action="refreshLogs"]').click();
+  await waitText(page, "#logsOutput", "读取失败"); await page.locator("#logFilter").fill("no-such-log");
+  assert.match(await page.locator("#logsOutput").textContent(), /读取失败.*\n.*过期.*\n.*没有匹配/s);
+  assert.match(await page.locator("#logCount").textContent(), /过期快照/);
+  await screen(t, page, "logs-stale-390");
+  mock.setFault("GET", "/admin/logs", { status: 403 }); await page.locator('[data-action="refreshLogs"]').click();
+  await waitText(page, "#logsOutput", "无权读取"); await page.locator("#logFilter").fill("synthetic");
+  assert.doesNotMatch(await page.locator("#logsOutput").textContent(), /synthetic UI fixture/);
+  mock.setFault("GET", "/admin/logs", null); await page.locator('[data-action="refreshLogs"]').click();
+  await waitText(page, "#logsOutput", "synthetic UI fixture"); assertClean(mock);
+});
+
+test("P5 rendered maintenance and health distinguish real acknowledgements from malformed success", optional, async t => {
+  const { page, mock } = await setup(t); await view(page, "maintenance");
+  const logs = page.locator('[data-view-panel="maintenance"] button[data-view="logs"]');
+  await logs.click(); await waitText(page, "#pageTitle", "日志");
+  await view(page, "maintenance"); mock.setFault("POST", "/admin/backups", { body: {} });
+  await page.locator('[data-action="createBackup"]').click(); await waitText(page, "#actionOutput", "结果未确认");
+  assert.equal(await page.locator("#activityBar").evaluate(node => node.classList.contains("success")), false);
+  mock.setFault("POST", "/admin/backups", null); await page.locator('[data-action="createBackup"]').click();
+  await waitText(page, "#actionOutput", "备份已创建");
+  assert.match(await page.locator("#actionOutput").textContent(), /safe-synthetic.*文件：1/s);
+  await screen(t, page, "maintenance-ack-390");
+  await view(page, "services");
+  for (const action of ["startAll", "restartBridge", "stopBridge", "stopAll"]) assert.equal(await page.locator(`[data-action="${action}"]`).isDisabled(), true);
+  await page.locator('[data-action="health"]').click(); await waitText(page, "#serviceOutput", "健康检查完成");
+  assert.equal(mock.calls.some(call => call.path.includes("onebot") || call.path.includes("send")), false); assertClean(mock);
+});
+
+test("P5 rendered member-summary task states contain no chat body and reject malformed identity", optional, async t => {
+  const { page, mock } = await setup(t);
+  const now = Date.now();
+  mock.data.conversation.tasks = [{ id: "summary-fixture", phase: "failed", startedAt: now, groupId: "2000000001",
+    targetCount: 2, from: now - 3600000, to: now, provider: "synthetic-model", error: "合成发送结果未确认",
+    text: "PRIVATE_SYNTHETIC_CHAT_BODY" }];
+  await view(page, "diagnostics"); await waitText(page, "#conversationSummaryRows", "发送结果未确认");
+  assert.doesNotMatch(await page.locator("#conversationSummaryPanel").textContent(), /PRIVATE_SYNTHETIC_CHAT_BODY/);
+  mock.data.conversation.tasks = [{ phase: "done" }];
+  await page.locator("#refreshConversationSummaries").click(); await waitText(page, "#conversationSummaryNotice", "响应不完整");
+  assert.match(await page.locator("#conversationSummaryRows").textContent(), /尚未读取/);
+  assert.doesNotMatch(await page.locator("#conversationSummaryRows").textContent(), /Invalid Date|undefined/);
+  mock.data.conversation.tasks = [{ id: "summary-fixture", phase: "cancelled", startedAt: now, groupId: "2000000001",
+    targetCount: 2, from: now - 3600000, to: now }];
+  await page.locator("#refreshConversationSummaries").click(); await waitText(page, "#conversationSummaryRows", "任务已取消");
+  await screen(t, page, "conversation-tasks-390"); assertClean(mock);
+});
+
+test("P5 rendered appearance choices and local save failure have visible, truthful feedback", optional, async t => {
+  const { page, mock } = await setup(t); await view(page, "maintenance");
+  await page.locator('[data-ui-theme="dark"]').click();
+  assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
+  await page.locator('[data-ui-density="compact"]').click();
+  assert.equal(await page.locator("html").getAttribute("data-density"), "compact");
+  const selected = page.waitForEvent("filechooser");
+  await page.locator('[data-action="chooseBackgroundImage"]').click();
+  await (await selected).setFiles({ name: "synthetic-background.png", mimeType: "image/png", buffer: UI_PREVIEW_PNG });
+  await page.waitForFunction(() => globalThis.document.documentElement.dataset.backgroundMode === "image");
+  assert.match(await page.locator("html").evaluate(node => node.style.getPropertyValue("--custom-bg")), /blob:/);
+  const cancelled = page.waitForEvent("filechooser");
+  await page.locator('[data-action="chooseBackgroundImage"]').click();
+  const picker = await cancelled;
+  await picker.element().evaluate(input => input.dispatchEvent(new globalThis.Event("cancel")));
+  await waitText(page, "#activityTitle", "已取消");
+  assert.equal(await page.locator("html").getAttribute("data-background-mode"), "image");
+  assert.equal(await page.locator("#activityBar").evaluate(node => node.classList.contains("success")), false);
+  await page.locator('[data-action="setBuiltInBackground"]').click();
+  await page.waitForFunction(() => globalThis.document.documentElement.dataset.backgroundMode === "built-in");
+  await page.evaluate(() => { globalThis.Storage.prototype.setItem = () => { throw new Error("Synthetic blocked storage"); }; });
+  await page.locator('[data-ui-theme="light"]').click(); await waitText(page, "#toast", "本机保存失败");
+  assert.equal(await page.locator("html").getAttribute("data-theme"), "light");
+  await page.locator('[data-ui-density="comfortable"]').click();
+  assert.equal(await page.locator("html").getAttribute("data-theme"), "light", "a failed save must not reapply the older stored theme");
+  assert.equal(await page.locator("html").getAttribute("data-density"), "comfortable");
+  assert.equal(mock.calls.some(call => call.method === "POST"), false);
+  await screen(t, page, "appearance-storage-failed-390"); assertClean(mock);
+});
 
 function nativeProof(status = "verified") {
   const now = Date.now();
@@ -124,6 +288,8 @@ for (const width of UI_WIDTHS) {
   test(`P5 rendered ${width}px ready/empty full-console layout`, optional, async t => {
     const { page, mock } = await setup(t, width);
     for (const [name, selector, ready] of [
+      ["overview", "#bridgeState", "在线"], ["services", "#serviceOutput", "还没有"], ["maintenance", "#actionOutput", "还没有"],
+      ["stickers", "#stickerDraftState", "已读取"],
       ["capabilities", "#capabilityNotice", "已刷新"], ["configuration", "#configStatus", "已载入"],
       ["api-center", "#apiUsageNotice", "分组"], ["diagnostics", "#traceNotice", "当前显示"],
       ["summaries", "#summaryProgress", "已刷新"], ["logs", "#logsOutput", "synthetic"],
@@ -136,6 +302,8 @@ for (const width of UI_WIDTHS) {
     assert.equal(await page.locator('[data-api-task="group_chat"] [data-route-fallback]').inputValue(), "deepseek");
     assert.equal(await page.locator('[data-api-task="group_chat"] [data-route-fallback]').isDisabled(), true);
     assert.equal(mock.calls.some(call => call.method === "POST"), false, "layout QA is read-only even in the fixture");
+    await view(page, "maintenance"); await page.locator('[data-view="memes"]').click();
+    await waitText(page, "#memeStatus", "只读归档"); await assertFits(page, width); await screen(t, page, `ready-archive-${width}`);
     assertClean(mock);
   });
 }

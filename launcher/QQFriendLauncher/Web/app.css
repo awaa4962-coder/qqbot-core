@@ -747,6 +747,7 @@ button.provider-card.active {
 .guide-paths span, .muted { color: var(--muted); font-size: 12px; }
 .api-guide .muted { margin: 12px 0 0; }
 
+.feedback-stack { display: contents; }
 .activity-bar {
   position: fixed;
   z-index: 50;
@@ -1017,6 +1018,29 @@ img[data-sticker-preview][data-state="loading"] { opacity: 0; }
 
 @media (max-width: 620px) {
   :root { --nav-width: 112px; }
+  html[data-runtime="browser"] .app-shell { display: block; }
+  html[data-runtime="browser"] .sidebar {
+    position: sticky; top: 0; z-index: 60; height: auto; width: 100%; min-width: 0;
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 8px 12px;
+  }
+  html[data-runtime="browser"] .brand { min-height: 0; padding: 0; margin: 0; }
+  html[data-runtime="browser"] .side-nav {
+    grid-column: 1 / -1; display: flex; gap: 4px; overflow-x: auto; min-width: 0; padding: 0; margin: 0;
+  }
+  html[data-runtime="browser"] .side-nav .view-tab { flex: 0 0 auto; width: auto; height: 36px; min-width: 48px; white-space: nowrap; }
+  html[data-runtime="browser"] .side-nav .view-tab i { min-width: 20px; margin-left: 4px; text-align: right; }
+  html[data-runtime="browser"] .side-nav-footer { grid-column: 2; grid-row: 1; overflow: visible; }
+  html[data-runtime="browser"] .side-nav-footer .view-tab { padding: 0 8px; }
+  html[data-runtime="browser"] .sidebar-health { display: none; }
+  html[data-runtime="browser"] .topbar { position: static; }
+  html[data-runtime="browser"] .feedback-stack {
+    display: flex; flex-direction: column; gap: 8px; position: fixed; z-index: 80;
+    right: 18px; bottom: 18px; width: min(360px, calc(100vw - 36px)); pointer-events: none;
+  }
+  html[data-runtime="browser"] .feedback-stack .activity-bar,
+  html[data-runtime="browser"] .feedback-stack .toast { position: relative; inset: auto; width: 100%; max-width: none; }
+  html[data-runtime="browser"] .feedback-stack .activity-bar:not(.visible),
+  html[data-runtime="browser"] .feedback-stack .toast:not(.show) { display: none; }
   .brand strong { font-size: 12px; }
   .brand small, .sidebar-health small { display: none; }
   .view-tab { padding: 0 9px; font-size: 12px; }
@@ -1027,6 +1051,7 @@ img[data-sticker-preview][data-state="loading"] { opacity: 0; }
   .capability-toolbar label:first-child { grid-column: auto; }
   .capability-row { grid-template-columns: 1fr; gap: 9px; }
   .config-item { grid-template-columns: 1fr; }
+  html[data-runtime="browser"] .appearance-settings > div { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .row-link { width: max-content; }
   .save-bar { position: static; bottom: auto; align-items: stretch; flex-direction: column; }
   .save-bar > div { flex-direction: column; align-items: stretch; }

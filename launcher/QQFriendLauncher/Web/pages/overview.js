@@ -1,5 +1,5 @@
 import { configReadFailed, moduleLabel, renderConfig, renderConfigEditor } from "./configuration.js";
-import { renderLogs } from "./logs.js";
+import { logsReadFailed, renderLogs } from "./logs.js";
 import { groupIsBusy } from "../ui/activity.js";
 import { $, escapeHtml, fmt, formatBytes, formatSeconds, setOutput, text } from "../ui/dom.js";
 import { host, uiState } from "../ui/state.js";
@@ -103,13 +103,15 @@ export function renderSnapshot(snapshot) {
   }
   if (snapshot.status) renderStatus(snapshot.status);
   if (snapshot.logs) {
-    renderLogs(snapshot.logs);
-    uiState.logsLoaded = true;
+    try { renderLogs(snapshot.logs); }
+    catch (error) {
+      snapshot.errors ||= {};
+      snapshot.errors.logs = { message: error.message, status: error.status };
+    }
   }
   if (snapshot.errors?.config) configReadFailed(snapshot.errors.config);
   if (snapshot.errors?.logs) {
-    uiState.logsLoaded = false;
-    setOutput("logsOutput", `日志读取失败：${snapshot.errors.logs.message}；请刷新重试。`, true);
+    logsReadFailed(snapshot.errors.logs);
   }
 }
 
