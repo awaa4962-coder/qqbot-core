@@ -63,6 +63,16 @@ test("candidate instructions separate factual context, literal relation, and att
   assert.match(rules, /示例不是本轮事实/);
   assert.doesNotMatch(rules, /GOOD JOB|TERRIBLE JOB|考试/);
 });
+
+test("image-only brevity never limits unrelated text answers or requires a fixed motive disclaimer", () => {
+  const rules = buildImageInterpretationRules({ imagePolicy: IMAGE_POLICY_EVIDENCE });
+  assert.match(rules, /本轮需要解读图片或图中文字时/);
+  assert.match(rules, /不限制不依赖图片的正常回答长度/);
+  assert.match(rules, /不固定追加动机免责声明/);
+  assert.match(rules, /反话不是把字面取反就得到真实态度或目的/);
+  assert.match(rules, /说话人明确说明的意图可以复述为其自述/);
+  assert.doesNotMatch(rules, /无法知道他为何这样说/);
+});
 test("stable templates stay byte-identical outside gray group and candidate metadata is distinct", () => {
   const before = buildModelPrompt({ groupId: 50101 });
   process.env.QQBOT_IMAGE_CONTEXT_ROLLOUT = "50100";

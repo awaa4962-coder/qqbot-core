@@ -99,7 +99,7 @@ export const P5_MODEL_PROBES = Object.freeze([
     input: "\u8fd9\u56fe\u662f\u4ec0\u4e48\u610f\u601d\uff1f",
     rubric: rubric("No outcome, preceding quote or explicit author intent was supplied.",
       "Only GOOD JOB is visible: explain literal words but the ironic/literal direction is unknown.",
-      "Do not manufacture surrounding conversation, a failure/success, praise/irony direction or motive.",
+      "Explain the positive literal wording; do not manufacture surrounding conversation, an outcome, a definite sincere-praise/irony tone or motive.",
       "Unknown direction stays unknown; at most ask for the missing context.", "Short literal explanation plus bounded uncertainty, no motive enumeration.") },
   { id: "explicit-comfort-intent", covers: ["identity-quote", "picture-irony"], speaker, bitmap: "good",
     input: "\u4e00\u53e5\u8bdd\u89e3\u91ca\u8fd9\u56fe",

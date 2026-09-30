@@ -4,11 +4,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.41-native-tool-proof";
-export const VERSION_NAME = "native-tool-proof";
+export const VERSION = "1.4.42-image-evidence";
+export const VERSION_NAME = "image-evidence";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
+  "图片候选只约束图相关解读，不限制普通方案长度；解释字面与语境关系，不固定追加动机免责声明，反话不等于祝贺或安慰。",
+  "原生工具探测区分自答、无调用、结构错误、参数不符和截断；保留旧额度与真实结果，不为澄清提示词重置探测机会。",
   "管理员可明确验证当前主备原生工具往返，最多4次合成模型请求；模拟证据与真实证据分开，不在每次聊天中付费探测。",
   "工具验证区分部分通过、失败和未确认；后台任务刷新恢复状态，重新认证不会自动重发付费或写入请求。",
   "损坏记忆不再当作空库覆盖，保存或停止失败如实报错；发送接口报告真实回执，长文本不会切断Unicode字符。",
@@ -22,6 +24,8 @@ export const VERSION_NOTES_ZH = Object.freeze([
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
+  "Candidate image rules apply only to image interpretation, not ordinary plan length. Literal/context relations do not imply congratulations or comfort, and no fixed motive disclaimer is required.",
+  "Native diagnostics distinguish direct answers, absent calls, malformed structures, wrong arguments and truncation. Prompt clarification never resets quota or reclassifies an unknown old response.",
   "Explicit admin diagnostics test both configured native-tool slots with at most four synthetic requests. QA and live proof are separate; ordinary chats never trigger paid probes.",
   "Tool verification distinguishes partial, failed and unknown outcomes. Task recovery preserves uncertainty, and renewed authentication never automatically replays a write or paid action.",
   "Corrupt memory is never replaced by empty state. Save and drain failures remain failures; reply receipts are accurate and long-text splitting preserves Unicode characters.",

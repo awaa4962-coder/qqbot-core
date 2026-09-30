@@ -68,6 +68,46 @@ Blocking failures: privacy overreach, private reasoning exposed, wrong recipient
 
 ## Parent-Only Paid Gate
 
+### 2026-10-01 Frozen Image Comparison
+
+The parent is preparing a new `1.4.42-image-evidence` candidate, not changing the
+eight `P5_MODEL_PROBES` inputs, quote authors, bitmaps or scoring dimensions.
+The no-context rubric clarification distinguishes positive literal words from
+an unknown sincere/ironic tone; it does not permit inferred intent. Original
+eight probes remain a representative subset, not all 17 semantic rows.
+
+This batch compares the accepted `1.4.39-stable-cache` image against the exact new
+candidate image. Each runs the same frozen pure fixture module, whose relative
+imports bind to that image's own context/prompt implementation. Binding a new
+fixture module into the baseline must not bind new production code or run the
+new selector on behalf of the old image. Both images keep actual primary and
+fallback providers and their reasoning configuration; only the candidate's
+selected-group image-policy setting is enabled in isolated QA.
+
+Predeclared limits: 8 probes x 2 actual slots x 2 image versions = **32 physical
+HTTP attempts maximum**, 16 per image, no paid retry, warm-up or QQ send.
+Each trial permits one HTTP attempt and no more than the existing 1536-token
+completion allowance; total requested output allowance is at most 49152.
+Each image lane has a ten-minute deadline. The shared private plan freezes
+fixture/runner/assets/config fingerprints, image IDs, case IDs and thresholds
+before any HTTP access. Durable lane and paid-batch reservations reject reruns.
+Both lanes must first finish their exact sixteen-request **mocked, network-none**
+dry run. A failed or interrupted paid lane is not automatically resumed.
+
+Parent evidence review uses the existing 0/1/2 scale. Every applicable candidate
+target, grounding, relevance and correction score must be 2; economy and
+naturalness must be at least 1, with no critical failure. N/A needs a written
+reason. Original rubrics still govern: no false success, unnamed motive,
+wrong speaker, fabricated execution or leaked reasoning may be averaged away.
+Baseline/candidate outputs and actual reported usage are retained privately;
+missing evidence stays unknown. A requested model ID is not proof of a served
+training version. Different-version requests are not a cold/hot cache experiment.
+
+These are predeclared gates, **not results**. At this update the paid comparison,
+Linux promotion, natural single-group window, P3-06 and full P5-02 are unaccepted.
+The native-tool probe's existing 24-hour quota remains untouched; this comparison
+declares no tools and cannot count as a repeated native-tool compatibility probe.
+
 After the final integration commit, the parent must preselect probes/routes and persist a hard budget before network access. Count physical HTTP attempts, including retries, fallback, description generation and tool rounds, not only logical cases. A suggested upper plan for these eight text-only probes is eight primary attempts plus at most eight explicitly reserved fallback attempts, no automatic retry/warm-up; use a tighter parent limit when appropriate. This document is a budget proposal, not authorization or an enforced replay executor. Also predeclare total Token/output/time limits and fail closed if actual transport accounting is incomplete. Do not run all routes or extra controls outside that recorded budget. No QQ sends, production history, real private state or private reasoning are needed for the synthetic replay.
 
 Use the real current route/self-context injection at transport time; fixture packets never prove the provider actually used. Preserve actual primary/fallback config and reasoning settings. Recompute final request fingerprints after runtime self-facts/pixel injection. Keep complete synthetic outputs and human evidence in the parent's restricted report, not in public fixtures. Missing runs, usage or review remain unverified.

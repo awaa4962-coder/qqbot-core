@@ -6,7 +6,7 @@ import { normalizeProviderUsage } from "../api-providers/usage-values.mjs";
 import { monotonicNow } from "../runtime-clock.mjs";
 import { parseChatOutcome } from "../chat-outcome.mjs";
 import { measureVisionRequest } from "../vision/request-budget.mjs";
-import { CHAT_TOOL_LIMITS, parseToolArguments, safeToolBatch } from "./policy.mjs";
+import { CHAT_TOOL_LIMITS, parseToolArguments, safeToolBatch, validToolCallEnvelope } from "./policy.mjs";
 import { CHAT_TOOL_REGISTRY } from "./registry.mjs";
 import { calculate } from "./calculate.mjs";
 import { assistantToolMessage } from "./runner.mjs";
@@ -47,7 +47,8 @@ async function probeSlot(position, context) {
   if (!provider) return { position, status: "unknown", reason: "provider_not_configured" };
   const identity = identityFor(provider, context);
   const claim = context.store.claim(identity);
-  if (!claim.ok) return { position, ...publicProof(claim.record || context.store.read(identity)), reason: claim.reason || "claim_busy" };
+  if (!claim.ok) return { position, ...publicProof(claim.record || context.store.read(identity)),
+    ...(claim.record ? {} : { reason: claim.reason || "claim_busy" }) };
   const state = { position, provider, identity, claimId: claim.claimId, route, context, usage: [], calls: 0, started: context.clock() };
   let result;
   try {
@@ -79,6 +80,7 @@ async function roundtrip(state) {
   messages.push(...continuation.messages);
   const final = await modelRound(state, messages, 1);
   if (!final.ok) return { status: "failed", reason: "transport_unavailable" };
+  if (truncated(final.raw)) return { status: "failed", reason: "truncated_response" };
   if (final.raw?.choices?.[0]?.message?.tool_calls?.length) return { status: "failed", reason: "unexpected_tool" };
   const outcome = parseChatOutcome(final.raw, { provider: state.provider.id });
   if (outcome.kind !== "reply") return { status: "failed", reason: "reply_unusable" };
@@ -87,15 +89,43 @@ async function roundtrip(state) {
 }
 
 function probeContinuation(raw, provider) {
-  const message = raw?.choices?.[0]?.message;
-  const calls = safeToolBatch(message);
-  if (!calls || calls.length !== 1) return { error: "tool_call_missing" };
-  const call = calls[0];
+  const selected = probeCall(raw);
+  if (selected.error) return selected;
+  const { call, message } = selected;
   if (call.function.name !== "calculate") return { error: "unexpected_tool" };
-  const calculation = calculate(parseToolArguments(call));
-  if (calculation.status !== "ok") return { error: "tool_arguments" };
+  const args = parseToolArguments(call);
+  const calculation = calculate(args);
+  if (calculation.status !== "ok") return { error: "invalid_arguments" };
+  if (args.expression.replace(/[ \t\r\n]+/g, "") !== "17*3+5") return { error: "expression_mismatch" };
   if (calculation.result !== EXPECTED) return { error: "tool_result_wrong" };
   return { messages: [assistantToolMessage(message, provider), { role: "tool", tool_call_id: call.id, content: JSON.stringify(calculation) }] };
+}
+
+function probeCall(raw) {
+  if (truncated(raw)) return { error: "truncated_response" };
+  const message = raw?.choices?.[0]?.message;
+  if (!message || typeof message !== "object" || Array.isArray(message)) return { error: "invalid_response_envelope" };
+  const supplied = message.tool_calls;
+  if (supplied === undefined || supplied === null || Array.isArray(supplied) && supplied.length === 0) return { error: noNativeCallReason(message) };
+  if (!Array.isArray(supplied)) return { error: "invalid_call_envelope" };
+  if (supplied.length !== 1) return { error: "multiple_calls" };
+  return singleProbeCall(message);
+}
+
+function singleProbeCall(message) {
+  if (!validToolCallEnvelope(message.tool_calls[0])) return { error: "invalid_call_envelope" };
+  const argumentsText = message.tool_calls[0]?.function?.arguments;
+  if (typeof argumentsText !== "string" || argumentsText.length > 2048) return { error: "invalid_arguments" };
+  const calls = safeToolBatch(message);
+  if (!calls) return { error: "invalid_call_envelope" };
+  return { call: calls[0], message };
+}
+
+function truncated(raw) { return raw?.choices?.[0]?.finish_reason === "length"; }
+
+function noNativeCallReason(message) {
+  return typeof message.content === "string" && /^\s*56[\s。.!！]*$/u.test(message.content)
+    ? "direct_answer_expected" : "no_native_call";
 }
 
 async function modelRound(state, messages, stage) {

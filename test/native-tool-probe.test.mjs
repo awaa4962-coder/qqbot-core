@@ -203,6 +203,70 @@ test("one verified provider cannot make an unsupported fallback fully verified",
   assert.equal(calls.length, 2);
 });
 
+const badEnvelopes = [
+  ["direct answer", { choices: [{ message: { content: "56" } }] }, "direct_answer_expected"],
+  ["no body or native call", { choices: [{ message: { content: "" } }] }, "no_native_call"],
+  ["empty native calls", { choices: [{ message: { tool_calls: [] } }] }, "no_native_call"],
+  ["truncated answer", { choices: [{ finish_reason: "length", message: { content: "56" } }] }, "truncated_response"],
+  ["missing message", { choices: [] }, "invalid_response_envelope"],
+  ["truncated valid native call", { choices: [{ finish_reason: "length", message: tool() }] }, "truncated_response"],
+  ["nonarray native calls", { choices: [{ message: { tool_calls: {} } }] }, "invalid_call_envelope"],
+  ["null native call", { choices: [{ message: { tool_calls: [null] } }] }, "invalid_call_envelope"],
+  ["missing function", { choices: [{ message: { tool_calls: [{ id: "x", type: "function" }] } }] }, "invalid_call_envelope"],
+  ["numeric call ID", response(tool("17*3+5", { tool_calls: [{ id: 1, type: "function", function: { name: "calculate", arguments: '{"expression":"17*3+5"}' } }] })).raw, "invalid_call_envelope"],
+  ["missing call ID", response(tool("17*3+5", { tool_calls: [{ type: "function", function: { name: "calculate", arguments: '{"expression":"17*3+5"}' } }] })).raw, "invalid_call_envelope"],
+  ["wrong call type", response(tool("17*3+5", { tool_calls: [{ id: "x", type: "exec", function: { name: "calculate", arguments: '{"expression":"17*3+5"}' } }] })).raw, "invalid_call_envelope"],
+  ["object arguments", response(tool("17*3+5", { tool_calls: [{ id: "x", type: "function", function: { name: "calculate", arguments: { expression: "17*3+5" } } }] })).raw, "invalid_arguments"],
+  ["malformed JSON arguments", response(tool("17*3+5", { tool_calls: [{ id: "x", type: "function", function: { name: "calculate", arguments: "{" } }] })).raw, "invalid_arguments"],
+  ["two native calls", response({ ...tool(), tool_calls: [tool().tool_calls[0], { ...tool().tool_calls[0], id: "y" }] }).raw, "multiple_calls"],
+  ["correct value but wrong expression", response(tool("56")).raw, "expression_mismatch"],
+  ["equivalent but different task", response(tool("1+55")).raw, "expression_mismatch"],
+  ["non-ASCII edge whitespace", response(tool("\u00a017*3+5\u3000")).raw, "expression_mismatch"],
+];
+test("a truncated final numeric answer is not a completed protocol proof", async () => {
+  const f = fixture(); const calls = [];
+  const result = await probeNativeChatTools({ action: "probe" }, { ...f, callProvider: mockProvider(calls, (_id, request) =>
+    request.messages.some(message => message.role === "tool")
+      ? { ...response({ content: "56" }), raw: { choices: [{ finish_reason: "length", message: { content: "56" } }] } }
+      : response(tool())) });
+  assert.equal(calls.length, 4);
+  assert.ok(result.slots.every(slot => slot.status === "failed" && slot.reason === "truncated_response"));
+});
+for (const [name, raw, reason] of badEnvelopes) {
+  test("native diagnostic distinguishes " + name + " without making a continuation or leaking content", async () => {
+    const f = fixture(); const calls = [];
+    const result = await probeNativeChatTools({ action: "probe" }, { ...f, callProvider: mockProvider(calls,
+      () => ({ ok: true, transportAttempts: 1, raw })) });
+    assert.equal(calls.length, 2);
+    assert.ok(result.slots.every(slot => slot.status === "failed" && slot.reason === reason));
+    assert.doesNotMatch(JSON.stringify(result), /PRIVATE_REASONING|"expression":|"tool_calls":|"arguments":/);
+  });
+}
+
+test("prompt clarification preserves quota identity and historical results without replay or reclassification", async () => {
+  const f = fixture();
+  const oldRequest = { messages: [{ role: "user", content: "请必须调用 calculate 工具计算 17*3+5，收到结果后仅回复结果数字，不输出过程。" }] };
+  for (const mode of ["economy", "auto", "deep"]) {
+    f.config.routes.group_chat.reasoning = mode;
+    const options = { config: f.config, root: f.cfg.configRoot, provenance: "qa" };
+    assert.equal(nativeToolIdentity(f.config.providers.mimo, options), nativeToolIdentity(f.config.providers.mimo, { ...options, request: oldRequest }));
+  }
+  for (const [id, status] of [["mimo", "failed"], ["deepseek", "verified"]]) {
+    const identity = nativeToolIdentity(f.config.providers[id], { config: f.config, root: f.cfg.configRoot, provenance: "qa" });
+    const claim = f.store.claim(identity);
+    assert.equal(f.store.reserveAttempt(identity, claim.claimId, 0), true);
+    if (status === "verified") assert.equal(f.store.reserveAttempt(identity, claim.claimId, 1), true);
+    assert.equal(f.store.finish(identity, claim.claimId, { status, reason: status === "verified" ? "" : "tool_call_missing", durationMs: 1 }), true);
+  }
+  const before = fs.readFileSync(f.cfg.toolCompatibilityFile);
+  const result = await probeNativeChatTools({ action: "probe" }, { ...f, callProvider: () => assert.fail("quota cannot be reset by the clarified prompt") });
+  assert.equal(result.attempts, 0);
+  assert.equal(result.snapshot.status, "partial");
+  assert.equal(result.slots[0].reason, "tool_call_missing", "unknown old failure cannot be reclassified from a missing raw response");
+  assert.equal(result.slots[1].status, "verified", "old proof proves its original native protocol roundtrip, not the new exact-arguments criterion");
+  assert.deepEqual(fs.readFileSync(f.cfg.toolCompatibilityFile), before);
+});
+
 test("management tasks accept only fixed probe action, not tools, URLs, paths or fake success flags", async () => {
   const f = fixture(); let invoked = 0;
   const manager = createAdminTaskManager({ filename: path.join(f.cfg.dataRoot, "tasks.json"), handlers: {

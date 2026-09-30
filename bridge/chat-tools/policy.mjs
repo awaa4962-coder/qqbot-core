@@ -82,13 +82,14 @@ export function safeToolBatch(message) {
   if (!Array.isArray(calls) || !calls.length || calls.length > CHAT_TOOL_LIMITS.toolCalls) return null;
   const ids = new Set();
   for (const call of calls) {
-    if (call?.type !== "function" || !/^[A-Za-z0-9_.:-]{1,128}$/.test(call.id || "") || ids.has(call.id)) return null;
-    if (!validFunctionCall(call.function)) return null;
+    if (!validToolCallEnvelope(call) || ids.has(call.id)) return null;
+    if (typeof call.function.arguments !== "string" || call.function.arguments.length > 2048) return null;
     ids.add(call.id);
   }
   return calls;
 }
 
-function validFunctionCall(value) {
-  return /^[a-z][a-z0-9_]{0,47}$/.test(value?.name || "") && typeof value.arguments === "string" && value.arguments.length <= 2048;
+export function validToolCallEnvelope(call) {
+  return call?.type === "function" && typeof call.id === "string" && /^[A-Za-z0-9_.:-]{1,128}$/.test(call.id) &&
+    typeof call.function?.name === "string" && /^[a-z][a-z0-9_]{0,47}$/.test(call.function.name);
 }

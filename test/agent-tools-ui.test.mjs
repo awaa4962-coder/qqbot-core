@@ -540,7 +540,11 @@ if (!vm.SourceTextModule) {
   test("fixed failure reason codes render compact Chinese feedback without raw reason attributes", async () => {
     const h = environment(); const { mountAgentTools } = await h.entry("agent-tools.js");
     const reasons = { native_tools_not_declared: "未声明原生工具支持", protocol_not_supported: "协议不支持原生工具",
-      provider_not_configured: "未配置模型服务", tool_call_missing: "未返回工具调用",
+      provider_not_configured: "未配置模型服务", tool_call_missing: "未返回有效工具调用",
+      no_native_call: "未调用原生工具", direct_answer_expected: "直接回答，未调用工具",
+      invalid_response_envelope: "模型响应结构异常", invalid_call_envelope: "工具调用结构异常",
+      multiple_calls: "返回了多次工具调用", invalid_arguments: "工具参数格式异常",
+      expression_mismatch: "未计算指定表达式", truncated_response: "模型响应截断，未通过完整验证",
       tool_arguments: "工具参数不符", unexpected_tool: "返回了非预期工具",
       tool_result_wrong: "工具结果不符", reply_unusable: "验证回复不可用", wrong_answer: "验证答案不符",
       wrongargs: "工具参数不符", configuration_changed: "配置已变化",

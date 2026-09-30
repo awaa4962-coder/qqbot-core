@@ -18,7 +18,8 @@ const STATUSES = new Set(["verified", "failed", "unsupported"]);
 const REASONS = new Set(["native_tools_not_declared", "protocol_not_supported", "provider_not_configured",
   "tool_call_missing", "tool_arguments", "unexpected_tool", "tool_result_wrong", "reply_unusable", "wrong_answer",
   "configuration_changed", "cancelled", "probe_deadline", "transport_unavailable", "probe_budget", "result_budget",
-  "proof_persistence_failed", "malformed_state", "probe_pending", "claim_busy"]);
+  "proof_persistence_failed", "malformed_state", "probe_pending", "claim_busy", "no_native_call", "direct_answer_expected",
+  "invalid_response_envelope", "invalid_call_envelope", "multiple_calls", "invalid_arguments", "expression_mismatch", "truncated_response"]);
 
 function integer(value) { return Number.isSafeInteger(value) && value >= 0; }
 function object(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
