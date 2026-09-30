@@ -1,5 +1,5 @@
 export const IMAGE_POLICY_STABLE = "stable-v3";
-export const IMAGE_POLICY_EVIDENCE = "evidence-v4";
+export const IMAGE_POLICY_EVIDENCE = "evidence-v5";
 
 export function resolveImagePolicy(scope = {}, rollout = process.env.QQBOT_IMAGE_CONTEXT_ROLLOUT) {
   const value = typeof rollout === "string" ? rollout.trim() : "";

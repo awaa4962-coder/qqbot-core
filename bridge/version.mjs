@@ -4,11 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.42-image-evidence";
-export const VERSION_NAME = "image-evidence";
+export const VERSION = "1.4.43-image-input";
+export const VERSION_NAME = "image-input";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
+  "图片v5候选把本轮提问与图片放在同一条输入，标明消息发送人及原消息编号；历史原话和工具协议保持完整，真实解读质量仍待验收。",
   "图片候选只约束图相关解读，不限制普通方案长度；解释字面与语境关系，不固定追加动机免责声明，反话不等于祝贺或安慰。",
   "原生工具探测区分自答、无调用、结构错误、参数不符和截断；保留旧额度与真实结果，不为澄清提示词重置探测机会。",
   "管理员可明确验证当前主备原生工具往返，最多4次合成模型请求；模拟证据与真实证据分开，不在每次聊天中付费探测。",
@@ -24,6 +25,7 @@ export const VERSION_NOTES_ZH = Object.freeze([
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
+  "The image-v5 candidate keeps the current question beside its image and identifies the message sender and source ID. History and tool transcripts remain intact; semantic acceptance is still pending.",
   "Candidate image rules apply only to image interpretation, not ordinary plan length. Literal/context relations do not imply congratulations or comfort, and no fixed motive disclaimer is required.",
   "Native diagnostics distinguish direct answers, absent calls, malformed structures, wrong arguments and truncation. Prompt clarification never resets quota or reclassifies an unknown old response.",
   "Explicit admin diagnostics test both configured native-tool slots with at most four synthetic requests. QA and live proof are separate; ordinary chats never trigger paid probes.",

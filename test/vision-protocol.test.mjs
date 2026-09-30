@@ -137,6 +137,27 @@ function assertInitialConversation(protocol, body) {
 
 describe("prepared vision protocol payloads", () => {
   for (const [protocol, call, auth] of ADAPTERS) {
+    it(protocol + " keeps the current question inside its image message without losing parts", async t => {
+      const api = provider(protocol, auth);
+      const bodies = mockTransport(t, api, [finalResponse(protocol)]);
+      const input = request();
+      const current = input.messages.pop();
+      input.messages.at(-1).content.push({ type: "text", text: current.content });
+      const original = JSON.stringify(input);
+      const measured = measureVisionRequest(input);
+      assert.equal(measured.images, 3);
+      assert.equal(measured.imageBytes, fixtures.reduce((sum, item) => sum + item.buffer.length, 0));
+      const result = await call(api, AUTH_KEY, input);
+      assert.equal(result.ok, true);
+      assert.equal(bodies.length, 1);
+      const expected = nativeImages(protocol);
+      expected[protocol === "gemini-native" ? "parts" : "content"].push(protocol === "gemini-native" ? { text: CURRENT }
+        : { type: protocol === "openai-responses" ? "input_text" : "text", text: CURRENT });
+      assert.deepEqual(conversation(protocol, bodies[0]), [nativeText(protocol, "SELECTED_HISTORY"), expected]);
+      assert.doesNotMatch(JSON.stringify(bodies[0]), /synthetic-adjacent|sk-synthetic|trustedImageUrls|providerContinuation/);
+      assert.equal(JSON.stringify(input), original);
+    });
+
     it(protocol + " keeps three trusted JPEGs before current input and redacts adjacent text", async t => {
       const api = provider(protocol, auth);
       const bodies = mockTransport(t, api, [finalResponse(protocol)]);

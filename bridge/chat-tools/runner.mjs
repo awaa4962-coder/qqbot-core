@@ -5,6 +5,8 @@ import { chatCancellation, CHAT_CANCEL_REASONS } from "../cognition/chat-run.mjs
 import { traceStage } from "../diagnostics/message-trace.mjs";
 import { createChatToolSession } from "./session.mjs";
 import { CHAT_TOOL_LIMITS, safeToolBatch, publicSearchPhrase } from "./policy.mjs";
+import { hasRegisteredContextGroup } from "../context/pruning.mjs";
+import { IMAGE_POLICY_EVIDENCE } from "../system-prompts/image-policy.mjs";
 
 export async function runScopedChat(request, options = {}) {
   try {
@@ -26,8 +28,22 @@ async function appendVision(context) {
   if (!context.options.visionSession) return;
   const evidence = await context.options.visionSession.message(context.provider, context.config);
   context.session.assertCurrent();
-  context.messages.splice(Math.max(0, context.messages.length - 1), 0, evidence.message);
+  const current = context.messages.at(-1);
+  if (context.options.imagePolicy === IMAGE_POLICY_EVIDENCE && canCombineImageInput(current)) {
+    // Keep the question next to its pixels without mutating shared history or native transcripts.
+    const content = Array.isArray(evidence.message.content)
+      ? [...evidence.message.content, { type: "text", text: current.content }]
+      : evidence.message.content + "\n\n" + current.content;
+    context.messages[context.messages.length - 1] = { ...current, content };
+  } else {
+    context.messages.splice(Math.max(0, context.messages.length - 1), 0, evidence.message);
+  }
   context.request.trustedImageUrls = evidence.trustedImageUrls;
+}
+
+function canCombineImageInput(message) {
+  return message?.role === "user" && typeof message.content === "string" && !hasRegisteredContextGroup(message) &&
+    !["tool_calls", "tool_call_id", "providerContinuation", "reasoning_content"].some(key => message[key] !== undefined);
 }
 
 async function compatibilitySearch(context) {

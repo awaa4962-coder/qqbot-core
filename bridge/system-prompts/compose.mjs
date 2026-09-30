@@ -22,7 +22,7 @@ export function buildModelPrompt(options = {}) {
     dynamicMessage: { role: "user", content },
     metadata: {
       promptVersion: (passive ? "interjection-v7" : "chat-v12") +
-        (policyOptions.imagePolicy === IMAGE_POLICY_EVIDENCE ? "-image-evidence-v4" : ""),
+        (policyOptions.imagePolicy === IMAGE_POLICY_EVIDENCE ? "-image-evidence-v5" : ""),
       promptFingerprint: createHash("sha256").update(system).digest("hex").slice(0, 16),
       staticChars: system.length,
       dynamicChars: content.length,

@@ -2,6 +2,27 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { containsSensitiveText, redactSensitiveText } from "../bridge/privacy.mjs";
 
+test("validated sender and signed message attribution survive numeric privacy redaction", () => {
+  for (const id of ["13800138000", "123456789012345", "123456789012345678"]) {
+    const label = "消息发送人 uid=" + id + "，message_id=-" + id;
+    assert.equal(redactSensitiveText(label), label);
+    for (const field of ["message_id", "messageId", "replyToMessageId", "turn_id"]) {
+      const text = JSON.stringify({ [field]: "-" + id });
+      assert.equal(redactSensitiveText(text), text);
+    }
+  }
+});
+
+test("signed message attribution never exempts plain personal numbers or credential values", () => {
+  const id = "13800138000";
+  for (const text of ["phone=-" + id, "uid=-" + id, "qq=-" + id, "message_id=--" + id,
+    "other_message_id=-" + id, "message_id=-" + id + ".5", "message_id=-12345678901234567X",
+    "token=message_id=-" + id, "password=uid=" + id]) {
+    assert.match(redactSensitiveText(text), /\[REDACTED\]/);
+    assert.notEqual(redactSensitiveText(text), text);
+  }
+});
+
 test("redacts credential fields, JSON strings and bearer credentials", () => {
   const input = JSON.stringify({ api_key: "synthetic-key", password: 'escaped"secret', accessToken: "synthetic-token" });
   const result = redactSensitiveText(input);

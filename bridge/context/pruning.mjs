@@ -1,5 +1,9 @@
 const membership = new WeakMap();
 
+export function hasRegisteredContextGroup(message) {
+  return membership.has(message);
+}
+
 // Object-local metadata cannot leak into provider JSON or merge separate conversation requests.
 export function registerContextGroups(messages, layers) {
   const groups = new Map();

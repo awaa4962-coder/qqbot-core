@@ -1,6 +1,7 @@
 const REDACTED = "[REDACTED]";
 const SECRET_FIELD = /((?<![\w])(?:["']?(?:api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|client[_-]?secret|token|secret|password|passwd|authorization|密码|密钥)["']?)\s*[:=]\s*)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\[REDACTED\]|(?:Bearer\s+)?[^\s,;，；}\]&]+)/gi;
 const ATTRIBUTION_PREFIX = /\b(?:uid|qq|user_?id|group_?id|message_?id|reply_?to_?message_?id|turn_?id)["']?\s*[:=]\s*["']?$/i;
+const SIGNED_MESSAGE_PREFIX = /\b(?:message_?id|reply_?to_?message_?id|turn_?id)["']?\s*[:=]\s*["']?-$/i;
 
 // Pure text boundary: keep attribution IDs, never retain credential field values.
 export function redactSensitiveText(text) {
@@ -12,7 +13,10 @@ export function redactSensitiveText(text) {
   value = value.replace(/\bsk-[A-Za-z0-9_-]{8,}\b/gi, REDACTED)
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, "Bearer " + REDACTED);
   return value.replace(/\b(?:1[3-9]\d{9}|\d{17}[0-9xX]|\d{15})\b/g, (match, offset, source) => {
-    return ATTRIBUTION_PREFIX.test(source.slice(Math.max(0, offset - 64), offset)) ? match : REDACTED;
+    const prefix = source.slice(Math.max(0, offset - 64), offset);
+    const signedMessage = SIGNED_MESSAGE_PREFIX.test(prefix) && /^\d{1,20}$/.test(match) &&
+      (offset + match.length === source.length || /[\s,;，；}\]"']/.test(source[offset + match.length]));
+    return ATTRIBUTION_PREFIX.test(prefix) || signedMessage ? match : REDACTED;
   });
 }
 

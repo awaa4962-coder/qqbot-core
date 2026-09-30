@@ -74,11 +74,13 @@ test("image-only brevity never limits unrelated text answers or requires a fixed
   assert.doesNotMatch(rules, /无法知道他为何这样说/);
 });
 test("stable templates stay byte-identical outside gray group and candidate metadata is distinct", () => {
+  assert.equal(IMAGE_POLICY_STABLE, "stable-v3");
+  assert.equal(IMAGE_POLICY_EVIDENCE, "evidence-v5");
   const before = buildModelPrompt({ groupId: 50101 });
   process.env.QQBOT_IMAGE_CONTEXT_ROLLOUT = "50100";
   assert.deepEqual(buildModelPrompt({ groupId: 50101 }), before);
   const candidate = buildModelPrompt({ groupId: 50100 });
-  assert.match(candidate.metadata.promptVersion, /image-evidence-v4$/);
+  assert.match(candidate.metadata.promptVersion, /-image-evidence-v5$/);
   assert.notEqual(candidate.metadata.promptFingerprint, before.metadata.promptFingerprint);
   const changedStyle = buildModelPrompt({ groupId: 50100, mood: "different", personaCue: "hiss" });
   assert.equal(candidate.system, changedStyle.system);
@@ -111,7 +113,13 @@ test("actual pixel gateway receives one evidence policy only for selected group"
   assert.doesNotMatch(bodies[1].messages[0].content, /图片解读任务：/);
   assert.equal(JSON.stringify(bodies[0].messages).split("图片解读任务：").length, 2);
   assert.ok(bodies[0].messages.some(message => Array.isArray(message.content) && message.content.some(part => part.type === "image_url")));
-  assert.equal(bodies[0].messages.at(-1).content, request().options.currentInput);
+  const candidateParts = bodies[0].messages.at(-1).content;
+  assert.ok(Array.isArray(candidateParts));
+  assert.deepEqual(candidateParts.map(part => part.type), ["text", "image_url", "text"]);
+  assert.match(candidateParts[0].text, /^\[本轮图片证据\]/);
+  assert.deepEqual(candidateParts.at(-1), { type: "text", text: request().options.currentInput });
+  assert.equal(bodies[0].messages.length, bodies[1].messages.length - 1);
+  assert.equal(bodies[1].messages.at(-1).content, request(50101).options.currentInput);
 });
 test("primary failure and objective description retain captured policy even if rollout environment changes", async t => {
   process.env.QQBOT_IMAGE_CONTEXT_ROLLOUT = "50100";
