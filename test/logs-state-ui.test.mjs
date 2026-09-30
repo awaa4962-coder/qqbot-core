@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import process from "node:process";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 import vm from "node:vm";
+import { runVmTestFile } from "./vm-test-runner.mjs";
 import { consoleHarness, deferred, flush } from "./p5-ui-harness.mjs";
 
 const snapshot = (lines = [], overrides = {}) => ({
@@ -26,8 +24,7 @@ async function setup(mode = "browser") {
 
 if (!vm.SourceTextModule) {
   test("isolated logs UI state tests", () => {
-    const child = spawnSync(process.execPath, ["--experimental-vm-modules", "--test", fileURLToPath(import.meta.url)], { encoding: "utf8", windowsHide: true });
-    assert.equal(child.status, 0, child.stdout + child.stderr);
+    runVmTestFile(import.meta.url, { minTests: 42 });
   });
 } else {
   test("unread filters cannot claim the logs are empty or display unvalidated cached lines", async () => {

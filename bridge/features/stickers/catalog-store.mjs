@@ -18,6 +18,8 @@ let loadedPath = "";
 let catalog = null;
 let catalogReadReliable = true;
 let catalogDirty = false;
+let catalogWriteFailed = false;
+const pendingForgetHashes = new Set();
 
 export function getStickerCatalog() {
   ensureLoaded();
@@ -34,13 +36,24 @@ export function getStickerSettings() {
 }
 
 export function forgetStickerSender(userId, options = {}) {
-  const store = getStickerCatalog();
-  if (!catalogReadReliable) throw new Error("表情目录暂不可读，发送者关联清理未确认");
+  getStickerCatalog();
+  if (!catalogReadReliable) recoverCatalogForPrivacyWrite(options);
+  const store = catalog;
   const hash = hashSender(store, userId);
+  const changed = removeSenderAssociations(store, new Set([hash]));
+  if (changed) {
+    pendingForgetHashes.add(hash);
+    catalogDirty = true;
+  }
+  if (options.persist !== false && catalogDirty) persistCatalog({ durable: true });
+  return { changed, cloudDeleted: false };
+}
+
+function removeSenderAssociations(store, hashes) {
   let changed = 0;
   for (const entry of store.entries) {
-    if (!entry.senderHashes.includes(hash)) continue;
-    entry.senderHashes = entry.senderHashes.filter(value => value !== hash);
+    if (!entry.senderHashes.some(value => hashes.has(value))) continue;
+    entry.senderHashes = entry.senderHashes.filter(value => !hashes.has(value));
     entry.distinctSenderCount = entry.senderHashes.length;
     if (!entry.distinctSenderCount && entry.source === "group-capture" && !entry.manual) {
       entry.enabled = false;
@@ -48,9 +61,23 @@ export function forgetStickerSender(userId, options = {}) {
     }
     changed++;
   }
-  if (changed) catalogDirty = true;
-  if (options.persist !== false && catalogDirty) persistCatalog({ durable: true });
-  return { changed, cloudDeleted: false };
+  return changed;
+}
+
+function recoverCatalogForPrivacyWrite(options) {
+  const failure = () => new Error("表情目录暂不可读，发送者关联清理未确认");
+  if (!catalogWriteFailed || options.persist === false) throw failure();
+  let parsed;
+  try { parsed = JSON.parse(fs.readFileSync(catalogPath, "utf8")); }
+  catch { throw failure(); }
+  if (!reliableCatalog(parsed) || parsed.identitySalt !== catalog.identitySalt) throw failure();
+  // Retry only privacy removals against disk, never unrelated unconfirmed cache edits.
+  const restored = normalizeCatalog(parsed);
+  removeSenderAssociations(restored, pendingForgetHashes);
+  catalog = restored;
+  catalogReadReliable = true;
+  catalogWriteFailed = false;
+  catalogDirty = pendingForgetHashes.size > 0;
 }
 
 export function updateStickerSettings(value = {}) {
@@ -397,6 +424,8 @@ export function setStickerCatalogPath(file) {
   catalog = null;
   catalogReadReliable = true;
   catalogDirty = false;
+  catalogWriteFailed = false;
+  pendingForgetHashes.clear();
 }
 
 export function resetStickerCatalogForTest() {
@@ -404,6 +433,8 @@ export function resetStickerCatalogForTest() {
   catalog = null;
   catalogReadReliable = true;
   catalogDirty = false;
+  catalogWriteFailed = false;
+  pendingForgetHashes.clear();
 }
 
 function ensureLoaded() {
@@ -476,13 +507,17 @@ function persistCatalog(options = {}) {
   catalogDirty = true;
   store.revision = Math.max(1, Number(store.revision || 0) + 1);
   store.updatedAt = new Date().toISOString();
-  try { writeJsonFileSync(catalogPath, store, { spacing: 2, durable: options.durable === true }); }
+  try { writeJsonFileSync(catalogPath, store, { spacing: 2,
+    durable: options.durable === true || pendingForgetHashes.size > 0 }); }
   catch (error) {
     // The cache may include a write that never reached disk; it is not an authoritative snapshot.
     catalogReadReliable = false;
+    catalogWriteFailed = true;
     throw error;
   }
   catalogDirty = false;
+  catalogWriteFailed = false;
+  pendingForgetHashes.clear();
 }
 
 function normalizeFavorite(value) {

@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import process from "node:process";
-import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import test from "node:test";
+import { runVmTestFile } from "./vm-test-runner.mjs";
 import { consoleHarness, deferred, flush } from "./p5-ui-harness.mjs";
 import { uiFixtureData } from "./p5-ui-fixtures.mjs";
 
@@ -39,11 +37,8 @@ function assertReadOnly(h) {
 }
 
 if (!vm.SourceTextModule) {
-  test("agent task recovery uses isolated VM modules", () => {
-    const child = spawnSync(process.execPath, ["--experimental-vm-modules", "--test", fileURLToPath(import.meta.url)], {
-      encoding: "utf8", windowsHide: true, timeout: 15000,
-    });
-    assert.equal(child.status, 0, child.stdout + child.stderr);
+  test("agent task recovery uses isolated VM modules", t => {
+    t.diagnostic(JSON.stringify(runVmTestFile(import.meta.url, { timeout: 15000, minTests: 28 })));
   });
 } else {
   for (const status of [403, 503]) {

@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import process from "node:process";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath, URL } from "node:url";
 import { setImmediate } from "node:timers/promises";
 import vm from "node:vm";
 import test from "node:test";
+import { runVmTestFile } from "./vm-test-runner.mjs";
+import { uiFixtureData } from "./p5-ui-fixtures.mjs";
 
 const ROOT = fileURLToPath(new URL("../launcher/QQFriendLauncher/Web/", import.meta.url));
 const flush = () => setImmediate();
@@ -66,9 +66,8 @@ function harness() {
 }
 
 if (!vm.SourceTextModule) {
-  test("browser regressions in isolated VM modules", () => {
-    const result = spawnSync(process.execPath, ["--experimental-vm-modules", "--test", fileURLToPath(import.meta.url)], { encoding: "utf8", windowsHide: true });
-    assert.equal(result.status, 0, result.stdout + result.stderr);
+  test("browser regressions in isolated VM modules", t => {
+    t.diagnostic(JSON.stringify(runVmTestFile(import.meta.url, { minTests: 21 })));
   });
 } else {
   test("browser host aliases logs and fetches previews same-origin with header auth only", async () => {
@@ -268,6 +267,16 @@ if (!vm.SourceTextModule) {
     });
   });
 
+  test("unread sticker catalog refuses task submission before a confirmed directory read", async () => {
+    const h = harness(); let starts = 0;
+    h.host.call = async () => { starts++; assert.fail("unread catalog must not submit or poll a task"); };
+    const [actions] = await h.imports(["ui/actions.js"]);
+    await actions.runAction("syncStickers");
+    assert.equal(starts, 0);
+    assert.match(h.element("stickerStatus").textContent, /状态尚未确认.*重新读取目录/);
+    assert.equal(h.session.has("qqfriend-pending-tasks-v1"), false);
+  });
+
   test("exhausted polling retains task ID and reports unknown, not business failure", async () => {
     const h = harness(); let starts = 0; let reads = 0;
     const id = "00000000-0000-0000-0000-000000000002";
@@ -275,7 +284,8 @@ if (!vm.SourceTextModule) {
       if (action === "startTask") { starts++; return { jobId: id }; }
       reads++; throw Object.assign(new Error("network"), { transportFailure: true });
     };
-    const [actions, tasks] = await h.imports(["ui/actions.js", "ui/tasks.js"]);
+    const [actions, tasks, stickers] = await h.imports(["ui/actions.js", "ui/tasks.js", "pages/stickers.js"]);
+    stickers.renderStickers(uiFixtureData().stickers, { force: true });
     await actions.runAction("syncStickers");
     assert.equal(starts, 1); assert.equal(reads, 4);
     assert.deepEqual(JSON.parse(h.session.get("qqfriend-pending-tasks-v1")), [id]);

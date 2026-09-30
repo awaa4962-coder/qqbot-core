@@ -3,11 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL, URL } from "node:url";
 import { setImmediate } from "node:timers/promises";
 import vm from "node:vm";
 import test from "node:test";
+import { runVmTestFile } from "./vm-test-runner.mjs";
 
 const ROOT = fileURLToPath(new URL("../launcher/QQFriendLauncher/Web/", import.meta.url));
 
@@ -68,9 +68,8 @@ async function harness(stages) {
 const context = (extra = {}, elapsedMs = 1) => ({ stage: "context", status: "ok", elapsedMs, ...extra });
 
 if (!vm.SourceTextModule) {
-  test("context group diagnostics render in isolated VM modules", () => {
-    const result = spawnSync(process.execPath, ["--experimental-vm-modules", "--test", fileURLToPath(import.meta.url)], { encoding: "utf8", windowsHide: true });
-    assert.equal(result.status, 0, result.stdout + result.stderr);
+  test("context group diagnostics render in isolated VM modules", t => {
+    t.diagnostic(JSON.stringify(runVmTestFile(import.meta.url, { minTests: 7 })));
   });
 } else {
   test("diagnostics compare source reasons and request parts without showing prompt text", async () => {

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import vm from "node:vm";
+import { runVmTestFile } from "./vm-test-runner.mjs";
 import { consoleHarness, deferred, Element, flush } from "./p5-ui-harness.mjs";
 
 const entry = (id, overrides = {}) => ({ id, description: `Description ${id}`, tags: [id], allowedGroups: [101],
@@ -37,6 +39,11 @@ async function setup({ mode = "browser", load = true, notice = true } = {}) {
   return { h, api, uiState, activity };
 }
 
+if (!vm.SourceTextModule) {
+  test("isolated sticker drafts UI tests", () => {
+    runVmTestFile(import.meta.url, { minTests: 24 });
+  });
+} else {
 test("the parent contract is exported and a readable catalog establishes clean baselines", async () => {
   const { h, api, uiState } = await setup();
   for (const name of ["stickerHasDrafts", "canDiscardStickerDrafts", "updateStickerDirty", "stickerReadFailed", "syncStickerControls", "canWriteStickers", "stickerRemovalPayload"]) {
@@ -532,3 +539,4 @@ test("preview replacement retains the four-request queue guard and ignores dispo
   h.window.dispatchEvent({ type: "pagehide" });
   assert.deepEqual(revoked, ["blob:mock-1", "blob:mock-2"]);
 });
+}

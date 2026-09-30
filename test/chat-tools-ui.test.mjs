@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import process from "node:process";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath, URL } from "node:url";
 import { setImmediate } from "node:timers/promises";
 import vm from "node:vm";
 import test from "node:test";
+import { runVmTestFile } from "./vm-test-runner.mjs";
 
 const ROOT = fileURLToPath(new URL("../launcher/QQFriendLauncher/Web/", import.meta.url));
 const COUNTERS = ["modelRounds", "transportAttempts", "toolCalls", "toolOutputChars", "requestedCompletionTokens", "toolResultChars", "modelRoundLimit", "toolLimit"];
@@ -79,9 +78,8 @@ function trace(stages, extra = {}) {
 }
 
 if (!vm.SourceTextModule) {
-  test("tool diagnostics render in isolated VM modules", () => {
-    const result = spawnSync(process.execPath, ["--experimental-vm-modules", "--test", fileURLToPath(import.meta.url)], { encoding: "utf8", windowsHide: true });
-    assert.equal(result.status, 0, result.stdout + result.stderr);
+  test("tool diagnostics render in isolated VM modules", t => {
+    t.diagnostic(JSON.stringify(runVmTestFile(import.meta.url, { minTests: 19 })));
   });
 } else {
   test("tool traces render fixed Chinese names, counters and explicit request quota in the existing detail", async () => {

@@ -3,11 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { spawnSync } from "node:child_process";
 import { setImmediate } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL, URL, URLSearchParams } from "node:url";
 import vm from "node:vm";
 import test from "node:test";
+import { runVmTestFile } from "./vm-test-runner.mjs";
 
 const ROOT = fileURLToPath(new URL("../launcher/QQFriendLauncher/Web/", import.meta.url));
 const read = name => fs.readFileSync(path.join(ROOT, name), "utf8");
@@ -270,10 +270,9 @@ test("usage band and allowlisted assets are wired below routes and before the gu
   assert.match(server, /\["\/console\/api-usage\.css", \["api-usage\.css", "text\/css; charset=utf-8"\]\]/);
 });
 
-test("diagnostic usage flags distinguish legacy unknowns, known zeros and actual mode", async () => {
+test("diagnostic usage flags distinguish legacy unknowns, known zeros and actual mode", async t => {
   if (!vm.SourceTextModule) {
-    const child = spawnSync(process.execPath, ["--experimental-vm-modules", "--test", "--test-name-pattern=diagnostic usage flags", fileURLToPath(import.meta.url)], { encoding: "utf8", windowsHide: true });
-    assert.equal(child.status, 0, child.stdout + child.stderr);
+    t.diagnostic(JSON.stringify(runVmTestFile(import.meta.url, { pattern: "diagnostic usage flags" })));
     return;
   }
   const nodes = new Map(); const listeners = [];
