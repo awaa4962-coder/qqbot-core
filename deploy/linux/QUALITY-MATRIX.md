@@ -108,6 +108,17 @@ Linux promotion, natural single-group window, P3-06 and full P5-02 are unaccepte
 The native-tool probe's existing 24-hour quota remains untouched; this comparison
 declares no tools and cannot count as a repeated native-tool compatibility probe.
 
+Result appended after the frozen run: both lanes completed sixteen real HTTP
+attempts, no retry or QQ send. Parent inspected every cleaned output against the
+unchanged criteria and found six failing candidate cases. This was a Codex
+evidence review, not user/human sign-off. The new image rules are **not eligible
+for gray activation**; P3-06 and P5-02 remain open. Pixel text was received,
+but context/intent interpretation and an unsolicited memory-command suggestion
+still failed. No new attempt was paid to seek a passing answer. Private reports
+retain the full synthetic evidence and native reported usage; public documents
+record only aggregated outcomes. P5-03 is separately accepted from its complete
+source/consumer, two-audit and final Linux gate, not from this quality replay.
+
 After the final integration commit, the parent must preselect probes/routes and persist a hard budget before network access. Count physical HTTP attempts, including retries, fallback, description generation and tool rounds, not only logical cases. A suggested upper plan for these eight text-only probes is eight primary attempts plus at most eight explicitly reserved fallback attempts, no automatic retry/warm-up; use a tighter parent limit when appropriate. This document is a budget proposal, not authorization or an enforced replay executor. Also predeclare total Token/output/time limits and fail closed if actual transport accounting is incomplete. Do not run all routes or extra controls outside that recorded budget. No QQ sends, production history, real private state or private reasoning are needed for the synthetic replay.
 
 Use the real current route/self-context injection at transport time; fixture packets never prove the provider actually used. Preserve actual primary/fallback config and reasoning settings. Recompute final request fingerprints after runtime self-facts/pixel injection. Keep complete synthetic outputs and human evidence in the parent's restricted report, not in public fixtures. Missing runs, usage or review remain unverified.
