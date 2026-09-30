@@ -17,6 +17,7 @@ COPY --chown=node:node scripts ./scripts
 COPY --chown=node:node napcat_bridge.mjs daily_summary.mjs ./
 COPY --chown=node:node CHANGELOG.md README.md ./
 COPY --chown=node:node launcher/QQFriendLauncher/Web ./launcher/QQFriendLauncher/Web
+RUN rm -f /app/bridge/features/index.mjs /app/bridge/features/stickers/manifest.mjs
 
 USER node
 

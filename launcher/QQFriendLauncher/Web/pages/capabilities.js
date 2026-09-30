@@ -1,8 +1,12 @@
 import { $, escapeHtml, fmt } from "../ui/dom.js";
 import { uiState } from "../ui/state.js";
+import { mountAgentTools } from "../agent-tools.js";
 
 export function renderCapabilities(snapshot) {
-  if (!snapshot || typeof snapshot !== "object") return;
+  if (!snapshot || !Array.isArray(snapshot.categories) || !Array.isArray(snapshot.capabilities) ||
+      snapshot.capabilities.some(item => !item || typeof item !== "object")) {
+    throw new Error("能力目录响应不完整，请重新读取。");
+  }
   uiState.capabilitySnapshot = snapshot;
   uiState.capabilitiesLoaded = true;
   const categories = Array.isArray(snapshot.categories) ? snapshot.categories : [];
@@ -25,7 +29,34 @@ export function renderCapabilities(snapshot) {
     `<span class="unavailable">${fmt.format(counts.unavailable)} 不可用</span>`,
     `<span class="reserved">${fmt.format(counts.reserved)} 预留</span>`,
   ].join("");
+  setCapabilityNotice(capabilities.length ? "能力目录已刷新" : "目录已读取，暂无能力记录", capabilities.length ? "ready" : "empty");
   applyCapabilityFilter();
+  const agentPanel = $("agentToolsPanel");
+  if (agentPanel) mountAgentTools(agentPanel, snapshot.agentTools);
+}
+
+export function setCapabilityNotice(message, state = "error") {
+  const notice = $("capabilityNotice");
+  if (notice) {
+    notice.textContent = message;
+    if (notice.dataset) notice.dataset.state = state;
+  }
+  const panel = $("capabilityPanel");
+  panel?.setAttribute?.("aria-busy", String(state === "loading"));
+}
+
+export function capabilityReadFailed(error) {
+  uiState.capabilitiesLoaded = false;
+  const denied = [401, 403].includes(error.status);
+  setCapabilityNotice(denied ? "无权读取能力目录，请重新认证后刷新。" : `能力读取失败：${error.message || "暂不可用"}；${uiState.capabilitySnapshot.capabilities.length ? "以下为上次快照，非最新状态。" : "尚未取得目录。"}`);
+  if (denied) {
+    uiState.capabilitySnapshot = { categories: [], capabilities: [] };
+    $("capabilityList").innerHTML = "";
+    $("capabilitySummary").textContent = "目录未读取";
+    $("capabilityNavCount").textContent = "-";
+    const agentPanel = $("agentToolsPanel");
+    if (agentPanel) mountAgentTools(agentPanel, null);
+  }
 }
 
 export function applyCapabilityFilter() {
@@ -42,7 +73,7 @@ export function applyCapabilityFilter() {
   });
 
   if (!matches.length) {
-    $("capabilityList").innerHTML = '<div class="empty-state"><b>没有匹配的能力</b><span>换个关键词或清除筛选后再试。</span></div>';
+    $("capabilityList").innerHTML = `<div class="empty-state"><b>${uiState.capabilitiesLoaded ? uiState.capabilitySnapshot.capabilities.length ? "没有匹配的能力" : "暂无能力记录" : "能力目录尚未读取"}</b></div>`;
     return;
   }
   $("capabilityList").innerHTML = matches.map((item) => {
@@ -58,7 +89,7 @@ export function applyCapabilityFilter() {
       '<div class="capability-copy">',
       `<div class="capability-title"><h3>${escapeHtml(item.name)}</h3><span class="capability-badge">${escapeHtml(item.statusLabel)}</span></div>`,
       `<p>${escapeHtml(item.summary)}</p>`,
-      `<small>${escapeHtml(scope)} · ${escapeHtml(item.statusDetail)}</small>`,
+      `<small>${escapeHtml(scope)} · ${escapeHtml(item.statusDetail || "状态待确认")}</small>`,
       `<small class="capability-state">${escapeHtml(capabilityStateLabel(item.state))}</small>`,
       examples ? `<div class="capability-examples">${examples}</div>` : "",
       "</div>",
@@ -82,8 +113,8 @@ export function capabilityScopeLabel(scope) {
 export function capabilityStateLabel(state) {
   if (!state) return "状态待刷新";
   const installed = state.installed === true ? "已安装" : state.installed === false ? "未安装" : "安装状态待确认";
-  const enabled = state.enabled ? "已启用" : "未启用";
-  const permission = state.permitted === null ? "权限按实际会话判断" : state.permitted ? "会话已许可" : "当前会话受限";
+  const enabled = state.enabled === true ? "已启用" : state.enabled === false ? "未启用" : "启用状态待确认";
+  const permission = state.permitted == null ? "权限按实际会话判断" : state.permitted === true ? "会话已许可" : "当前会话受限";
   const health = ({ ready: "依赖检查通过", configured: "模型已配置，连通性未探测", partially_configured: "部分会话模型配置不可用",
     configuration_error: "模型配置不可用", degraded: "依赖异常", disabled: "当前未运行", unknown: "检查中", not_checked: "未做运行探测" })[state.health] || "状态待确认";
   return [installed, enabled, permission, health].join(" · ");

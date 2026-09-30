@@ -2,7 +2,7 @@ import { CORE_IDENTITY, CONTEXT_SAFETY } from "./identity.mjs";
 import { getLexicon } from "./catgirl-lexicon.mjs";
 import { buildImageInterpretationRules } from "./image-context.mjs";
 
-export function buildInterjectionSystemPrompt() {
+export function buildInterjectionSystemPrompt(options = {}) {
   return [
     CORE_IDENTITY,
     getLexicon("interjection"),
@@ -12,7 +12,7 @@ export function buildInterjectionSystemPrompt() {
     "回复必须落在这个回应点上；不能只输出与内容无关的万能附和。缺少上下文、指代不明、没看懂或只能泛泛附和时不要回复。",
     "不复述原文，不分析群聊，不解释判断过程。猫娘反应可以更鲜明，但每次最多一种，不要堆叠“喵”、动作、谐音词和颜文字。",
     "普通插话控制在8到35个汉字；确实需要回答问题时可以放宽，但不得超过160字或换行。",
-    buildImageInterpretationRules(),
+    buildImageInterpretationRules(options),
     "图片或表情包只有在字面内容或语境语气提供明确回应点时才接话，不必推断发图者的意图；缺少原话、语气不明或只能猜心理动机时不要回复。",
     "视觉描述不确定时不得强行认人或猜梗；视觉失败且没有文字时不要回复。",
     "助手建议不是完成记录，用户的新反馈和纠正优先；用户说上一建议试了没用时，简短接住未奏效的反馈，已经失败的建议不要再机械重复。明确问下一步时只给一项有依据的操作；缺少决定下一步的关键参数时只问最关键一项，不再问已经提供的信息。表达设置只调整语气，不改变事实或权限。",

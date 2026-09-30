@@ -1,6 +1,6 @@
-import { applyApiPreset, applyGlobalReasoningPreset, renderApiProviders, syncGlobalReasoningState, updateApiRouteReasoningAvailability } from "./pages/api.js";
+import { apiHasDrafts, applyApiPreset, applyGlobalReasoningPreset, canDiscardApiDrafts, renderApiProviders, selectApiProvider, syncApiControls, syncGlobalReasoningState, updateApiRouteReasoningAvailability } from "./pages/api.js";
 import { applyCapabilityFilter } from "./pages/capabilities.js";
-import { commitListEditor, removeListEditorValue, renderConfigEditor, renderListEditors, updateConfigDirty } from "./pages/configuration.js";
+import { commitListEditor, removeListEditorValue, renderConfigEditor, renderListEditors, setConfigDirty, syncConfigControls, updateConfigDirty } from "./pages/configuration.js";
 import { applyLogFilter } from "./pages/logs.js";
 import { filterMemeArchive, showMemeArchiveEntry } from "./pages/memes.js";
 import { markStatusStale, renderSnapshot, renderStatus } from "./pages/overview.js";
@@ -11,10 +11,11 @@ import { applyBackground, applyUiPreferences, saveUiPreferences } from "./ui/app
 import { $ } from "./ui/dom.js";
 import { CONFIG_FIELDS, PAGE_META } from "./ui/metadata.js";
 import { host, uiState } from "./ui/state.js";
-import { resumeManagedTasks } from "./ui/tasks.js";
+import { initializeManagedTaskPanel, resumeManagedTasks } from "./ui/tasks.js";
 import { installTaskFeedback } from "./ui/background-feedback.js";
 
 installTaskFeedback();
+initializeManagedTaskPanel();
 
 let memoryController;
 let memoryModule;
@@ -35,10 +36,24 @@ async function openMemory() {
 export function canLeaveCurrentView(nextView) {
   if (nextView === uiState.currentView) return true;
   if (uiState.currentView === "memory" && memoryController && !memoryController.canLeave()) return false;
+  if (["configuration", "api-center"].includes(uiState.currentView) && groupIsBusy(uiState.currentView === "configuration" ? "saveConfig" : "saveApiProvider")) {
+    toast("正在提交或读取配置，请等待结果后再离开。", "error");
+    return false;
+  }
   if (uiState.currentView === "configuration" && uiState.configDirty) {
     const leave = window.confirm("配置有未保存修改。确定离开并放弃这些修改吗？");
-    if (leave) renderConfigEditor(uiState.lastConfigSnapshot, { force: true });
+    if (leave) {
+      const blocked = uiState.configBlocked;
+      renderConfigEditor(uiState.lastConfigSnapshot, { force: true });
+      if (blocked) { uiState.configBlocked = true; uiState.configLoaded = false; syncConfigControls(); }
+    }
     return leave;
+  }
+  if (uiState.currentView === "api-center" && apiHasDrafts()) {
+    if (!canDiscardApiDrafts()) return false;
+    const blocked = uiState.apiBlocked;
+    renderApiProviders(uiState.apiSnapshot, { force: true });
+    if (blocked) { uiState.apiBlocked = true; uiState.apiProvidersLoaded = false; syncApiControls(); }
   }
   return true;
 }
@@ -72,7 +87,7 @@ export function showView(view) {
   if (view === "stickers" && !uiState.stickersLoaded) runAction("refreshStickers", null, { silent: true });
   if (view === "capabilities" && !uiState.capabilitiesLoaded) runAction("refreshCapabilities", null, { silent: true });
   if (view === "api-center" && !uiState.apiProvidersLoaded) runAction("refreshApiProviders", null, { silent: true });
-  if (view === "configuration" && !uiState.lastConfigSnapshot.editable) runAction("refreshConfig", null, { silent: true });
+  if (view === "configuration" && !uiState.configLoaded) runAction("refreshConfig", null, { silent: true });
   if (view === "logs" && !uiState.logsLoaded) runAction("refreshLogs", null, { silent: true });
   if (view === "memory") openMemory();
 }
@@ -95,8 +110,7 @@ document.addEventListener("click", (event) => {
   }
   const apiProvider = event.target.closest("[data-api-provider]");
   if (apiProvider) {
-    uiState.selectedApiProviderId = apiProvider.dataset.apiProvider;
-    renderApiProviders(uiState.apiSnapshot, { selectId: uiState.selectedApiProviderId });
+    selectApiProvider(apiProvider.dataset.apiProvider);
     return;
   }
   const listRemove = event.target.closest("[data-list-remove]");
@@ -227,20 +241,28 @@ document.addEventListener("DOMContentLoaded", async () => {
   applyUiPreferences();
   renderListEditors();
   configureRuntimeUi();
+  setConfigDirty(false);
+  syncApiControls();
   try {
     await host.call("ready");
-    const [background, snapshot] = await Promise.all([
+    const [background, snapshot] = await Promise.allSettled([
       host.call("getBackground"),
       host.call("refresh"),
     ]);
-    applyBackground(background);
-    renderSnapshot(snapshot);
+    if (background.status === "fulfilled") applyBackground(background.value);
+    if (snapshot.status !== "fulfilled") throw snapshot.reason;
+    renderSnapshot(snapshot.value);
     resumeManagedTasks().catch(() => toast("后台任务状态暂不可读，请稍后刷新", "error"));
   } catch (error) {
     $("subtitle").textContent = "主页已打开，但 Bridge 暂不可用。";
     markStatusStale("首次刷新失败，点总览中的刷新重试");
     toast(error.message || "Bridge 暂不可用", "error");
   }
+});
+
+window.addEventListener("beforeunload", event => {
+  if (!uiState.configDirty && !apiHasDrafts() && !groupIsBusy("saveConfig") && !groupIsBusy("saveApiProvider")) return;
+  event.preventDefault(); event.returnValue = "";
 });
 
 export async function quietRefresh() {
@@ -252,6 +274,7 @@ export async function quietRefresh() {
     showActionError("refreshStatus", error);
   } finally {
     endAction("refreshStatus");
+    syncConfigControls();
   }
 }
 

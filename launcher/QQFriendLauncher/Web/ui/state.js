@@ -14,6 +14,8 @@ export const uiState = {
   logsLoaded: false,
   configBaseline: "",
   configDirty: false,
+  configLoaded: false,
+  configBlocked: false,
   memesLoaded: false,
   memeSnapshot: { entries: [], candidates: [] },
   stickersLoaded: false,
@@ -30,5 +32,8 @@ export const uiState = {
   apiSnapshot: { providers: [], presets: [], protocols: [], routes: {}, tasks: [] },
   selectedApiProviderId: "",
   apiEditorMode: "edit",
+  apiProviderBaseline: "",
+  apiRoutesBaseline: "",
+  apiBlocked: false,
 };
 export { uiState as state };

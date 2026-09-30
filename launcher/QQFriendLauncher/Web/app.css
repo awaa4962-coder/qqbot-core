@@ -1028,8 +1028,9 @@ img[data-sticker-preview][data-state="loading"] { opacity: 0; }
   .capability-row { grid-template-columns: 1fr; gap: 9px; }
   .config-item { grid-template-columns: 1fr; }
   .row-link { width: max-content; }
-  .save-bar { align-items: stretch; flex-direction: column; }
-  .save-bar > div { justify-content: flex-end; }
+  .save-bar { position: static; bottom: auto; align-items: stretch; flex-direction: column; }
+  .save-bar > div { flex-direction: column; align-items: stretch; }
+  .save-bar button { width: 100%; min-width: 0; }
   .api-form-grid .wide { grid-column: auto; }
   .api-route-row { grid-template-columns: 1fr; align-items: stretch; }
   .reasoning-toolbar { grid-template-columns: 1fr; }
@@ -1051,6 +1052,12 @@ img[data-sticker-preview][data-state="loading"] { opacity: 0; }
 }
 
 .memory-workspace { min-width: 0; }
+.page-notice { min-height: 24px; margin: 10px 0; color: var(--muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.page-notice[data-state="error"], #configStatus[data-state="error"] { color: var(--red); }
+.page-notice[data-state="loading"] { color: var(--blue); }
+.section-head > *, .activity-copy, .topbar-actions { min-width: 0; }
+.section-head { flex-wrap: wrap; }
+.activity-copy { overflow-wrap: anywhere; }
 .memory-query { display: grid; grid-template-columns: 100px minmax(120px, 220px) minmax(120px, 220px) auto 36px; gap: 10px; align-items: end; justify-content: start; }
 .memory-query > *, .memory-workbench > *, .memory-context > * { min-width: 0; }
 .memory-icon { min-width: 36px; width: 36px; padding: 0; font-size: 21px; }
@@ -1079,6 +1086,8 @@ img[data-sticker-preview][data-state="loading"] { opacity: 0; }
 .memory-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .memory-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px 12px; margin: 6px 0; font-size: 12px; line-height: 1.6; }
 .memory-facts dt { color: var(--muted); }
+.agent-tools { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
+.agent-tool-label { max-width: 160px; overflow-wrap: anywhere; }
 .memory-facts dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .memory-context { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 16px 0; }
 .memory-inferences { margin: 10px 0; padding-left: 18px; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }

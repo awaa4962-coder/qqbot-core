@@ -8,6 +8,7 @@ import { CORE_IDENTITY, CONTEXT_SAFETY } from './system-prompts/identity.mjs';
 import { redactSensitiveText } from './privacy.mjs';
 import { assertChatRunCurrent, chatRunSignal } from './cognition/chat-run.mjs';
 import { getMemoryPrivacyGeneration } from './memory-profile/generation.mjs';
+import { fetchSafeResponse, readBoundedResponseBuffer, validateSafeUrl } from './safe-url.mjs';
 
 // Tool definition
 export const MIMO_TOOLS = [
@@ -32,9 +33,26 @@ export function needsSearch(text) {
 }
 
 export async function webSearch(query, options = {}) {
+  return formatSearchResults(await searchResults(query, options));
+}
+
+// Structured evidence uses the same providers/fallback, without a model summary call.
+export async function webSearchResults(query, { signal } = {}) {
+  const result = await searchResults(query, { signal });
+  return {
+    status: result.status,
+    sources: result.sources.slice(0, 5).flatMap(source => {
+      const url = sourceUrl(source.url);
+      return url ? [{ url, title: String(source.title || '').slice(0, 160), snippet: String(source.snippet || '').slice(0, 300) }] : [];
+    }),
+    answer: String(result.answer || '').slice(0, 800),
+  };
+}
+
+async function searchResults(query, options) {
   assertSearchCurrent(options);
   query = redactSensitiveText(query);
-  if (!CFG.tavilyKey) return bingSearch(query, options);
+  if (!CFG.tavilyKey) return bingSearchResults(query, options);
   try {
     const r = await fetch('https://api.tavily.com/search', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -42,48 +60,86 @@ export async function webSearch(query, options = {}) {
       signal: searchSignal(12000, options.signal), redirect: 'error',
     });
     if (!r.ok) throw new Error('Tavily HTTP ' + r.status);
-    const d = await r.json();
+    const buffer = r.body ? await readBoundedResponseBuffer(r, 128 * 1024) : null;
+    if (r.body && buffer === null) throw new Error('Tavily response too large');
+    const d = buffer ? JSON.parse(buffer.toString('utf8')) : await r.json();
+    assertSearchCurrent(options);
     if (d?.results?.length) {
-      let out = '搜索结果:\n';
-      for (const res of d.results.slice(0, 3)) { out += '- ' + res.title + ': ' + (res.content?.slice(0, 200) || '') + '\n'; }
-      if (d.answer) out += '\n总结: ' + d.answer;
-      return out;
+      return { status: 'ok', provider: 'tavily', sources: d.results.slice(0, 5).map(res => ({
+        url: res.url, title: res.title, snippet: res.content || '',
+      })), answer: d.answer || '' };
     }
-    return '未找到相关结果';
+    return { status: 'empty', sources: [], answer: '' };
   } catch {
+    assertSearchCurrent(options);
     logE('webSearch (Tavily) failed; trying public fallback');
-    return await bingSearch(query, options);
+    return await bingSearchResults(query, options);
   }
 }
 
 export async function bingSearch(query, options = {}) {
+  return formatSearchResults(await bingSearchResults(query, options));
+}
+
+async function bingSearchResults(query, options = {}) {
   assertSearchCurrent(options);
   query = redactSensitiveText(query);
   try {
-    const r = await fetch('https://cn.bing.com/search?q=' + encodeURIComponent(query) + '&form=QBLH&mkt=zh-CN', {
+    const safe = await fetchSafeResponse('https://cn.bing.com/search?q=' + encodeURIComponent(query) + '&form=QBLH&mkt=zh-CN', {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      signal: searchSignal(10000, options.signal), redirect: 'error',
+      signal: searchSignal(10000, options.signal), timeoutMs: 10000, maxRedirects: 0,
     });
-    if (!r.ok) throw new Error('Bing HTTP ' + r.status);
-    const html = await r.text();
-    const results = [];
-    const algoRe = /<li class="b_algo"[^>]*>[\s\S]*?<h2[^>]*><a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/gi;
-    let match;
-    while ((match = algoRe.exec(html)) !== null) {
+    const r = safe.response;
+    if (!safe.ok || !r?.ok) throw new Error('Bing unavailable');
+    const buffer = await readBoundedResponseBuffer(r, 128 * 1024);
+    if (buffer === null) throw new Error('Bing response too large');
+    const html = buffer.toString('utf8');
+    assertSearchCurrent(options);
+    const results = parseBingSources(html);
+    if (results.length) { log('bingSearch: got', results.length, 'results'); return { status: 'ok', provider: 'bing', sources: results, answer: '' }; }
+    return { status: 'empty', sources: [], answer: '' };
+  } catch { assertSearchCurrent(options); logE('bingSearch failed'); return { status: 'unavailable', sources: [], answer: '' }; }
+}
+
+function parseBingSources(html) {
+  const results = [];
+  const algoRe = /<li class="b_algo"[^>]*>[\s\S]*?<h2[^>]*><a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/gi;
+  let match;
+  while ((match = algoRe.exec(html)) !== null) {
+    const title = match[2].replace(/<[^>]*>/g, '').trim();
+    const snippet = match[3].replace(/<[^>]*>/g, '').trim().slice(0, 200);
+    if (title && snippet) { results.push({ url: match[1], title, snippet }); if (results.length >= 5) break; }
+  }
+  if (!results.length) {
+    const fallRe = /<h2[^>]*><a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+    while ((match = fallRe.exec(html)) !== null) {
       const title = match[2].replace(/<[^>]*>/g, '').trim();
-      const snippet = match[3].replace(/<[^>]*>/g, '').trim().slice(0, 200);
-      if (title && snippet) { results.push('- ' + title + ': ' + snippet); if (results.length >= 5) break; }
+      if (title && !title.includes('Bing') && !title.includes('Microsoft')) { results.push({ url: match[1], title, snippet: '' }); if (results.length >= 5) break; }
     }
-    if (!results.length) {
-      const fallRe = /<h2[^>]*><a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
-      while ((match = fallRe.exec(html)) !== null) {
-        const title = match[2].replace(/<[^>]*>/g, '').trim();
-        if (title && !title.includes('Bing') && !title.includes('Microsoft')) { results.push('- ' + title); if (results.length >= 5) break; }
-      }
-    }
-    if (results.length) { log('bingSearch: got', results.length, 'results'); return '搜索结果 (Bing):\n' + results.join('\n'); }
-    return '未找到相关结果';
-  } catch { logE('bingSearch failed'); return '搜索暂时不可用'; }
+  }
+  return results;
+}
+
+function formatSearchResults(result) {
+  if (result.status === 'unavailable') return '搜索暂时不可用';
+  if (result.status !== 'ok') return '未找到相关结果';
+  if (result.provider === 'bing') return '搜索结果 (Bing):\n' + result.sources.map(source => '- ' + source.title + (source.snippet ? ': ' + source.snippet : '')).join('\n');
+  let out = '搜索结果:\n';
+  for (const source of result.sources.slice(0, 3)) out += '- ' + source.title + ': ' + source.snippet.slice(0, 200) + '\n';
+  if (result.answer) out += '\n总结: ' + result.answer;
+  return out;
+}
+
+function sourceUrl(value) {
+  if (typeof value !== 'string' || value.length > 2048) return '';
+  let url = validateSafeUrl(value.replace(/&amp;/gi, '&'));
+  if (!url.ok) return '';
+  // Bing sometimes wraps the target in a base64-encoded click-tracking URL.
+  if (/(?:^|\.)bing\.com$/i.test(url.url.hostname) && url.url.pathname === '/ck/a') {
+    const target = url.url.searchParams.get('u');
+    if (target?.startsWith('a1')) url = validateSafeUrl(Buffer.from(target.slice(2), 'base64url').toString('utf8'));
+  }
+  return url.ok && url.url.href.length <= 2048 ? url.url.href : '';
 }
 
 function searchSignal(timeoutMs, external) {

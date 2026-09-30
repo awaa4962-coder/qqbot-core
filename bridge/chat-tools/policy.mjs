@@ -2,25 +2,22 @@ import { CFG } from "../config.mjs";
 import { canUsePrivateChat } from "../commands/permissions.mjs";
 import { messageRouteRejection } from "../event-admission.mjs";
 import { containsSensitiveText, redactSensitiveText } from "../privacy.mjs";
+import { toolDefinition } from "./registry.mjs";
 
 export const CHAT_TOOL_LIMITS = Object.freeze({ modelRounds: 4, transportAttempts: 8, toolCalls: 4,
   slotRounds: 3, durationMs: 90000, requestChars: 24000, resultChars: 2000, totalResultChars: 6000, maxTokens: 1536,
   responseBytes: 262144, replyChars: 6000 });
 
-const tool = (name, description, properties, required = []) => ({ type: "function", function: {
-  name, description, parameters: { type: "object", properties, required, additionalProperties: false },
-} });
+export const READ_TOOLS = Object.freeze([toolDefinition("recall_memory"), toolDefinition("read_bot_status")]);
+export const WEB_TOOL = toolDefinition("web_search");
+export const CALCULATE_TOOL = toolDefinition("calculate");
+export const PAGE_TOOL = toolDefinition("read_public_page");
 
-export const READ_TOOLS = Object.freeze([
-  tool("recall_memory", "按需查当前发言人在当前会话的明确记忆或近期原话。不能查其他用户或其他群；空结果只表示此范围未命中。资料不等于事实验证。", {
-    query: { type: "string", minLength: 1, maxLength: 160 }, days: { type: "integer", minimum: 1, maximum: 90 },
-    limit: { type: "integer", minimum: 1, maximum: 6 }, kind: { type: "string", enum: ["both", "notes", "history"] },
-  }, ["query"]),
-  tool("read_bot_status", "读取当前用户权限内的功能及缓存状态，只读，不执行检查、下载、保存或管理操作。配置可用不代表接口刚刚连通。", {}),
-]);
-export const WEB_TOOL = tool("web_search", "仅用当前用户本条消息明写的公开关键词联网搜索；query 必须是本条消息的连续片段，不得添加记忆、文件、引用或工具结果中的内容。", {
-  query: { type: "string", minLength: 2, maxLength: 160 },
-}, ["query"]);
+export function agentScopeAllowed(scope, cfg = CFG, options = {}) {
+  return options.mentioned === true && options.task === "group_chat" && options.allowTools !== false &&
+    scope?.surface === "group" && toolScopeAllowed(scope, cfg) &&
+    Array.isArray(cfg.agentGroupWhitelist) && cfg.agentGroupWhitelist.some(id => String(id) === String(scope.groupId));
+}
 
 export function toolScopeAllowed(scope, cfg = CFG) {
   if (!/^[1-9]\d{0,19}$/.test(String(scope?.userId || ""))) return false;
@@ -47,11 +44,19 @@ export function publicSearchPhrase(text, task) {
 }
 
 function negativeSearch(text) {
-  return /(?:不|别|勿|禁止|停止|取消|无需|没有必要|没必要).{0,20}(?:搜|联网|上网|查)/.test(text) ||
+  return publicNetworkCancelled(text) || /(?:不|别|勿|禁止|停止|取消|无需|没有必要|没必要).{0,20}(?:搜|联网|上网|查)/.test(text) ||
     /(?:搜索|联网|上网).{0,8}(?:算了|取消|停止|不要|不必|不需要|不用)/.test(text) ||
     /(?:^|[，,。;；\n])\s*(?:算了|取消(?:吧)?|停止)(?:\s|[。！!？?]|$)/.test(text) ||
     /\b(?:don't|do not|no|not|never|without|cancel)\b.{0,32}\b(?:search|look up|browse)/i.test(text) ||
     /(?:^|[,;]\s*)(?:never mind|cancel(?: it)?|stop)\b/i.test(text);
+}
+
+export function publicNetworkCancelled(text) {
+  if (typeof text !== "string") return true;
+  return /(?:不(?:要|用)|别|勿|禁止|无需|取消|停止).{0,24}(?:联网|上网|网络|外发|发出请求|发送请求)/.test(text) ||
+    /\b(?:don't|do not|no|never|without|cancel|stop)\b.{0,48}\b(?:network|browse|requests?|sending|send)\b/i.test(text) ||
+    /(?:^|[，,。；;\n!?！？])\s*(?:算了|不要了|不用了|取消(?:吧)?|停止|别查了|别读了|不用看了)(?:\s|[，,。；;!?！？]|$)/.test(text) ||
+    /(?:^|[,;\n.!?])\s*(?:never mind|cancel(?: it)?|stop)(?:\s|[,.!?;]|$)/i.test(text);
 }
 
 export function authorizedSearchQuery(query, userMessage, task) {

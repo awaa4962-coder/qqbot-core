@@ -17,6 +17,10 @@ function requireVersion(name, version, minimum) {
 export function assertPatchedDependencies(state) {
   requireVersion("sharp", state.sharpVersion, "0.35.4");
   assert.equal(state.sharpVersion, state.lockedSharpVersion, "Installed sharp differs from package-lock.json; rebuild dependencies");
+  if (state.lockedJsepVersion !== undefined) {
+    requireVersion("jsep", state.jsepVersion, "1.4.0");
+    assert.equal(state.jsepVersion, state.lockedJsepVersion, "Installed jsep differs from package-lock.json; rebuild the production dependency image");
+  }
   if (state.heifEnabled || state.heifVersion) requireVersion("libheif", state.heifVersion, "1.23.2");
   requireVersion("js-yaml lock", state.lockedYamlVersion, "4.3.2");
   if (state.yamlVersion !== null) {
@@ -29,9 +33,12 @@ export function assertPatchedDependencies(state) {
 export function checkDependencySecurity() {
   const lock = JSON.parse(fs.readFileSync(path.join(ROOT, "package-lock.json"), "utf8"));
   const yamlPath = path.join(ROOT, "node_modules/js-yaml/package.json");
+  const jsepPath = path.join(ROOT, "node_modules/jsep/package.json");
   return assertPatchedDependencies({
     sharpVersion: sharp.versions.sharp,
     lockedSharpVersion: lock.packages["node_modules/sharp"]?.version,
+    lockedJsepVersion: lock.packages["node_modules/jsep"]?.version || null,
+    jsepVersion: fs.existsSync(jsepPath) ? JSON.parse(fs.readFileSync(jsepPath, "utf8")).version : null,
     heifVersion: sharp.versions.heif || null,
     heifEnabled: Boolean(sharp.format.heif?.input?.buffer),
     lockedYamlVersion: lock.packages["node_modules/js-yaml"]?.version,

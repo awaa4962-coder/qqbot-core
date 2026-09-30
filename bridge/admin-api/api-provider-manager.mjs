@@ -32,9 +32,10 @@ export function buildApiProviderManagerSnapshot(options = {}) {
 
 export async function applyApiProviderAction(payload, options = {}) {
   const action = String(payload?.action || "").trim();
+  const mutationOptions = { ...options, expectedConfigurationRevision: payload?.configurationRevision };
   if (action === "save-provider") {
     const mode = payload?.mode === "create" ? "create" : "update";
-    const provider = saveApiProvider(payload.provider || {}, { ...options, mode });
+    const provider = saveApiProvider(payload.provider || {}, { ...mutationOptions, mode });
     return {
       ok: true,
       message: mode === "create"
@@ -46,7 +47,7 @@ export async function applyApiProviderAction(payload, options = {}) {
   }
   if (action === "test-provider") return await testApiProvider(payload.providerId, options);
   if (action === "save-routes") {
-    const routes = saveApiRoutes(payload.routes || {}, options);
+    const routes = saveApiRoutes(payload.routes || {}, mutationOptions);
     return {
       ok: true,
       message: "任务插槽已切换，新请求立即使用新路由",
@@ -58,11 +59,11 @@ export async function applyApiProviderAction(payload, options = {}) {
     return {
       ok: true,
       message: "已恢复上一版 API 路由和实例配置",
-      snapshot: rollbackApiConfig(options),
+      snapshot: rollbackApiConfig(mutationOptions),
     };
   }
   if (action === "delete-provider") {
-    const result = deleteApiProvider(payload.providerId, options);
+    const result = deleteApiProvider(payload.providerId, mutationOptions);
     return {
       ...result,
       message: "API 实例已删除",

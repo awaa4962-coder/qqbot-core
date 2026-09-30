@@ -6,9 +6,10 @@ import { buildOutputPacket } from "./output-pipeline.mjs";
 import { appendImageContext } from "./system-prompts/image-context.mjs";
 import { callChatSlot, chatError } from "./chat-outcome.mjs";
 import { traceStage } from "./diagnostics/message-trace.mjs";
-import { assertChatRunCurrent, noteChatOutcome } from "./cognition/chat-run.mjs";
+import { assertChatRunCurrent, currentChatScope, noteChatOutcome } from "./cognition/chat-run.mjs";
 import { createChatToolSession } from "./chat-tools/session.mjs";
 import { createVisionSession } from "./vision/session.mjs";
+import { resolveImagePolicy } from "./system-prompts/image-policy.mjs";
 
 export const MODEL_PROVIDERS = Object.freeze({
   PRIMARY: "mimo",
@@ -89,7 +90,7 @@ async function preparePrivateRequest(request, task, runtime) {
     history: request.history,
   };
   if (imageUrls.length && (runtime.resolveVision || Object.hasOwn(request.options || {}, "visionContext"))) {
-    prepared.history = buildModelFallbackHistory(request.history, imageUrls, visionContext);
+    prepared.history = buildModelFallbackHistory(request.history, imageUrls, visionContext, request.options);
     prepared.options = { ...request.options, visionContext };
   }
   return prepared;
@@ -143,6 +144,7 @@ function buildFallbackChatRequest(request) {
       request.history,
       request.imageUrls,
       request.options?.visionContext,
+      request.options,
     ),
     groupId: request.groupId,
     isAtMe: request.isAtMe,
@@ -153,6 +155,7 @@ function buildFallbackChatRequest(request) {
       toolSession: request.options?.toolSession,
       allowTools: request.options?.allowTools,
       visionSession: request.options?.visionSession,
+      imagePolicy: request.options?.imagePolicy,
       personaCue: request.options?.personaCue,
     },
   };
@@ -162,17 +165,18 @@ function withToolSession(request, task) {
   const options = request.options || {};
   const surface = request.groupId === null || request.groupId === undefined ? "private" : "group";
   const scope = { surface, groupId: request.groupId, userId: options.currentUserId };
+  const imagePolicy = resolveImagePolicy(currentChatScope() || scope);
   const visionSession = options.visionSession || (request.imageUrls?.length && !Object.hasOwn(options, "visionContext")
-    ? createVisionSession(request.imageUrls, { scope, sources: options.imageSources, usageContext: { task } }) : null);
-  return { ...options, ...(visionSession ? { visionSession } : {}), toolSession: options.toolSession || createChatToolSession({
+    ? createVisionSession(request.imageUrls, { scope, imagePolicy, sources: options.imageSources, usageContext: { task } }) : null);
+  return { ...options, imagePolicy, ...(visionSession ? { visionSession } : {}), toolSession: options.toolSession || createChatToolSession({
     scope, task,
-    userMessage: request.userMsg, allowTools: task === "interjection" ? false : options.allowTools,
+    userMessage: request.userMsg, mentioned: request.isAtMe === true, allowTools: task === "interjection" ? false : options.allowTools,
   }) };
 }
 
-export function buildModelFallbackHistory(history, imageUrls, visionContext) {
+export function buildModelFallbackHistory(history, imageUrls, visionContext, options = {}) {
   if (!imageUrls?.length) return Array.isArray(history) ? history : [];
-  return appendImageContext(history, visionContext, { imageCount: imageUrls.length });
+  return appendImageContext(history, visionContext, { ...options, imageCount: imageUrls.length });
 }
 
 export async function resolveChatVisionContext(imageUrls, options = {}) {

@@ -1,8 +1,8 @@
-import { moduleLabel, renderConfig, renderConfigEditor } from "./configuration.js";
+import { configReadFailed, moduleLabel, renderConfig, renderConfigEditor } from "./configuration.js";
 import { renderLogs } from "./logs.js";
 import { groupIsBusy } from "../ui/activity.js";
 import { $, escapeHtml, fmt, formatBytes, formatSeconds, setOutput, text } from "../ui/dom.js";
-import { uiState } from "../ui/state.js";
+import { host, uiState } from "../ui/state.js";
 
 export function setMetric(id, value, detail, tone = "") {
   const card = $(id).closest(".metric");
@@ -17,7 +17,7 @@ export function setMetric(id, value, detail, tone = "") {
 }
 
 export function renderStatus(status) {
-  if (!status || typeof status !== "object") return false;
+  if (!status || typeof status.status !== "string") throw new Error("运行状态响应不完整，请刷新核实。");
   const statusTime = Date.parse(status.generatedAt || "") || Date.now();
   if (uiState.latestStatusTime && statusTime < uiState.latestStatusTime) return false;
   uiState.latestStatusTime = statusTime;
@@ -45,7 +45,7 @@ export function renderStatus(status) {
     ? `Bridge 正常，版本 ${text(status.version)}，管理端口 ${text(config.listenPort)}。`
     : stopped
       ? "Bridge 已停止，需要时点启动全部。"
-      : "Bridge 暂不可用，可以先点启动全部或重启 Bridge。";
+      : host.mode === "browser" ? "Bridge 暂不可用，请核对服务器服务状态。" : "Bridge 暂不可用，可以先点启动全部或重启 Bridge。";
   $("lastUpdated").classList.remove("error");
   $("lastUpdated").textContent = `刚刚刷新 · ${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
 
@@ -73,7 +73,7 @@ export function renderStatus(status) {
     notice.classList.add("bad");
     notice.innerHTML = stopped
       ? "<strong>Bridge 已停止</strong><span>启动全部后会自动恢复状态。</span>"
-      : "<strong>Bridge 当前不可用</strong><span>前往服务页启动或重启，再运行一次健康检查。</span>";
+      : host.mode === "browser" ? "<strong>Bridge 当前不可用</strong><span>服务器服务状态待核实。</span>" : "<strong>Bridge 当前不可用</strong><span>前往服务页启动或重启，再运行一次健康检查。</span>";
   } else if (degradedModules.length > 0) {
     const names = degradedModules.map(moduleLabel).join("、");
     notice.classList.add("warn");
@@ -83,7 +83,7 @@ export function renderStatus(status) {
     notice.innerHTML = `<strong>消息保护已介入</strong><span>本轮丢弃 ${fmt.format(dropped)} 个事件，可到日志页查看原因。</span>`;
   } else {
     notice.classList.add("ok");
-    notice.innerHTML = "<strong>所有核心服务正常</strong><span>没有需要立即处理的问题。</span>";
+    notice.innerHTML = "<strong>Bridge 在线</strong><span>未报告模块异常；模型连通性未在此探测。</span>";
   }
 
   renderConfig(status, uiState.lastConfigSnapshot);
@@ -94,12 +94,22 @@ export function renderStatus(status) {
 export function renderSnapshot(snapshot) {
   if (!snapshot || typeof snapshot !== "object") return;
   if (snapshot.config) {
-    renderConfigEditor(snapshot.config);
+    try { renderConfigEditor(snapshot.config); }
+    catch (error) {
+      configReadFailed(error);
+      snapshot.errors ||= {};
+      snapshot.errors.config = { message: error.message, status: error.status };
+    }
   }
   if (snapshot.status) renderStatus(snapshot.status);
   if (snapshot.logs) {
     renderLogs(snapshot.logs);
     uiState.logsLoaded = true;
+  }
+  if (snapshot.errors?.config) configReadFailed(snapshot.errors.config);
+  if (snapshot.errors?.logs) {
+    uiState.logsLoaded = false;
+    setOutput("logsOutput", `日志读取失败：${snapshot.errors.logs.message}；请刷新重试。`, true);
   }
 }
 
@@ -116,6 +126,9 @@ export function markStatusStale(message) {
   $("sidebarStatusDot").classList.remove("ok");
   $("sidebarStatusDot").classList.add("bad");
   document.querySelectorAll(".metric").forEach((card) => card.classList.add("stale"));
+  const notice = $("systemNotice");
+  notice.classList.remove("ok"); notice.classList.add("warn");
+  notice.innerHTML = `<strong>运行状态未更新</strong><span>${escapeHtml(message)}；当前指标为上次快照。</span>`;
 }
 
 export function renderStoppedStatus(generatedAt = new Date().toISOString()) {
@@ -147,7 +160,7 @@ export function syncRuntimeTransition(previousOnline, online, status) {
     "serviceOutput",
     online
       ? `Bridge 已恢复在线\n版本：${text(status.version)}\nPID：${text(process.pid)}`
-      : "Bridge 已离线\n请运行启动全部或健康检查。",
+      : host.mode === "browser" ? "Bridge 已离线\n请在服务器核对服务状态。" : "Bridge 已离线\n请运行启动全部或健康检查。",
     true,
   );
 }

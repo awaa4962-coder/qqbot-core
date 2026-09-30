@@ -97,6 +97,14 @@ function parseNumberList(raw) {
     .filter(function(item) { return Number.isSafeInteger(item) && item > 0; });
 }
 
+export function parseAgentGroupList(raw) {
+  const items = parseList(raw);
+  if (items.length > 200 || items.some(item => !/^[1-9]\d{4,14}$/.test(item))) {
+    throw new Error('invalid QQBOT_AGENT_GROUPS: expected decimal group IDs');
+  }
+  return [...new Set(items.map(Number))];
+}
+
 function readBotNames() {
   const fromConfig = _readOptionalList('.env_bot_names', 'QQBOT_NAMES');
   return fromConfig.length ? fromConfig : ['夜星', 'QQFriend', 'Yexing'];
@@ -300,6 +308,7 @@ export const CFG = {
   legacyProfileRefreshEnabled: process.env.QQBOT_LEGACY_PROFILE_REFRESH === '1',
   botBlacklist: readBotBlacklist(),
   friendWhitelist: readFriendWhitelist(),
+  agentGroupWhitelist: _readOptionalListState('.env_agent_groups', 'QQBOT_AGENT_GROUPS', parseAgentGroupList).values,
   jmUserWhitelist: readJmUserWhitelist(),
   adminUins: _readOptionalList('.env_admins', 'QQBOT_ADMINS'),
   botNames: readBotNames(),

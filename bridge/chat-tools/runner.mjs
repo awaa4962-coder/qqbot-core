@@ -44,12 +44,13 @@ async function compatibilitySearch(context) {
 
 function createSlot(request, options) {
   const session = options.toolSession || createChatToolSession({ scope: request.selfContext, task: options.task,
-    userMessage: options.userMessage, allowTools: options.allowTools });
+    userMessage: options.userMessage, mentioned: options.mentioned === true, allowTools: options.allowTools });
   const config = loadApiConfig();
   const providerId = options.providerId || getTaskRoute(options.task, { config })[options.position || "primary"];
   const provider = getProvider(providerId, { config });
   const messages = [...request.messages];
   session.trackContext(messages);
+  messages.splice(Math.max(0, messages.length - 1), 0, ...session.sourceContext());
   if (options.position === "fallback") messages.splice(Math.max(0, messages.length - 1), 0, ...session.fallbackContext());
   const bound = { ...request, selfContext: { surface: session.scope.surface, groupId: session.scope.groupId, userId: session.scope.userId },
     usageContext: { ...request.usageContext, userId: session.scope.userId } };

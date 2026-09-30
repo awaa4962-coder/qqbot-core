@@ -155,8 +155,10 @@ export function initializeMemory(host, { document: doc = document, window: win =
   }
 
   function accept(result, expected, preferId) {
-    if (!result?.ok || !sameTarget(result, expected) || typeof result.revision !== "string" || !result.revision ||
-        !Array.isArray(result.items) || !result.preferences || !Array.isArray(result.inferences)) {
+    if (result?.ok !== true || !sameTarget(result, expected) || typeof result.revision !== "string" || !result.revision ||
+        !Array.isArray(result.items) || result.items.some(item => !item || typeof item.id !== "string" || typeof item.title !== "string" || typeof item.text !== "string") ||
+        !result.preferences || typeof result.preferences !== "object" || Array.isArray(result.preferences) || !Array.isArray(result.inferences) ||
+        result.inferences.some(item => !item || typeof item.label !== "string")) {
       throw new Error("记忆响应不完整或与查询用户不符，请重新查询。");
     }
     snapshot = { ...result, limits: { ...DEFAULT_LIMITS, ...result.limits } };

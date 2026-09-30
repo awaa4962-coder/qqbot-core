@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST_DIR = "dist";
 const DEV_TOOLS = ["debug_bridge.mjs", "search_comp.mjs", "test_server.mjs"];
+const PUBLIC_BUILD_WORKFLOW = ".github/workflows/publish-linux-images.yml";
 const PUBLIC_QQFRIEND_FILES = new Set([
   ".qqfriend/architecture.json",
   ".qqfriend/commands.json",
@@ -20,6 +21,8 @@ const PUBLIC_LINUX_FILES = new Set([
   "Dockerfile", "Dockerfile.dependencies", "Dockerfile.overlay",
   "check.sh", "prepare.sh", "install-docker-host.sh", "install-summary-schedule.sh", "install-time-order.sh",
   "README.md", "ROADMAP.md", "MEMBER-SUMMARY.md", "MODULAR-RUNTIME.md", "SUMMARY-WORKBENCH.md", "MEMORY.md", "CHAT-TOOLS.md", "VISION.md", "USAGE.md", "CONTEXT.md",
+  "FRONTEND-ACCEPTANCE.md", "LEGACY-INTERFACES.md", "QUALITY-MATRIX.md", "GRAY-ACCEPTANCE.md",
+  "AGENT-PLAN.md",
   "systemd/docker-chrony-wait.conf", "systemd/qqfriend-summary.service",
   "systemd/qqfriend-summary.timer", "systemd/qqfriend.service",
 ].map(file => "deploy/linux/" + file));
@@ -32,6 +35,7 @@ const RELEASE_ROOTS = [
   "deploy/linux",
   "launcher/QQFriendLauncher",
   ".github/workflows/ci.yml",
+  PUBLIC_BUILD_WORKFLOW,
   ".dockerignore",
   "napcat_bridge.mjs",
   "start_bridge.bat",
@@ -125,7 +129,7 @@ export function isForbiddenPath(filePath) {
   if (normalized.includes("..")) return true;
   if (isPrivateConfigPath(normalized, parts, base)) return true;
   if (/\.tmp(?:\.|$)/i.test(base)) return true;
-  if (parts.some(part => /\.WebView2$/i.test(part) || /^publish(?:-|$)/i.test(part))) return true;
+  if (parts.some(part => /\.WebView2$/i.test(part) || (/^publish(?:-|$)/i.test(part) && normalized !== PUBLIC_BUILD_WORKFLOW))) return true;
   if (FORBIDDEN_NAMES.has(base)) return true;
   if (/^usage-\d{4}-\d{2}-\d{2}\.jsonl$/i.test(base)) return true;
   if (base.startsWith(".env_")) return true;

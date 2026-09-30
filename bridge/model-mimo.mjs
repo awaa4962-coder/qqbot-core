@@ -11,6 +11,7 @@ import { buildImageContextMessage } from "./system-prompts/image-context.mjs";
 import { buildInterjectionPrompt } from "./interjection-policy.mjs";
 import { selectPersonaCue } from "./persona-style.mjs";
 import { runScopedChat } from "./chat-tools/runner.mjs";
+import { imagePolicyFromOptions } from "./system-prompts/image-policy.mjs";
 
 export function buildSystem(_userName, groupId, mood, options = {}) {
   return buildModelPrompt({ ...options, groupId, mood }).system;
@@ -67,7 +68,7 @@ async function buildMiMoMessages(history, imageUrls, userMsg, userName, options)
     ? options.visionContext
     : await resolveVisionContext(imageUrls, { usageContext: options.usageContext });
   if (imageUrls?.length && !options.visionSession) {
-    msgs.push(buildImageContextMessage(visionDesc, { imageCount: imageUrls.length }));
+    msgs.push(buildImageContextMessage(visionDesc, { imageCount: imageUrls.length, imagePolicy: options.imagePolicy }));
   }
 
   const currentInput = options.replyMode === 'interjection'
@@ -98,6 +99,7 @@ export async function tryMiMoResult(userMsg, userName, history, imageUrls, group
     currentInput: options.currentInput,
     toolSession: options.toolSession,
     visionSession: options.visionSession,
+    imagePolicy: imagePolicyFromOptions({ ...options, groupId }),
     thinking: options.replyMode === 'interjection' ? { type: 'disabled' } : undefined,
     personaCue: options.personaCue || selectPersonaCue(userMsg, {
       replyMode: options.replyMode || 'chat',

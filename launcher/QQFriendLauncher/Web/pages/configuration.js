@@ -1,4 +1,4 @@
-import { toast } from "../ui/activity.js";
+import { groupIsBusy, toast } from "../ui/activity.js";
 import { $, escapeHtml, splitList } from "../ui/dom.js";
 import { CONFIG_FIELDS } from "../ui/metadata.js";
 import { uiState } from "../ui/state.js";
@@ -65,9 +65,15 @@ function imageContextDetails(context) {
 }
 
 export function renderConfigEditor(snapshot, options = {}) {
-  if (!snapshot || typeof snapshot !== "object") return;
-  if (uiState.configDirty && !options.force) return;
+  if (!snapshot?.editable || typeof snapshot.editable !== "object" || Array.isArray(snapshot.editable) ||
+      typeof snapshot.revision !== "string" || !snapshot.revision) throw new Error("配置快照响应不完整，请重新读取。");
+  if (uiState.configDirty && !options.force) {
+    if (snapshot.revision !== uiState.lastConfigSnapshot.revision) throw Object.assign(new Error("配置已在别处更新；草稿已保留，请重新读取后核对。"), { status: 409 });
+    return;
+  }
   uiState.lastConfigSnapshot = snapshot;
+  uiState.configLoaded = true;
+  uiState.configBlocked = false;
   const editable = snapshot.editable || {};
   for (const [id, field] of Object.entries(CONFIG_FIELDS)) {
     const values = Array.isArray(editable[field]) ? editable[field] : [];
@@ -81,6 +87,22 @@ export function renderConfigEditor(snapshot, options = {}) {
     : snapshot.restartRequiredAfterSave
     ? "当前配置已载入，修改后保存并重启 Bridge 生效"
     : "当前配置已载入";
+  $("configStatus").dataset.state = "ready";
+}
+
+export function configReadFailed(error, message) {
+  uiState.configBlocked = true;
+  $("configStatus").textContent = message || `${[401, 403].includes(error.status) ? "无权读取配置" : "配置读取失败"}：${error.message || "暂不可用"}；现有内容未更新。`;
+  $("configStatus").dataset.state = "error";
+  setConfigDirty(uiState.configDirty);
+}
+
+export function syncConfigControls() {
+  const busy = groupIsBusy("saveConfig");
+  document.querySelectorAll('[data-action="saveConfig"]').forEach(button => {
+    button.disabled = !uiState.configLoaded || uiState.configBlocked || busy || !uiState.configDirty;
+  });
+  renderListEditors();
 }
 
 export function configFingerprint() {
@@ -90,10 +112,11 @@ export function configFingerprint() {
 export function setConfigDirty(value) {
   uiState.configDirty = Boolean(value);
   const state = $("configDirtyState");
-  state.textContent = uiState.configDirty ? "未保存" : uiState.lastConfigSnapshot.pendingRestart ? "已保存 · 待重启" : "已保存";
+  state.textContent = uiState.configDirty ? "未保存" : !uiState.configLoaded ? "尚未读取" : uiState.configBlocked ? "待核实" : uiState.lastConfigSnapshot.pendingRestart ? "已保存 · 待重启" : "已保存";
   state.classList.toggle("dirty", uiState.configDirty);
-  if ($("configSaveHint")) $("configSaveHint").textContent = uiState.configDirty ? "配置有未保存修改" : uiState.lastConfigSnapshot.pendingRestart ? "配置已保存，等待重启生效" : "没有未保存修改";
+  if ($("configSaveHint")) $("configSaveHint").textContent = uiState.configDirty ? "配置有未保存修改" : !uiState.configLoaded ? "尚未读取配置" : uiState.configBlocked ? "配置结果待核实" : uiState.lastConfigSnapshot.pendingRestart ? "配置已保存，等待重启生效" : "没有未保存修改";
   if ($("configSaveBar")) $("configSaveBar").classList.toggle("dirty", uiState.configDirty);
+  syncConfigControls();
 }
 
 export function updateConfigDirty() {
@@ -117,9 +140,9 @@ export function renderListEditors() {
     const chips = editor.querySelector(".list-editor-chips");
     chips.innerHTML = values.map((value) => `<span class="list-chip">${escapeHtml(value)}<button type="button" data-list-remove="${escapeHtml(value)}" title="移除 ${escapeHtml(value)}" aria-label="移除 ${escapeHtml(value)}">×</button></span>`).join("");
     const metadata = uiState.lastConfigSnapshot.files?.[CONFIG_FIELDS[source.id]];
-    const locked = metadata?.writable === false;
+    const locked = metadata?.writable === false || !uiState.configLoaded || uiState.configBlocked || groupIsBusy("saveConfig");
     source.disabled = locked;
-    editor.title = locked ? `由环境变量 ${metadata.envName || ""} 控制，请修改部署配置` : "";
+    editor.title = metadata?.writable === false ? `由环境变量 ${metadata.envName || ""} 控制，请修改部署配置` : locked ? "配置尚未读取或待核实" : "";
     editor.querySelectorAll("input,button").forEach(control => { control.disabled = locked; });
   });
 }
@@ -130,8 +153,8 @@ export function commitListEditor(editor) {
   const input = editor.querySelector("input:not([type=hidden])");
   const additions = splitList(input.value);
   if (!additions.length) return;
-  if (editor.dataset.numeric === "true" && additions.some((value) => !/^\d{5,12}$/.test(value))) {
-    toast("QQ 或群号只能填写 5 到 12 位数字。", "error");
+  if (editor.dataset.numeric === "true" && additions.some((value) => !/^\d{5,15}$/.test(value) || !Number.isSafeInteger(Number(value)))) {
+    toast("QQ 或群号只能填写 5 到 15 位安全整数。", "error");
     input.focus();
     return;
   }

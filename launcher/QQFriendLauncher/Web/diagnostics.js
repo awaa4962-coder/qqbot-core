@@ -1,4 +1,4 @@
-import { callManagedAction, taskPhaseLabel } from "./ui/tasks.js";
+import { callManagedAction, managedTaskIsBlocked, resumeManagedTasks, taskPhaseLabel, taskResultError } from "./ui/tasks.js";
 import { initializeDeliveries } from "./deliveries.js";
 
 (function () {
@@ -14,9 +14,12 @@ import { initializeDeliveries } from "./deliveries.js";
   let rows = [];
   let selectedId = "";
   let replay = null;
-  let loaded = false;
+  const loaded = new Set();
+  let replayStale = true;
+  let reviewBaseline = "";
+  let selectedCaseId = "";
   const busy = new Set();
-  const toolNames = { recall_memory: "记忆检索", read_bot_status: "机器人状态", web_search: "公开搜索" };
+  const toolNames = { recall_memory: "记忆检索", read_bot_status: "机器人状态", web_search: "公开搜索", calculate: "有界计算", read_public_page: "公开页面读取" };
   const toolReasons = {
     tool_model_round: "模型轮次", tool_completed: "工具完成", tool_empty: "无结果", tool_denied: "权限拒绝",
     tool_arguments: "参数无效", tool_unavailable: "工具不可用", tool_reused: "复用结果", tool_budget: "达到预算上限",
@@ -55,6 +58,10 @@ import { initializeDeliveries } from "./deliveries.js";
   async function action(name) {
     const target = name === "traces" ? "traces" : "replay";
     if (busy.has(target)) return;
+    if (name === "replay" && reviewDirty() && !window.confirm("人工评价尚未保存，确定放弃并刷新吗？")) return;
+    if (!["traces", "replay", "check"].includes(name) && (replayStale || managedTaskIsBlocked("replay"))) {
+      notice("replayNotice", "回放状态待核实，请先刷新，勿重复生成。", true); return;
+    }
     busy.add(target);
     const panel = target === "traces" ? tracePanel : replayPanel;
     const noticeId = target === "traces" ? "traceNotice" : "replayNotice";
@@ -62,10 +69,19 @@ import { initializeDeliveries } from "./deliveries.js";
     panel.querySelectorAll("button,input,select").forEach(node => { node.disabled = true; });
     notice(noticeId, name === "generate" ? "正在生成候选回复，等待模型返回…" : "正在处理…");
     try {
-      if (name === "traces") await loadTraces();
-      else if (name === "replay") { renderReplay(await host.call("getReplay")); notice(noticeId, "回放记录已刷新"); }
+      if (name === "traces") { await loadTraces(); loaded.add(target); }
+      else if (name === "replay") {
+        await resumeManagedTasks();
+        renderReplay(await host.call("getReplay")); loaded.add(target);
+        notice(noticeId, replay.cases.length ? "回放记录已刷新" : "记录已读取，暂无回放样例");
+      }
       else await replayAction(name);
     } catch (error) {
+      loaded.delete(target);
+      if (target === "traces") {
+        rows = []; selectedId = ""; renderRows("记录未读取，非空结果");
+        $("traceDetail").textContent = "处理详情未更新";
+      } else if (name === "replay" || error.taskStateUnknown || [401, 403, 409].includes(error.status) || error.transportFailure || error.responseInvalid) replayStale = true;
       notice(noticeId, error.message || "操作失败，请稍后重试", true);
     } finally {
       busy.delete(target);
@@ -77,18 +93,19 @@ import { initializeDeliveries } from "./deliveries.js";
 
   async function loadTraces() {
     const data = await host.call("getMessageTraces", { status: $("traceStatus").value, groupId: $("traceGroup").value.trim(), messageId: $("traceMessage").value.trim(), limit: 100 });
+    if (!Array.isArray(data?.items) || data.items.some(item => !item || !Array.isArray(item.stages))) throw new Error("消息记录响应不完整，请重新读取。");
     rows = data.items;
     if (!rows.some(row => row.id === selectedId)) selectedId = rows[0]?.id || "";
     renderRows();
     notice("traceNotice", `符合条件 ${data.total} 条 · 当前显示 ${rows.length} 条 · 本次运行最多保留 ${data.capacity} 条 / ${data.retentionHours} 小时 · 不含聊天正文`);
   }
 
-  function renderRows() {
+  function renderRows(emptyText = "暂无符合条件的记录") {
     const body = $("traceRows");
     body.replaceChildren();
     if (!rows.length) {
       const row = body.insertRow(); const cell = row.insertCell();
-      cell.colSpan = 4; cell.textContent = "暂无符合条件的记录";
+      cell.colSpan = 4; cell.textContent = emptyText;
     }
     for (const item of rows) {
       const row = body.insertRow();
@@ -267,10 +284,12 @@ import { initializeDeliveries } from "./deliveries.js";
     ];
   }
 
-  function duration(ms) { return ms >= 1000 ? `${(ms / 1000).toFixed(1)} 秒` : `${Math.max(0, Math.round(ms))} ms`; }
+  function duration(ms) { return typeof ms !== "number" || !Number.isFinite(ms) || ms < 0 ? "未知" : ms >= 1000 ? `${(ms / 1000).toFixed(1)} 秒` : `${Math.round(ms)} ms`; }
 
   function renderReplay(data) {
+    if (!Array.isArray(data?.cases) || data.cases.some(item => !item || typeof item.id !== "string" || !Array.isArray(item.expectations) || !Array.isArray(item.packet?.messages))) throw new Error("回放响应不完整，请重新读取。");
     replay = data;
+    replayStale = false;
     const select = $("replayCase"); const selected = select.value;
     select.replaceChildren();
     for (const item of data.cases) {
@@ -282,7 +301,16 @@ import { initializeDeliveries } from "./deliveries.js";
 
   function renderCase() {
     const item = replay?.cases.find(example => example.id === $("replayCase").value);
-    if (!item) return;
+    selectedCaseId = item?.id || "";
+    if (!item) {
+      $("replayInput").textContent = "暂无回放样例";
+      $("replayExpectations").replaceChildren();
+      $("replaySources").hidden = true; $("replaySources").textContent = "";
+      $("replayBaseline").textContent = "尚未保存基线"; $("replayCandidate").textContent = "尚未生成候选";
+      $("replayBaselineMeta").textContent = ""; $("replayCandidateMeta").textContent = "";
+      $("replayPacket").textContent = ""; $("replayReview").value = "unreviewed"; reviewBaseline = "unreviewed";
+      $("replayQuota").textContent = "生成额度待确认"; updateReplayButtons(); return;
+    }
     $("replayInput").textContent = item.input;
     $("replayExpectations").replaceChildren();
     item.expectations.forEach(text => { const li = document.createElement("li"); li.textContent = text; $("replayExpectations").append(li); });
@@ -294,6 +322,7 @@ import { initializeDeliveries } from "./deliveries.js";
       $("replay" + field + "Meta").textContent = answer ? `${answer.version} · ${answer.provider} · ${label(answer.position)} · ${duration(answer.durationMs)}${answer.fingerprint !== item.packet.fingerprint ? " · 输入已变化" : ""}` : "";
     }
     $("replayReview").value = item.review;
+    reviewBaseline = item.review;
     $("replayPacket").textContent = item.packet.messages.map(message => `[${message.role}]\n${message.content}`).join("\n\n");
     $("replayQuota").textContent = `今日生成 ${replay.todayRuns} / ${replay.dailyLimit}`;
     updateReplayButtons();
@@ -301,18 +330,24 @@ import { initializeDeliveries } from "./deliveries.js";
 
   function updateReplayButtons() {
     const selected = replay?.cases.find(item => item.id === $("replayCase").value);
-    for (const name of ["baseline", "review"]) replayPanel.querySelector(`[data-diagnostic-action="${name}"]`).disabled = busy.has("replay") || !selected?.candidate;
-    replayPanel.querySelector('[data-diagnostic-action="generate"]').disabled = busy.has("replay") || !selected || replay.todayRuns >= replay.dailyLimit;
+    const blocked = busy.has("replay") || replayStale || managedTaskIsBlocked("replay");
+    for (const name of ["baseline", "review"]) replayPanel.querySelector(`[data-diagnostic-action="${name}"]`).disabled = blocked || !selected?.candidate;
+    replayPanel.querySelector('[data-diagnostic-action="generate"]').disabled = blocked || !selected ||
+      !Number.isInteger(replay?.todayRuns) || !Number.isInteger(replay?.dailyLimit) || replay.todayRuns >= replay.dailyLimit;
   }
+
+  function reviewDirty() { return Boolean(replay && $("replayReview").value !== reviewBaseline); }
 
   async function replayAction(name) {
     const data = await callManagedAction("replayAction", { action: name, caseId: $("replayCase").value, review: $("replayReview").value }, {
       onProgress: task => notice("replayNotice", taskPhaseLabel(task.phase)),
     });
     if (name === "check") {
+      if (!Array.isArray(data?.checks) || !data.checks.length) throw new Error("检查未返回有效项目，不能确认通过。");
       const failed = data.checks.filter(item => !item.ok);
       notice("replayNotice", failed.length ? `检查失败：${failed.map(item => item.name).join("、")}` : `${data.checks.length} 项输入和输出边界检查通过 · 未调用模型；答案质量请人工比较`, failed.length > 0);
     } else {
+      if (name === "generate" && !data?.cases?.some(item => item.id === $("replayCase").value && item.candidate?.text)) throw new Error("任务未返回已确认的候选，请刷新回放核实。");
       renderReplay(data);
       notice("replayNotice", { generate: "候选回复已生成，未发送到 QQ", baseline: "基线已保存", review: "评价已保存" }[name]);
     }
@@ -324,9 +359,12 @@ import { initializeDeliveries } from "./deliveries.js";
     if (type === "started") busy.add("replay");
     if (type === "complete" || type === "error") {
       busy.delete("replay");
-      try { renderReplay(await host.call("getReplay")); } catch { notice("replayNotice", "读取回放结果失败，请刷新", true); }
+      try { renderReplay(await host.call("getReplay")); }
+      catch { replayStale = true; notice("replayNotice", "读取回放结果失败，请刷新", true); updateReplayButtons(); return; }
     }
-    notice("replayNotice", task.error || taskPhaseLabel(task.phase), task.phase === "failed" || type === "error");
+    const problem = type === "complete" ? taskResultError(task) : task.error;
+    if (type === "error") replayStale = true;
+    notice("replayNotice", problem || taskPhaseLabel(task.phase), Boolean(problem) || task.phase === "failed" || type === "error");
     replayPanel.setAttribute("aria-busy", String(busy.has("replay")));
     updateReplayButtons();
   });
@@ -335,10 +373,19 @@ import { initializeDeliveries } from "./deliveries.js";
     const button = event.target.closest("[data-diagnostic-action]");
     if (button) action(button.dataset.diagnosticAction);
   });
-  $("replayCase").addEventListener("change", renderCase);
+  $("replayCase").addEventListener("change", () => {
+    if (reviewDirty() && !window.confirm("人工评价尚未保存，确定放弃并切换样例吗？")) {
+      $("replayCase").value = selectedCaseId; return;
+    }
+    renderCase();
+  });
   $("traceStatus").addEventListener("change", () => action("traces"));
   const view = document.querySelector('[data-view-panel="diagnostics"]');
   new MutationObserver(() => {
-    if (!view.hidden && !loaded) { loaded = true; action("traces"); action("replay"); }
+    if (!view.hidden) {
+      if (!loaded.has("traces")) action("traces");
+      if (!loaded.has("replay")) action("replay");
+    }
   }).observe(view, { attributes: true, attributeFilter: ["hidden"] });
+  updateReplayButtons();
 })();

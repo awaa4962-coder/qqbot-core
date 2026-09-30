@@ -13,7 +13,7 @@ const active = new Map();
 const MAX_ACTIVE_RUNS = 1000;
 let revision = 0;
 let stopping = false;
-export const CHAT_CANCEL_REASONS = new Set(["privacy_changed", "permission_changed", "preferences_changed", "memory_expired", "memory_unavailable", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping", "reply_duplicate", "delivery_state_unavailable"]);
+export const CHAT_CANCEL_REASONS = new Set(["privacy_changed", "permission_changed", "preferences_changed", "memory_expired", "memory_unavailable", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping", "reply_duplicate", "delivery_state_unavailable", "recipient_mismatch"]);
 
 function permitted(scope, cfg) {
   if (!/^\d{1,20}$/.test(String(scope.userId || ""))) return false;
@@ -41,6 +41,16 @@ export function runWithoutChatContext(operation) { return storage.exit(operation
 export function currentChatScope() {
   const scope = storage.getStore()?.scope;
   return scope ? { ...scope } : null;
+}
+
+export function checkChatSendDestination(surface, destination) {
+  const run = storage.getStore();
+  // Business commands authorize their own explicit targets, including cross-group reports.
+  if (!run || run.lane === "command") return { reason: "", checked: false };
+  const expected = run.scope.surface === "private" ? run.scope.userId : run.scope.groupId;
+  const matches = surface === run.scope.surface && String(destination) === String(expected);
+  if (!matches) run.cancel("recipient_mismatch");
+  return { reason: matches ? "" : "recipient_mismatch", checked: matches };
 }
 
 export function trackChatMemorySources(sources) {
@@ -96,6 +106,7 @@ export async function withChatRun(scope, handler, options = {}) {
     return chatCancellation("reply_capacity");
   }
   const run = createRun(scope, options);
+  run.lane = lane;
   const stopped = prepareRunDelivery(run, scope, options);
   if (stopped) {
     traceStage("output", { status: "skipped", reason: stopped });

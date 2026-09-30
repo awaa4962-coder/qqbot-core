@@ -29,6 +29,8 @@ import { conversationSummaryService } from "../features/conversation-summary/ser
 import { buildChatDeliverySnapshot, resolveChatDelivery } from "../cognition/delivery-ledger.mjs";
 import { buildMemoryManagerSnapshot, applyMemoryManagerAction } from "./memory-manager.mjs";
 import { getApiUsageSnapshot } from "../api-providers/usage-metrics.mjs";
+import { buildAgentToolSnapshot } from "../chat-tools/registry.mjs";
+import { CHAT_TOOL_LIMITS } from "../chat-tools/policy.mjs";
 
 const GET_ROUTES = new Map([
   ["/admin/status", handleStatusRoute],
@@ -150,10 +152,11 @@ function handleCommandsRoute(_req, res, context) {
 }
 
 function handleCapabilitiesRoute(_req, res, context) {
-  context.sendJson(res, 200, buildCapabilityCatalog({
+  const catalog = buildCapabilityCatalog({
     surface: "console",
     moduleStates: buildModuleCatalog().modules,
-  }), 2);
+  });
+  context.sendJson(res, 200, { ...catalog, agentTools: { ...buildAgentToolSnapshot(CFG), limits: CHAT_TOOL_LIMITS } }, 2);
 }
 
 function handleModulesRoute(_req, res, context) {
@@ -225,10 +228,10 @@ async function handleApiProvidersSaveRoute(req, res, context) {
   const { sendJson } = context;
   try {
     const payload = await readJsonRequestBody(req);
-    const result = await applyApiProviderAction(payload, { root: context.root });
+    const result = await applyApiProviderAction(payload, { root: context.root, requireRevision: true });
     sendJson(res, 200, result, 2);
   } catch (error) {
-    sendJson(res, 400, { error: error.message });
+    sendJson(res, error.code === "api_config_conflict" ? 409 : 400, { error: error.message });
   }
 }
 

@@ -9,14 +9,18 @@ export function initializeDeliveries(host) {
   panel.hidden = false;
   let busy = false;
   let loaded = false;
+  let stale = true;
   function notice(text, error = false) {
     $("deliveryNotice").textContent = text;
     $("deliveryNotice").dataset.error = String(error);
   }
   async function refresh() {
+    stale = true;
     const data = await host.call("getDeliveries", { status: $("deliveryStatus").value, groupId: $("deliveryGroup").value.trim(), userId: $("deliveryUser").value.trim() });
+    if (!Array.isArray(data?.items) || data.items.some(item => !item || typeof item.id !== "string")) throw new Error("发送状态响应不完整，请刷新核实。");
     render(data);
     if (data.health !== "ready") { notice(data.error || "发送状态不可用", true); return false; }
+    loaded = true; stale = false;
     notice(`符合条件 ${data.total} 条 · 已记录 ${data.stored} / ${data.capacity} 条 · 已结束记录保留 ${data.retentionHours} 小时 · 待核实记录保留，不自动重发`);
     return true;
   }
@@ -27,18 +31,26 @@ export function initializeDeliveries(host) {
     panel.querySelectorAll("button,input,select").forEach(node => { node.disabled = true; });
     notice("正在处理…");
     try { await operation(); }
-    catch (error) { notice(error.message || "操作失败，请刷新后检查", true); }
+    catch (error) {
+      loaded = false; stale = true;
+      $("deliveryRows").replaceChildren();
+      const cell = $("deliveryRows").insertRow().insertCell(); cell.colSpan = 4; cell.textContent = "发送记录未更新，请刷新核实";
+      notice(error.transportFailure || error.responseInvalid ? "核实操作结果未确认；请刷新核对，勿重复提交。" : error.message || "操作失败，请刷新后检查", true);
+    }
     finally {
       busy = false;
       panel.setAttribute("aria-busy", "false");
       panel.querySelectorAll("button,input,select").forEach(node => { node.disabled = false; });
+      panel.querySelectorAll("[data-resolution]").forEach(node => { node.disabled = stale; });
     }
   }
   async function resolve(item, delivered) {
+    if (busy || stale) return;
     const result = delivered ? "已收到" : "未收到";
     if (!window.confirm(`已在 QQ 核实这条回复${result}？只记录核实结果，不补发消息，也不补写聊天记忆。`)) return;
     await action(async () => {
-      await host.call("resolveDelivery", { id: item.id, action: delivered ? "confirm-delivered" : "confirm-not-delivered" });
+      const saved = await host.call("resolveDelivery", { id: item.id, action: delivered ? "confirm-delivered" : "confirm-not-delivered" });
+      if (saved?.health !== "ready" || !Array.isArray(saved.items)) throw new Error("核实结果未确认；请刷新核对，勿重复提交。");
       if (await refresh()) notice(`已记录「${result}」，未发送任何消息。`);
     });
   }
@@ -64,6 +76,8 @@ export function initializeDeliveries(host) {
           const button = document.createElement("button"); button.type = "button";
           button.textContent = delivered ? "已收到" : "未收到";
           button.title = "记录人工核实结果，不重发";
+          button.dataset.resolution = "true";
+          button.disabled = stale || busy;
           button.addEventListener("click", () => resolve(item, delivered)); actions.append(button);
         }
         cell.append(actions);
@@ -75,6 +89,6 @@ export function initializeDeliveries(host) {
   for (const id of ["deliveryGroup", "deliveryUser"]) $(id).addEventListener("keydown", event => { if (event.key === "Enter") action(refresh); });
   const view = document.querySelector('[data-view-panel="diagnostics"]');
   new MutationObserver(() => {
-    if (!view.hidden && !loaded) { loaded = true; action(refresh); }
+    if (!view.hidden && !loaded) action(refresh);
   }).observe(view, { attributes: true, attributeFilter: ["hidden"] });
 }

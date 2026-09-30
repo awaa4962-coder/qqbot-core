@@ -10,7 +10,7 @@ test("capability page separates configured model state, permission and dependenc
     return nodes.get(id);
   };
   globalThis.window = { QQFriendHost: {} };
-  globalThis.document = { getElementById: element };
+  globalThis.document = { getElementById: id => id === "agentToolsPanel" ? null : element(id) };
   try {
     const { renderCapabilities, capabilityStateLabel } = await import("../launcher/QQFriendLauncher/Web/pages/capabilities.js");
     const state = { installed: true, enabled: true, permitted: null, health: "configured" };

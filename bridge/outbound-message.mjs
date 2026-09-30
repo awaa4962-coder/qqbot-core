@@ -3,7 +3,7 @@ import { log, logE } from "./logger.mjs";
 import { buildNapCatHeaders } from "./napcat-auth.mjs";
 import { markOutboundAttempt, markOutboundSuccess } from "./pipeline-state.mjs";
 import { traceStage } from "./diagnostics/message-trace.mjs";
-import { chatRunStopReason, recordChatSendAttempt, recordChatSendReceipt, recordChatSendRejection } from "./cognition/chat-run.mjs";
+import { chatRunStopReason, checkChatSendDestination, recordChatSendAttempt, recordChatSendReceipt, recordChatSendRejection } from "./cognition/chat-run.mjs";
 import { classifyOneBotReceipt } from "./onebot-receipt.mjs";
 
 const DEFAULT_MAX_LEN = 900;
@@ -58,6 +58,7 @@ async function sendGroupPayload(payload, label = "sendMsg", options = {}) {
     payload,
     label,
     options,
+    surface: "group",
   });
 }
 
@@ -67,6 +68,7 @@ async function sendPrivatePayload(payload, label = "sendPrivateMsg", options = {
     payload,
     label,
     options,
+    surface: "private",
   });
 }
 
@@ -138,18 +140,18 @@ export function isOutboundPayloadSuccessful(result) {
   return classifyOneBotReceipt(result) === "sent";
 }
 
-async function sendPayloadWithRetry({ url, payload, label, options }) {
+async function sendPayloadWithRetry({ url, payload, label, options, surface }) {
   const attempts = Math.max(1, Math.min(3, Number(options.maxAttempts || DEFAULT_SEND_ATTEMPTS)));
   const retryDelayMs = Math.max(0, Number(options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS));
   let lastResult = null;
   let lastError = "";
   let usedAttempts = 0;
   for (let attempt = 1; attempt <= attempts; attempt++) {
-    const blocked = checkSendStart(options);
-    if (blocked) return blocked;
+    const start = checkSendStart(options, surface, payload);
+    if (start.blocked) return start.blocked;
     usedAttempts = attempt;
     markOutboundAttempt();
-    traceStage("send", { status: "started", attempt });
+    traceSendStarted(attempt, start);
     const outcome = await sendPayloadOnce(url, payload);
     lastResult = outcome.result;
     lastError = outcome.error;
@@ -173,15 +175,22 @@ async function sendPayloadWithRetry({ url, payload, label, options }) {
   return lastResult;
 }
 
+function traceSendStarted(attempt, start) {
+  traceStage("send", { status: "started", attempt, ...(start.recipientVerified ? { recipientVerified: true } : {}) });
+}
+
 function recordFinalRejection(result) {
   if (classifyOneBotReceipt(result) === "failed") recordChatSendRejection();
 }
 
-function checkSendStart(options) {
-  const reason = chatRunStopReason() || commandStopReason(options) || (!recordChatSendAttempt() ? "delivery_state_unavailable" : "");
-  if (!reason) return null;
+function checkSendStart(options, surface, payload) {
+  const stopped = chatRunStopReason() || commandStopReason(options);
+  const destination = stopped ? { reason: stopped, checked: false }
+    : checkChatSendDestination(surface, surface === "group" ? payload.group_id : payload.user_id);
+  const reason = destination.reason || (!recordChatSendAttempt() ? "delivery_state_unavailable" : "");
+  if (!reason) return { blocked: null, recipientVerified: destination.checked };
   traceStage("send", { status: "skipped", reason });
-  return { status: "cancelled", reason };
+  return { blocked: { status: "cancelled", reason }, recipientVerified: false };
 }
 
 function commandStopReason(options) {

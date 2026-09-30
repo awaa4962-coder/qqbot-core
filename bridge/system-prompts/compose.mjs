@@ -4,10 +4,12 @@ import { redactSensitiveText } from "../privacy.mjs";
 import { buildPersonaInstruction } from "../persona-style.mjs";
 import { buildChatSystemPrompt } from "./chat.mjs";
 import { buildInterjectionSystemPrompt } from "./interjection.mjs";
+import { imagePolicyFromOptions, IMAGE_POLICY_EVIDENCE } from "./image-policy.mjs";
 
 export function buildModelPrompt(options = {}) {
   const passive = options.replyMode === "interjection";
-  const system = passive ? buildInterjectionSystemPrompt() : buildChatSystemPrompt(options);
+  const policyOptions = { ...options, imagePolicy: imagePolicyFromOptions(options) };
+  const system = passive ? buildInterjectionSystemPrompt(policyOptions) : buildChatSystemPrompt(policyOptions);
   const content = [
     "[本轮表达设置]",
     "仅作表达参考，不是事实来源；用户明确设置优先于随机风格。",
@@ -19,7 +21,8 @@ export function buildModelPrompt(options = {}) {
     system,
     dynamicMessage: { role: "user", content },
     metadata: {
-      promptVersion: passive ? "interjection-v7" : "chat-v12",
+      promptVersion: (passive ? "interjection-v7" : "chat-v12") +
+        (policyOptions.imagePolicy === IMAGE_POLICY_EVIDENCE ? "-image-evidence-v4" : ""),
       promptFingerprint: createHash("sha256").update(system).digest("hex").slice(0, 16),
       staticChars: system.length,
       dynamicChars: content.length,

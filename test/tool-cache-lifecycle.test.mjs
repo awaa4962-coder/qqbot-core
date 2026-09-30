@@ -118,8 +118,11 @@ test("90-second cache deadline is exact and cannot revive after clock reversal",
 
 test("the real timer abort is checked even when the injected monotonic clock has not advanced", async t => {
   const timer = new globalThis.AbortController();
+  const timeout = globalThis.AbortSignal.timeout.bind(globalThis.AbortSignal);
   t.mock.method(globalThis.AbortSignal, "timeout", duration => {
-    assert.equal(duration, LIMITS.durationMs); return timer.signal;
+    if (duration === LIMITS.durationMs) return timer.signal;
+    assert.equal(duration, 8000);
+    return timeout(duration);
   });
   let reads = 0;
   const session = create({ now: () => 0, recallMemory: () => { reads++; return { status: "ok", text: "raw" }; } });

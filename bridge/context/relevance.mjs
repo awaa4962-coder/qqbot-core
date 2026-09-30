@@ -25,7 +25,10 @@ export function normalizeConversationText(value) {
 
 export function currentTopicText(value) {
   const text = normalizeConversationText(value);
-  const switchMatch = text.match(/^(?:先?不(?:聊|说|谈)[^,，。;；]{0,50}|换个话题|另外问(?:一下)?|说点别的)[,，。:：;；\s]+(.+)$/u);
+  // A current self-address instruction may precede a separate topic directive.
+  // Keep the anchored match so quoted or reported directives do not cut history.
+  const focused = text.replace(/^(?:(?:以后|今后|之后)\s*)?(?:请\s*)?(?:叫我|称呼我)[^,，。;；:：\n]{1,32}[,，。;；]\s*/u, "");
+  const switchMatch = focused.match(/^(?:先?不(?:聊|说|谈)[^,，。;；]{0,50}|换个话题|另外问(?:一下)?|说点别的)[,，。:：;；\s]+(.+)$/u);
   return { text: switchMatch ? switchMatch[1].trim() : text, switched: Boolean(switchMatch) };
 }
 

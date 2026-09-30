@@ -32,6 +32,12 @@ test("dependency guard rejects stale overlays and outdated YAML locks", () => {
   assert.throws(() => assertPatchedDependencies({ ...patched, yamlVersion: "4.3.1" }), /js-yaml.*security minimum/);
 });
 
+test("agent parser must actually exist in the production image and match its lock", () => {
+  assert.ok(assertPatchedDependencies({ ...patched, lockedJsepVersion: "1.4.0", jsepVersion: "1.4.0" }));
+  assert.throws(() => assertPatchedDependencies({ ...patched, lockedJsepVersion: "1.4.0", jsepVersion: null }), /jsep.*unknown/);
+  assert.throws(() => assertPatchedDependencies({ ...patched, lockedJsepVersion: "1.4.1", jsepVersion: "1.4.0" }), /production dependency image/);
+});
+
 test("dependency guard accepts newer release versions without lexical comparison errors", () => {
   assert.ok(assertPatchedDependencies({ ...patched, sharpVersion: "0.35.10", lockedSharpVersion: "0.35.10", heifVersion: "1.24.0" }));
   assert.throws(() => assertPatchedDependencies({ ...patched, heifVersion: "1.9.9" }), /security minimum/);

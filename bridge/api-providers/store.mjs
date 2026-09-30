@@ -2,6 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { findApiPreset } from "./presets.mjs";
 import {
@@ -114,6 +115,7 @@ export function readProviderSecret(provider, options = {}) {
 
 export function buildApiConfigSnapshot(options = {}) {
   const root = options.root || ROOT;
+  const configurationRevision = apiConfigurationRevision({ root });
   let config;
   let configurationError = null;
   try {
@@ -123,9 +125,10 @@ export function buildApiConfigSnapshot(options = {}) {
     configurationError = error.message;
     config = { schemaVersion: 2, revision: 0, updatedAt: null, providers: {}, routes: {} };
   }
-  return {
+  const snapshot = {
     schemaVersion: config.schemaVersion,
     revision: config.revision,
+    configurationRevision,
     updatedAt: config.updatedAt,
     providers: Object.values(config.providers).map(provider => publicProvider(provider, { root })),
     configurationError,
@@ -145,11 +148,15 @@ export function buildApiConfigSnapshot(options = {}) {
       localEndpointsRequireOptIn: true,
     },
   };
+  assertApiConfigurationRevision({ root, expectedConfigurationRevision: configurationRevision });
+  return snapshot;
 }
 
 export function saveApiProvider(payload, options = {}) {
   const root = options.root || ROOT;
   const config = loadApiConfig({ root });
+  assertApiConfigurationRevision(options);
+  nextRevision(config.revision);
   const id = String(payload?.id || "").trim().toLowerCase();
   const existing = config.providers[id] || null;
   if (options.mode === "create" && existing) {
@@ -173,6 +180,7 @@ export function saveApiProvider(payload, options = {}) {
 export function saveApiRoutes(routesPayload, options = {}) {
   const root = options.root || ROOT;
   const config = loadApiConfig({ root });
+  assertApiConfigurationRevision(options);
   const nextRoutes = normalizeRoutes(routesPayload, config);
   config.routes = nextRoutes;
   persistConfig(config, { root, backup: true });
@@ -184,6 +192,7 @@ export function deleteApiProvider(providerId, options = {}) {
   const id = String(providerId || "");
   if (id === "mimo" || id === "deepseek") throw new Error("内置 MiMo 和 DeepSeek 节点不能删除");
   const config = loadApiConfig({ root });
+  assertApiConfigurationRevision(options);
   if (!config.providers[id]) throw new Error("API 实例不存在");
   if (Object.values(config.routes).some(item => item.primary === id || item.fallback === id)) {
     throw new Error("这个 API 仍在任务插槽中，先切换插槽再删除");
@@ -197,12 +206,33 @@ export function rollbackApiConfig(options = {}) {
   const root = options.root || ROOT;
   const current = path.join(root, ".qqfriend", "api-providers.json");
   const previous = path.join(root, ".qqfriend", "api-providers.previous.json");
+  assertApiConfigurationRevision(options);
   if (!fs.existsSync(previous)) throw new Error("没有可回滚的 API 配置");
   const previousConfig = normalizeStoredConfig(JSON.parse(fs.readFileSync(previous, "utf8")), createDefaultApiConfig());
   const currentRaw = fs.existsSync(current) ? fs.readFileSync(current, "utf8") : "";
-  atomicWriteJson(current, withNextRevision(previousConfig));
+  let currentRevision = 0;
+  try { currentRevision = positiveInteger(JSON.parse(currentRaw).revision, 0); } catch { /* Invalid current files remain recoverable using their byte revision. */ }
+  atomicWriteJson(current, withNextRevision({ ...previousConfig, revision: Math.max(previousConfig.revision, currentRevision) }));
   if (currentRaw) atomicWriteText(previous, currentRaw);
   return buildApiConfigSnapshot({ root });
+}
+
+export function apiConfigurationRevision(options = {}) {
+  const file = path.join(options.root || ROOT, ".qqfriend", "api-providers.json");
+  try { return createHash("sha256").update(fs.readFileSync(file)).digest("hex"); }
+  catch (error) {
+    if (error.code === "ENOENT") return createHash("sha256").update("qqfriend-api-config:default-v2").digest("hex");
+    throw new Error("API 配置版本暂不可读，请刷新核实");
+  }
+}
+
+function assertApiConfigurationRevision(options) {
+  const expected = options.expectedConfigurationRevision;
+  if (expected === undefined && options.requireRevision !== true) return;
+  if (typeof expected === "string" && /^[a-f0-9]{64}$/.test(expected) && expected === apiConfigurationRevision(options)) return;
+  const error = new Error("API 配置已更新或缺少读取版本；草稿未保存，请刷新后核对");
+  error.code = "api_config_conflict";
+  throw error;
 }
 
 export function resolveProviderEndpoint(provider) {
@@ -339,6 +369,7 @@ function normalizeProviderReference(value, providers, nullable) {
 }
 
 function persistConfig(config, options = {}) {
+  const next = withNextRevision(config);
   const root = options.root || ROOT;
   const dir = path.join(root, ".qqfriend");
   const file = path.join(dir, "api-providers.json");
@@ -347,15 +378,21 @@ function persistConfig(config, options = {}) {
   if (options.backup && fs.existsSync(file)) {
     atomicWriteText(previous, fs.readFileSync(file, "utf8"));
   }
-  atomicWriteJson(file, withNextRevision(config));
+  atomicWriteJson(file, next);
 }
 
 function withNextRevision(config) {
   return {
     ...config,
-    revision: positiveInteger(config.revision, 0) + 1,
+    revision: nextRevision(config.revision),
     updatedAt: new Date().toISOString(),
   };
+}
+
+function nextRevision(value) {
+  const revision = positiveInteger(value, 0);
+  if (revision >= Number.MAX_SAFE_INTEGER) throw new Error("API 配置版本已达到上限，未保存任何修改");
+  return revision + 1;
 }
 
 function writeProviderSecret(provider, key, options = {}) {

@@ -1,8 +1,16 @@
 import { $, escapeHtml } from "../ui/dom.js";
-import { uiState } from "../ui/state.js";
+import { groupIsBusy } from "../ui/activity.js";
+import { host, uiState } from "../ui/state.js";
 
 export function renderApiProviders(snapshot, options = {}) {
-  if (!snapshot || typeof snapshot !== "object") return;
+  if (!snapshot || !Array.isArray(snapshot.providers) || !Array.isArray(snapshot.tasks) || !snapshot.routes ||
+      typeof snapshot.routes !== "object") throw new Error("API 配置响应不完整，请重新读取。");
+  if (!options.force && apiHasDrafts()) {
+    if (snapshot.configurationRevision !== uiState.apiSnapshot.configurationRevision) {
+      apiReadFailed(Object.assign(new Error("API 配置已在别处更新；草稿已保留，请重新读取后核对。"), { status: 409 }));
+    }
+    return;
+  }
   uiState.apiSnapshot = snapshot;
   uiState.apiProvidersLoaded = true;
   const providers = Array.isArray(snapshot.providers) ? snapshot.providers : [];
@@ -20,12 +28,14 @@ export function renderApiProviders(snapshot, options = {}) {
   $("apiGroupRoute").textContent = formatApiRoute(snapshot.routes?.group_chat);
   $("apiSummary").dataset.ready = "true";
 
-  $("apiPreset").innerHTML = presets.map(item =>
-    `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`
-  ).join("");
-  $("apiProtocol").innerHTML = protocols.map(item =>
-    `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`
-  ).join("");
+  if (!options.preserveProvider) {
+    $("apiPreset").innerHTML = presets.map(item =>
+      `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`
+    ).join("");
+    $("apiProtocol").innerHTML = protocols.map(item =>
+      `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`
+    ).join("");
+  }
 
   $("apiProviderList").innerHTML = providers.map(item => {
     const active = item.id === uiState.selectedApiProviderId;
@@ -39,14 +49,78 @@ export function renderApiProviders(snapshot, options = {}) {
     ].join("");
   }).join("") || '<div class="empty-state"><b>还没有 API</b><span>点“新增”创建第一个实例。</span></div>';
 
-  renderApiRouteList(snapshot);
-  fillApiProviderForm(providers.find(item => item.id === uiState.selectedApiProviderId));
+  if (!options.preserveRoutes) renderApiRouteList(snapshot);
+  if (!options.preserveProvider) fillApiProviderForm(providers.find(item => item.id === uiState.selectedApiProviderId));
+  uiState.apiBlocked = false;
   $("apiSaveButton").disabled = Boolean(snapshot.configurationError);
   if (snapshot.configurationError) {
     $("apiProviderList").innerHTML = `<div class="empty-state"><b>API 配置不可用</b><span>${escapeHtml(snapshot.configurationError)}</span></div>`;
     $("apiEditorHint").textContent = "先恢复或修复已有配置，再编辑 API 实例";
     $("apiGroupRoute").textContent = "配置不可用";
   }
+  syncApiControls();
+  setApiNotice(snapshot.configurationError || "API 配置已读取", snapshot.configurationError ? "error" : "ready");
+}
+
+export function apiProviderFingerprint() {
+  const ids = ["apiId", "apiName", "apiPreset", "apiProtocol", "apiEndpoint", "apiModel", "apiAuth", "apiTokenField", "apiKey"];
+  return JSON.stringify([ids.map(id => $(id).value), $("apiAllowLocal").checked,
+    [...document.querySelectorAll("#apiCapabilityChecks input:checked")].map(input => input.value)]);
+}
+
+export function apiHasDrafts() {
+  return Boolean(uiState.apiProviderBaseline && apiProviderFingerprint() !== uiState.apiProviderBaseline ||
+    uiState.apiRoutesBaseline && JSON.stringify(apiRoutesPayload().routes) !== uiState.apiRoutesBaseline);
+}
+
+export function canDiscardApiDrafts() {
+  return !apiHasDrafts() || window.confirm("API 有未保存修改。确定放弃这些修改并重新读取吗？");
+}
+
+export function setApiNotice(message, state = "error") {
+  const notice = $("apiNotice");
+  if (!notice) return;
+  notice.textContent = message;
+  notice.dataset.state = state;
+}
+
+export function apiReadFailed(error) {
+  uiState.apiBlocked = true;
+  uiState.apiProvidersLoaded = false;
+  if ([401, 403].includes(error.status)) $("apiKey").value = "";
+  setApiNotice(`${[401, 403].includes(error.status) ? "无权读取 API 配置" : "API 状态未更新"}：${error.message || "读取失败"}；请刷新核实。`);
+  syncApiControls();
+}
+
+export function syncApiControls() {
+  const busy = groupIsBusy("saveApiProvider");
+  const mutationTokenMissing = host.mode === "browser" && !/^[a-f0-9]{64}$/.test(uiState.apiSnapshot.configurationRevision || "");
+  const locked = busy || uiState.apiBlocked || !uiState.apiProvidersLoaded || Boolean(uiState.apiSnapshot.configurationError) || mutationTokenMissing;
+  document.querySelectorAll('.api-form-grid input,.api-form-grid select,#apiCapabilityChecks input').forEach(node => {
+    node.disabled = locked || node.id === "apiId" && uiState.apiEditorMode === "edit";
+  });
+  for (const action of ["newApiProvider", "saveApiProvider", "testApiProvider", "deleteApiProvider", "saveApiRoutes"]) {
+    document.querySelectorAll(`[data-action="${action}"]`).forEach(node => {
+      node.disabled = locked || ["testApiProvider", "deleteApiProvider"].includes(action) && !uiState.selectedApiProviderId;
+    });
+  }
+  document.querySelectorAll('[data-action="rollbackApiProviders"]').forEach(node => {
+    node.disabled = busy || uiState.apiBlocked || mutationTokenMissing || !uiState.apiSnapshot.rollbackAvailable;
+  });
+  document.querySelectorAll("[data-api-task]").forEach(row => {
+    row.querySelector("[data-route-primary]").disabled = locked;
+    row.querySelector("[data-route-fallback]").disabled = locked || row.querySelector("[data-route-fallback]").hasAttribute?.("data-protected");
+    updateApiRouteReasoningAvailability(row);
+  });
+  document.querySelectorAll("[data-reasoning-preset]").forEach(node => { node.disabled = locked; });
+}
+
+export function selectApiProvider(id) {
+  if (groupIsBusy("saveApiProvider") || uiState.apiBlocked) return;
+  if (apiProviderFingerprint() !== uiState.apiProviderBaseline && !window.confirm("API 实例有未保存修改。确定放弃并切换实例吗？")) return;
+  fillApiProviderForm(uiState.apiSnapshot.providers.find(item => item.id === id));
+  document.querySelectorAll("[data-api-provider]").forEach(node => node.classList.toggle("active", node.dataset.apiProvider === id));
+  syncApiControls();
 }
 
 export function renderApiRouteList(snapshot) {
@@ -66,7 +140,7 @@ export function renderApiRouteList(snapshot) {
       `<div><strong>${escapeHtml(task.name)}</strong><small>${escapeHtml(task.id)}</small></div>`,
       `<label>主力<select data-route-primary>${options}</select></label>`,
       `<span class="route-arrow">→</span>`,
-      `<label>兜底<select data-route-fallback${fallbackProtected ? " disabled" : ""}><option value="">无</option>${options}</select></label>`,
+      `<label>兜底<select data-route-fallback${fallbackProtected ? " disabled data-protected" : ""}><option value="">无</option>${options}</select></label>`,
       `<label class="route-reasoning">思考<select data-route-reasoning>${reasoningOptions}</select></label>`,
       fallbackProtected ? '<span class="route-lock">固定 DS</span>' : "",
       "</article>",
@@ -83,7 +157,8 @@ export function renderApiRouteList(snapshot) {
   syncGlobalReasoningState();
   $("apiRouteOutput").textContent = snapshot.configurationError
     ? snapshot.configurationError + (snapshot.rollbackAvailable ? "。可点击“回滚”恢复上一版配置。" : "。没有可回滚的配置，请在服务器修复配置后刷新。")
-    : `配置版本 ${snapshot.revision || 1} · API 与思考设置只影响后续请求`;
+    : `配置版本 ${snapshot.revision ?? "未知"} · API 与思考设置只影响后续请求`;
+  uiState.apiRoutesBaseline = JSON.stringify(apiRoutesPayload().routes);
 }
 
 export function updateApiRouteReasoningAvailability(row) {
@@ -91,7 +166,7 @@ export function updateApiRouteReasoningAvailability(row) {
   const provider = (uiState.apiSnapshot.providers || []).find(item => item.id === providerId);
   const select = row.querySelector("[data-route-reasoning]");
   const configurable = provider?.reasoningControl?.configurable === true;
-  select.disabled = !configurable;
+  select.disabled = !configurable || uiState.apiBlocked || Boolean(uiState.apiSnapshot.configurationError) || groupIsBusy("saveApiRoutes");
   select.title = configurable ? "设置这个功能的思考强度" : "当前主力 API 不提供可控思考档位";
   row.classList.toggle("reasoning-unavailable", !configurable);
 }
@@ -152,13 +227,17 @@ export function fillApiProviderForm(provider) {
   document.querySelectorAll("#apiCapabilityChecks input").forEach(input => {
     input.checked = (item.capabilities || ["text"]).includes(input.value);
   });
+  uiState.apiProviderBaseline = apiProviderFingerprint();
 }
 
 export function startNewApiProvider() {
+  if (uiState.apiBlocked || !uiState.apiProvidersLoaded || groupIsBusy("saveApiProvider")) return;
+  if (apiProviderFingerprint() !== uiState.apiProviderBaseline && !window.confirm("API 实例有未保存修改。确定放弃并新建吗？")) return;
   uiState.selectedApiProviderId = "";
   document.querySelectorAll(".provider-card").forEach(card => card.classList.remove("active"));
   fillApiProviderForm(null);
   applyApiPreset("custom-openai-chat");
+  syncApiControls();
   $("apiId").focus();
   $("apiTestOutput").textContent = "填写并保存后可以测试连接";
 }
@@ -183,6 +262,7 @@ export function applyApiPreset(presetId) {
 export function apiProviderPayload() {
   return {
     action: "save-provider",
+    configurationRevision: uiState.apiSnapshot.configurationRevision,
     mode: uiState.apiEditorMode,
     provider: {
       id: $("apiId").value.trim().toLowerCase(),
@@ -209,7 +289,7 @@ export function apiRoutesPayload() {
       reasoning: row.querySelector("[data-route-reasoning]").value || "auto",
     };
   });
-  return { action: "save-routes", routes };
+  return { action: "save-routes", routes, configurationRevision: uiState.apiSnapshot.configurationRevision };
 }
 
 export function formatApiRoute(route) {

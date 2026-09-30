@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHmac, randomBytes } from "node:crypto";
-import { CFG, LONG_GROUPS } from "../config.mjs";
+import { CFG, LONG_GROUPS, parseAgentGroupList } from "../config.mjs";
 
 const REVISION_KEY = randomBytes(32);
 
@@ -17,6 +17,7 @@ const EDITABLE_FILES = Object.freeze({
   stickerGroupWhitelist: { file: ".env_sticker_groups", env: "QQBOT_STICKER_GROUPS" },
   longGroups: { file: ".env_long_groups", env: "QQBOT_LONG_GROUPS" },
   friendWhitelist: { file: ".env_friends", env: "QQBOT_FRIENDS" },
+  agentGroupWhitelist: { file: ".env_agent_groups", env: "QQBOT_AGENT_GROUPS" },
   jmUserWhitelist: { file: ".env_jm_users", env: "QQBOT_JM_USERS" },
   botBlacklist: { file: ".env_bot_blacklist", env: "QQBOT_BLACKLIST" },
   adminUins: { file: ".env_admins", env: "QQBOT_ADMINS" },
@@ -31,6 +32,7 @@ const NUMBER_LIST_FIELDS = new Set([
   "stickerGroupWhitelist",
   "longGroups",
   "friendWhitelist",
+  "agentGroupWhitelist",
   "jmUserWhitelist",
   "botBlacklist",
   "adminUins",
@@ -155,6 +157,7 @@ function readSavedList(root, file, field) {
 }
 
 function parseConfigList(value, field) {
+  if (field === "agentGroupWhitelist") return parseAgentGroupList(value);
   const values = normalizeRawList(value);
   if (!NUMBER_LIST_FIELDS.has(field) || field === "adminUins") return values;
   const numbers = values.map(Number).filter(number => Number.isSafeInteger(number) && number > 0);
@@ -215,7 +218,8 @@ function normalizeNumberList(value, field) {
   const numbers = [];
   for (const item of items) {
     const text = String(item).trim();
-    if (!/^\d{5,15}$/.test(text)) throw new Error("invalid " + field + " item");
+    const format = field === "agentGroupWhitelist" ? /^[1-9]\d{4,14}$/ : /^\d{5,15}$/;
+    if (!format.test(text)) throw new Error("invalid " + field + " item");
     const num = Number(text);
     if (!Number.isSafeInteger(num) || num <= 0) throw new Error("invalid " + field + " item");
     if (!numbers.includes(num)) numbers.push(num);

@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { monotonicNow } from "../runtime-clock.mjs";
+import { isRegisteredToolName } from "../chat-tools/registry.mjs";
 
 const storage = new AsyncLocalStorage();
 const STAGES = new Set(["received", "admission", "route", "context", "vision", "model", "tool", "output", "send", "complete"]);
@@ -14,7 +15,7 @@ const REASONS = new Set([
   "sanitized_empty", "unsafe_output", "unsafe_reasoning", "model_unavailable", "send_failed", "send_unknown", "exception",
   "intentional_silence", "invalid_interjection", "request_failed", "tools_unavailable",
   "privacy_changed", "permission_changed", "preferences_changed", "memory_expired", "memory_unavailable", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping",
-  "reply_duplicate", "delivery_state_unavailable", "forgotten_event", "stale_event",
+  "reply_duplicate", "delivery_state_unavailable", "recipient_mismatch", "forgotten_event", "stale_event",
   "quote_source_unknown", "quote_scope_mismatch", "quote_message_mismatch", "quote_privacy_unavailable", "quote_forgotten", "quote_content_empty", "quote_superseded", "quote_memory_unavailable",
   "tool_model_round", "tool_completed", "tool_empty", "tool_denied", "tool_arguments", "tool_unavailable", "tool_reused", "tool_budget", "output_budget",
   "image_direct", "image_description", "image_cache", "image_shared", "image_unavailable", "image_payload",
@@ -56,7 +57,7 @@ function safeDetails(details) {
 
 function safeUsageDetails(details) {
   const safe = {};
-  for (const key of ["cacheReported", "usageReported", "promptReported", "completionReported", "reasoningReported", "totalReported"]) {
+  for (const key of ["cacheReported", "usageReported", "promptReported", "completionReported", "reasoningReported", "totalReported", "recipientVerified"]) {
     if (typeof details[key] === "boolean") safe[key] = details[key];
   }
   const values = { configuredMode: ["economy", "auto", "deep", "unknown"], effectiveMode: ["economy", "deep", "provider_default", "not_supported", "unknown"],
@@ -68,7 +69,7 @@ function safeUsageDetails(details) {
 function safePromptIdentity(details) {
   const safe = {};
   if (typeof details.promptTagged === "boolean") safe.promptTagged = details.promptTagged;
-  if (["recall_memory", "read_bot_status", "web_search"].includes(details.toolName)) safe.toolName = details.toolName;
+  if (isRegisteredToolName(details.toolName)) safe.toolName = details.toolName;
   if (/^[a-f0-9]{16}$/.test(details.promptFingerprint || "")) safe.promptFingerprint = details.promptFingerprint;
   if (/^[a-z][a-z0-9-]{0,47}-v\d{1,4}$/.test(details.promptVersion || "") && !/^(sk-|token|secret)/i.test(details.promptVersion)) safe.promptVersion = details.promptVersion;
   return safe;
@@ -190,7 +191,7 @@ function finalStatus(record, failed) {
 }
 
 function cancellationStatus(reason, sends) {
-  const reasons = ["privacy_changed", "permission_changed", "preferences_changed", "memory_expired", "memory_unavailable", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping", "delivery_state_unavailable"];
+  const reasons = ["privacy_changed", "permission_changed", "preferences_changed", "memory_expired", "memory_unavailable", "reply_superseded", "reply_expired", "reply_capacity", "bridge_stopping", "delivery_state_unavailable", "recipient_mismatch"];
   return reasons.includes(reason) ? (sends ? "partial" : "cancelled") : "";
 }
 

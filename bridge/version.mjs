@@ -4,25 +4,27 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.39-stable-cache";
-export const VERSION_NAME = "stable-cache";
+export const VERSION = "1.4.40-final-integration";
+export const VERSION_NAME = "final-integration";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
-  "日报和客观识图把固定规则放在前面，群名、日期、证据与风格参数后置，减少重复前缀变化。",
-  "同一用户、会话、图片和模型版本的客观识图可共用一次在途计算；个人取消不影响其他有效等待者，全部取消才中止，不共享聊天最终答案或发送。",
-  "只读检索缓存只保留本轮有效且有界的原始资料，纠正、遗忘、到期、权限或读取配置变化后不复用旧结果。",
-  "承接已失败的步骤，只问最必要的一项；图片语气与发图者心理动机分开，不把反话自行解释成安慰或嘲讽。",
-  "诊断分别显示已完成缓存复用和在途识图共用；发布检查直接显示原次测试计数，不再为计数重跑整套。",
+  "有限工具第一阶段候选：新增计算与本轮公开原文读取，只对白名单群主动@开放，默认关闭；不执行系统操作或自动写入。",
+  "图片解读区分画面字面、已提供的原话和结论，只把有明确来源的意图归给发言人；新规则先单群试运行，实际质量仍按样例验收。",
+  "控制台补齐加载、空数据、失败和版本冲突反馈，刷新不把未保存的草稿当作已保存。",
+  "保留实际有消费者的兼容入口，清理已无调用的重复实现；帮助和既有命令不变。",
+  "稳定提示词、单轮只读缓存与同范围客观识图共用继续保留，不共享聊天最终答案或QQ发送。",
+  "Linux 进入整体验收，正式2.0.0须在原43项与新增有限Agent验收通过后发布，当前阶段版本不代表全部完成。",
   "JM、模型主备、思考档位与关系评分不变；只更新 Linux，Windows 继续冻结。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
-  "Summary and objective-vision rules now precede dynamic group, date, evidence and style data for stable prefixes.",
-  "Identical objective vision work shares only within one user, conversation and input/model version; each waiter cancels independently. Final chat answers and sends are never shared.",
-  "Per-turn read caches retain only current bounded raw evidence and stop after correction, erasure, expiry, authorization or read-configuration changes.",
-  "Follow-ups do not repeat failed steps; image tone is kept separate from unsupported psychological intentions.",
-  "Diagnostics distinguish completed cache reuse from shared in-flight vision work, and release checks report counts from the original test run.",
+  "Limited-tool phase-one candidate adds bounded calculation and current-turn public excerpts. New tools default off and require a direct mention in an allowed group; no system operations or automatic writes.",
+  "Image interpretation separates visible content, supplied statements and conclusions, attributing intent only to explicit sources. New rules start in one group and require quality acceptance.",
+  "The console distinguishes loading, empty data, failed actions and conflicts; refresh never pretends an unsaved draft was saved.",
+  "Compatibility entry points with real consumers remain; unused duplicate implementations are removed without changing existing help or commands.",
+  "Stable prefixes, per-turn read caches and scoped objective-vision sharing remain. Final chat answers and QQ sends are never shared.",
+  "Linux is entering integrated acceptance. Version2.0.0 requires all43 original items and the added limited-agent acceptance; this interim version is not a completion claim.",
   "Only Linux is updated; Windows stays frozen. JM, model routes, reasoning modes and relationship scoring remain unchanged.",
 ]);
 

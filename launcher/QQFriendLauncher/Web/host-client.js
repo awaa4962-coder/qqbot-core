@@ -109,11 +109,17 @@
 
   async function buildBrowserSnapshot() {
     const status = await apiRequest("/admin/status");
-    const [config, logs] = await Promise.all([
+    const parts = await Promise.allSettled([
       apiRequest("/admin/config", {}, false),
       apiRequest("/admin/logs?tail=80", {}, false),
     ]);
-    return { launcher: browserRuntimeInfo(), status, config, logs };
+    const snapshot = { launcher: browserRuntimeInfo(), status, errors: {} };
+    for (const [index, name] of ["config", "logs"].entries()) {
+      const part = parts[index];
+      if (part.status === "fulfilled") snapshot[name] = part.value;
+      else snapshot.errors[name] = { message: part.reason?.message || "读取失败", status: part.reason?.status };
+    }
+    return snapshot;
   }
 
   async function runBrowserHealthCheck() {
@@ -166,8 +172,7 @@
     const abort = () => controller?.abort();
     if (options.signal?.aborted) abort();
     else options.signal?.addEventListener("abort", abort, { once: true });
-    const timer = controller && (options.timeoutMs || !options.method || options.method === "GET")
-      ? global.setTimeout(() => controller.abort(), options.timeoutMs || 30_000) : null;
+    const timer = controller ? global.setTimeout(() => controller.abort(), options.timeoutMs || 30_000) : null;
     try {
       response = await global.fetch(path, {
         method: options.method || "GET",
@@ -190,15 +195,21 @@
     if (response.status === 403 && allowPrompt) {
       const entered = global.prompt("请输入 Linux 控制台管理令牌。令牌只保存在当前标签页。", "");
       if (entered && entered.trim()) {
-        global.sessionStorage.setItem(TOKEN_KEY, entered.trim());
+        try { global.sessionStorage.setItem(TOKEN_KEY, entered.trim()); }
+        catch { throw Object.assign(new Error("当前标签页无法保存管理令牌，请允许会话存储后重试。"), { status: 403 }); }
         return apiRequest(path, options, false);
       }
     }
     if (!response.ok) {
-      if (response.status === 403 && readAdminToken() === token) global.sessionStorage.removeItem(TOKEN_KEY);
+      if (response.status === 403 && readAdminToken() === token) {
+        try { global.sessionStorage.removeItem(TOKEN_KEY); } catch { /* Session storage may be disabled. */ }
+      }
       const error = new Error(payload.error || `管理接口返回 ${response.status}`);
       error.status = response.status;
       throw error;
+    }
+    if (options.responseType !== "blob" && payload?.error && payload.ok !== false) {
+      throw Object.assign(new Error(String(payload.error)), { status: response.status, responseInvalid: true });
     }
     return payload;
   }
@@ -212,11 +223,13 @@
 
   async function readResponsePayload(response) {
     const raw = await response.text();
-    if (!raw) return {};
     try {
-      return JSON.parse(raw);
+      const value = JSON.parse(raw);
+      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid response");
+      return value;
     } catch {
-      return { error: raw.slice(0, 240) };
+      if (!response.ok) return { error: `管理接口返回 ${response.status}` };
+      throw Object.assign(new Error("管理接口响应不是有效的 JSON 对象；操作结果未确认，请刷新核实。"), { responseInvalid: true });
     }
   }
 

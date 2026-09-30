@@ -13,7 +13,9 @@ import { waitForTask } from "./ui/tasks.js";
   let loading = false;
   let jobId = "";
   let pollingJobId = "";
-  const phaseNames = { queued: "排队中", collecting: "整理采集记录", analyzing: "主模型分析中", fallback: "备用模型分析中", saving: "保存草稿", sending: "发送中", overdue: "等待较久，任务仍在收尾，请勿重复提交", done: "任务完成", failed: "任务失败", interrupted: "任务中断，请重新生成或核实发送状态" };
+  let stale = true;
+  let requestId = 0;
+  const phaseNames = { queued: "排队中", collecting: "整理采集记录", analyzing: "主模型分析中", fallback: "备用模型分析中", saving: "保存草稿", sending: "发送中", overdue: "等待较久，任务仍在收尾，尚未确认停止，请勿重复提交", done: "任务已结束", failed: "任务失败", cancelled: "任务已取消", interrupted: "任务中断，请重新生成或核实发送状态" };
   const deliveryNames = { not_sent: "尚未发送", sent: "已发送", failed: "发送明确失败，可以重试", partial: "部分已发送，可继续剩余分段", unconfirmed: "发送待核实，不会自动重发", invalid_marker: "发送记录异常，请先核实" };
 
   function status(text, error = false) { $("summaryProgress").textContent = text; $("summaryProgress").dataset.error = String(error); }
@@ -22,15 +24,30 @@ import { waitForTask } from "./ui/tasks.js";
   function canDiscard() { return !dirty || window.confirm("正文修改尚未保存，是否放弃这些修改？"); }
 
   async function refresh(preferId, preserve = false) {
-    const result = await host.call("getSummaries", target());
+    const requested = target();
+    const ticket = ++requestId;
+    const result = await host.call("getSummaries", requested);
+    if (ticket !== requestId) return;
+    if (!Array.isArray(result?.groups) || !Array.isArray(result.revisions) || !Array.isArray(result.jobs) ||
+        result.revisions.some(item => !item || typeof item.id !== "string" || typeof item.summary !== "string") ||
+        result.jobs.some(job => !job || typeof job.id !== "string" || typeof job.phase !== "string") ||
+        result.groups.length && (requested.groupId && result.groupId !== requested.groupId || requested.dateText && result.dateText !== requested.dateText)) {
+      throw new Error("日报响应不完整或目标不符，请刷新核实。");
+    }
     snapshot = result;
+    stale = false;
     if (!jobId) {
-      const active = [...(result.jobs || [])].reverse().find(job => !["done", "failed", "interrupted"].includes(job.phase));
+      const active = [...(result.jobs || [])].reverse().find(job => !["done", "failed", "interrupted", "cancelled"].includes(job.phase));
       if (active) { jobId = active.id; schedulePoll(); }
     }
     fillSelect($("summaryGroup"), result.groups.map(value => [value, "群 " + value]), result.groupId);
     $("summaryDate").value = result.dateText || "";
-    if (!result.groups.length) { status("尚未配置日报群，请先在配置页添加。", true); controls(); return; }
+    if (!result.groups.length) {
+      selectedId = ""; dirty = false; jobId = ""; renderRevision();
+      $("summaryCoverage").textContent = "暂无日报群";
+      $("summaryDelivery").textContent = "无可用日报"; $("summaryDeliveryDetail").textContent = "";
+      status("尚未配置日报群。", true); controls(); return;
+    }
     const coverage = result.coverage || {};
     $("summaryCoverage").textContent = `已采集 ${coverage.captured || 0} 条记录 · ${coverage.source === "retained-only" ? "仅有滚动保留记录，可能缺段" : "按日记录与滚动保留记录"}${coverage.capped ? " · 已达到采集上限" : ""}${coverage.truncated ? ` · ${coverage.truncated} 条长消息截短` : ""}`;
     if (!preserve || !dirty) {
@@ -77,7 +94,7 @@ import { waitForTask } from "./ui/tasks.js";
   }
 
   function controls() {
-    const busy = loading || Boolean(jobId);
+    const busy = loading || Boolean(jobId) || stale;
     $("summaryWorkbench").setAttribute("aria-busy", String(busy));
     for (const element of $("summaryWorkbench").querySelectorAll("button,select,input")) element.disabled = busy;
     $("summaryBody").disabled = busy || !current();
@@ -100,26 +117,34 @@ import { waitForTask } from "./ui/tasks.js";
   async function act(action) {
     if (loading) return;
     if (action !== "refresh" && jobId) return;
+    if (action !== "refresh" && stale) { status("日报状态待核实，请先刷新，勿重复提交。", true); return; }
     if (["generate", "regenerate-topic"].includes(action) && !canDiscard()) return;
     if (["send", "resume"].includes(action) && !window.confirm(`将 ${target().dateText} 的所选日报${action === "resume" ? "剩余分段" : ""}发送到群 ${target().groupId}？`)) return;
     if (action.startsWith("confirm-") && !window.confirm(`请先核对群 ${target().groupId} 中第 ${Math.min((snapshot.delivery.completed || 0) + 1, snapshot.delivery.total)} 段。确认它${action === "confirm-delivered" ? "已送达" : "没有发送出去"}？`)) return;
     loading = true; controls(); status("正在处理…");
+    let saveConfirmed = false;
     try {
       if (action === "refresh") {
         await refresh(null, true);
         if (jobId && !pollingJobId) schedulePoll();
         const active = snapshot?.jobs?.find(job => job.id === jobId);
-        status(active ? phaseNames[active.phase] || active.phase : "已刷新"); return;
+        if (snapshot?.groups.length) status(active ? phaseNames[active.phase] || active.phase : "已刷新"); return;
       }
       const result = await host.call("summaryAction", {
         action, ...target(), revisionId: selectedId, expectedRevisionId: editingHeadId,
         discussionId: $("summaryTopic").value, summary: action === "save" ? $("summaryBody").value : undefined,
       });
-      if (result.jobId) { jobId = result.jobId; dirty = false; status("任务已提交"); schedulePoll(); }
-      else { await refresh(result.revisionId); status("新版本已保存"); }
+      if (result?.ok === false || result?.cancelled) throw new Error(result.error || "任务未完成");
+      if (typeof result?.jobId === "string" && result.jobId) { jobId = result.jobId; dirty = false; status("任务已提交"); schedulePoll(); }
+      else if (action === "save" && typeof result?.revisionId === "string" && result.revisionId) {
+        saveConfirmed = true; await refresh(result.revisionId); status("新版本已保存");
+      } else throw Object.assign(new Error("操作响应不完整，结果未确认；请刷新核实，勿重复提交。"), { responseInvalid: true });
     } catch (error) {
+      stale = true;
       if (snapshot?.groupId) { $("summaryGroup").value = snapshot.groupId; $("summaryDate").value = snapshot.dateText; }
-      status(error.message || "操作失败", true);
+      status(saveConfirmed ? "新版本已保存，但重新读取失败；请刷新核实，暂勿重复提交。" :
+        error.transportFailure || error.responseInvalid ? "操作结果未确认；草稿已保留，请刷新核实，勿重复提交。" :
+        `${error.message || "操作失败"}${dirty ? "；草稿已保留，未自动覆盖。" : ""}`, true);
     }
     finally { loading = false; controls(); }
   }
@@ -135,12 +160,12 @@ import { waitForTask } from "./ui/tasks.js";
       return job;
     }, {
       onReadError: () => status("任务状态暂不可读，正在重试查询，请勿重复提交"),
-      onProgress: job => status(job.error || phaseNames[job.phase] || job.phase, ["failed", "interrupted"].includes(job.phase)),
+      onProgress: job => status(job.error || phaseNames[job.phase] || job.phase, ["failed", "interrupted", "cancelled"].includes(job.phase)),
     })
       .then(job => {
         jobId = "";
-        if (job.revisionId && !dirty) { selectedId = job.revisionId; $("summaryRevision").value = selectedId; renderRevision(); }
-        if (job.reason) status("未重复发送，原任务状态：" + job.reason);
+        if (job.phase === "done" && job.revisionId && !dirty) { selectedId = job.revisionId; $("summaryRevision").value = selectedId; renderRevision(); }
+        if (job.phase === "done" && job.reason) status("未重复发送，原任务状态：" + job.reason);
       })
       .catch(error => { status(error.message || "任务结果尚未确认，请刷新继续查询", true); })
       .finally(() => { pollingJobId = ""; controls(); });
@@ -157,4 +182,5 @@ import { waitForTask } from "./ui/tasks.js";
   const view = document.querySelector('[data-view-panel="summaries"]');
   new MutationObserver(() => { if (!view.hidden && !snapshot) act("refresh"); }).observe(view, { attributes: true, attributeFilter: ["hidden"] });
   window.addEventListener("beforeunload", event => { if (dirty) { event.preventDefault(); event.returnValue = ""; } });
+  controls();
 })();

@@ -8,10 +8,11 @@ if (host.mode === "browser") {
   const button = document.getElementById("refreshConversationSummaries");
   let polling = false;
   panel.hidden = false;
-  const finished = task => ["done", "failed", "interrupted"].includes(task.phase);
+  const finished = task => ["done", "failed", "interrupted", "cancelled"].includes(task.phase);
   const time = value => new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
 
   function render(snapshot) {
+    if (!Array.isArray(snapshot?.tasks) || snapshot.tasks.some(task => !task || typeof task.phase !== "string")) throw new Error("成员总结任务响应不完整，请刷新核实。");
     const body = document.getElementById("conversationSummaryRows");
     body.replaceChildren();
     for (const task of [...snapshot.tasks].reverse()) {
@@ -24,18 +25,21 @@ if (host.mode === "browser") {
     }
     if (!snapshot.tasks.length) { const cell = body.insertRow().insertCell(); cell.colSpan = 4; cell.textContent = "暂无成员总结任务"; }
     notice.textContent = `${snapshot.tasks.length} 个任务 · 不显示聊天原文`;
+    notice.dataset.error = "false";
   }
 
   async function refresh() {
     if (polling || view.hidden) return;
-    polling = true; button.disabled = true;
+    polling = true; button.disabled = true; panel.setAttribute("aria-busy", "true");
+    notice.textContent = "正在读取成员总结任务…";
     try {
       await waitForTask(() => host.call("getConversationSummaries"), {
         onProgress: render, isDone: snapshot => view.hidden || snapshot.tasks.every(finished),
+        onReadError: () => { notice.textContent = "任务状态暂不可读，正在重试；现有记录未更新。"; notice.dataset.error = "true"; },
       });
       notice.dataset.error = "false";
     } catch (error) { notice.textContent = error.message || "读取任务失败"; notice.dataset.error = "true"; }
-    finally { polling = false; button.disabled = false; }
+    finally { polling = false; button.disabled = false; panel.setAttribute("aria-busy", "false"); }
   }
   button.addEventListener("click", refresh);
   new MutationObserver(() => { if (!view.hidden) refresh(); }).observe(view, { attributes: true, attributeFilter: ["hidden"] });

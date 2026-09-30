@@ -43,6 +43,18 @@ test("release default-denies Linux runtime, private files and nested state", t =
   assert.deepEqual(collectReleaseFiles(root), publicPaths.sort());
 });
 
+test("source packages include only the exact public image workflow, not arbitrary publish artifacts", t => {
+  const root = fixture(t);
+  const allowed = ".github/workflows/publish-linux-images.yml";
+  write(root, allowed, "name: synthetic public workflow\n");
+  for (const name of ["publish/private.json", "bridge/publish-linux-images.yml", ".github/workflows/publish-private.yml"]) {
+    write(root, name);
+    assert.equal(isForbiddenPath(name), true);
+  }
+  assert.equal(isForbiddenPath(allowed), false);
+  assert.deepEqual(collectReleaseFiles(root), [allowed]);
+});
+
 test("release rejects directory links and explicit-file symlink ancestors", t => {
   for (const name of ["bridge", ".qqfriend"]) {
     const root = fixture(t);

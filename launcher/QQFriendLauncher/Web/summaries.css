@@ -16,5 +16,5 @@
 .summary-evidence p { white-space: pre-wrap; overflow-wrap: anywhere; }
 #summaryWorkbench[aria-busy="true"] .summary-progress::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 8px; border: 2px solid var(--line); border-top-color: var(--green); border-radius: 50%; animation: diagnostic-spin 900ms linear infinite; }
 @media (max-width: 850px) { .summary-editors { grid-template-columns: 1fr; } }
-@media (max-width: 600px) { .summary-toolbar label, .summary-versions label { width: 100%; } .summary-toolbar select, .summary-toolbar input { width: 100%; min-width: 0; } }
+@media (max-width: 600px) { .summary-toolbar label, .summary-versions label { width: 100%; } .summary-toolbar select, .summary-toolbar input, .summary-versions select { width: 100%; min-width: 0; } }
 @media (prefers-reduced-motion: reduce) { #summaryWorkbench[aria-busy="true"] .summary-progress::before { animation: none; } }

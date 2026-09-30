@@ -180,7 +180,8 @@
     try {
       const data = await host.call("getApiUsage", query());
       if (id !== requestId) return;
-      if (data?.schema !== 2 || !data.summary || !Array.isArray(data.rows) || data.rows.some(row => !row || typeof row !== "object")) {
+      if (data?.schema !== 2 || !data.summary || typeof data.summary !== "object" || Array.isArray(data.summary) ||
+          !Array.isArray(data.rows) || data.rows.some(row => !row || typeof row !== "object" || Array.isArray(row))) {
         throw new Error("用量数据格式不兼容（需要 schema 2）");
       }
       render(data);

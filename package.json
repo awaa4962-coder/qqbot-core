@@ -1,6 +1,6 @@
 {
   "name": "qqfriend",
-  "version": "1.4.39-stable-cache",
+  "version": "1.4.40-final-integration",
   "description": "夜星 QQ 机器人桥接器",
   "type": "module",
   "main": "napcat_bridge.mjs",
@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "7zip-bin": "^5.2.0",
+    "jsep": "1.4.0",
     "sharp": "^0.35.4",
     "ws": "^8.18.0"
   },

@@ -1,6 +1,6 @@
-import { apiProviderPayload, apiRoutesPayload, renderApiProviders, startNewApiProvider } from "../pages/api.js";
-import { renderCapabilities } from "../pages/capabilities.js";
-import { configPayload, renderConfig, renderConfigEditor } from "../pages/configuration.js";
+import { apiProviderPayload, apiRoutesPayload, apiReadFailed, canDiscardApiDrafts, renderApiProviders, setApiNotice, startNewApiProvider, syncApiControls } from "../pages/api.js";
+import { capabilityReadFailed, renderCapabilities, setCapabilityNotice } from "../pages/capabilities.js";
+import { configPayload, configReadFailed, renderConfig, renderConfigEditor, syncConfigControls } from "../pages/configuration.js";
 import { diagnosePayload, formatDiagnoseResult, renderDiagnoseSummary } from "../pages/diagnose-message.js";
 import { renderLogs } from "../pages/logs.js";
 import { renderMemes, RETIRED_MEME_ACTIONS } from "../pages/memes.js";
@@ -11,7 +11,7 @@ import { applyBackground } from "./appearance.js";
 import { $, setOutput, splitList } from "./dom.js";
 import { ACTION_DONE, ACTION_LABELS, STICKER_ACTIONS } from "./metadata.js";
 import { host, uiState } from "./state.js";
-import { callManagedAction, taskPhaseLabel } from "./tasks.js";
+import { callManagedAction, managedTaskIsBlocked, resumeManagedTasks, taskPhaseLabel } from "./tasks.js";
 
 export function validateAction(action) {
   if (RETIRED_MEME_ACTIONS.has(action)) {
@@ -22,12 +22,30 @@ export function validateAction(action) {
     return window.confirm("当前配置有未保存修改。确定重新读取并放弃这些修改吗？");
   }
   if (action === "saveConfig") {
+    if (!uiState.configLoaded || uiState.configBlocked) {
+      toast("配置尚未读取或结果待核实，请先重新读取。", "error");
+      return false;
+    }
     if (uiState.lastConfigSnapshot.files?.botNames?.writable !== false && !splitList($("cfgBotNames").value).length) {
       toast("机器人名不能为空。", "error");
       document.querySelector('[data-list-editor-for="cfgBotNames"] input')?.focus();
       return false;
     }
     return window.confirm(host.mode === "browser" ? "将保存非密钥配置，重启 Bridge 后生效。确定保存吗？" : "将保存非密钥配置并重启 Bridge。确定继续吗？");
+  }
+  if (action === "refreshApiProviders" && !canDiscardApiDrafts()) return false;
+  if (["saveApiProvider", "testApiProvider", "deleteApiProvider", "saveApiRoutes", "rollbackApiProviders"].includes(action) &&
+      (!uiState.apiProvidersLoaded || uiState.apiBlocked)) {
+    setApiNotice("API 配置尚未读取或结果待核实，请先刷新。");
+    return false;
+  }
+  if (host.mode === "browser" && ["saveApiProvider", "deleteApiProvider", "saveApiRoutes", "rollbackApiProviders"].includes(action) &&
+      !/^[a-f0-9]{64}$/.test(uiState.apiSnapshot.configurationRevision || "")) {
+    setApiNotice("API 保存令牌未读取，请刷新后再操作。"); return false;
+  }
+  if (["syncStickers", "analyzeStickers", "refreshStickerCapabilities", "cleanupStickerTemp"].includes(action) && managedTaskIsBlocked("stickers")) {
+    $("stickerStatus").textContent = "已有表情任务仍在运行或结果未确认，请刷新后台任务核实，勿重复提交。";
+    return false;
   }
   if (action === "stopBridge") {
     return window.confirm("停止后机器人将不再回复，并同时关闭守护进程。确定停止 Bridge 吗？");
@@ -73,6 +91,7 @@ export function validateAction(action) {
     return window.confirm("确定应用当前 API 分配和思考强度吗？");
   }
   if (action === "rollbackApiProviders") {
+    if (!canDiscardApiDrafts()) return false;
     if (!uiState.apiSnapshot.rollbackAvailable) {
       toast("目前没有可回滚的 API 配置。", "error");
       return false;
@@ -125,6 +144,18 @@ export async function runAction(action, button = null, options = {}) {
   if (!validateAction(action) || !beginAction(action, button, silent)) return;
   let failure = null;
 
+  if (action === "refreshCapabilities") setCapabilityNotice("正在读取能力目录…", "loading");
+  if (actionGroup(action) === "api-providers") {
+    setApiNotice(ACTION_LABELS[action] || "正在处理…", "loading");
+    syncApiControls();
+  }
+  if (actionGroup(action) === "config") {
+    setOutput("configStatus", action === "saveConfig" ? "正在保存配置…" : "正在重新读取配置…", true);
+    $("configStatus").dataset.state = "loading";
+    syncConfigControls();
+  }
+  if (action === "refreshLogs") setOutput("logsOutput", "正在读取日志…", true);
+
   if (action === "diagnose") {
     setOutput("diagnoseOutput", "正在检查消息格式、白名单、@目标和命令路由...", true);
     $("diagnoseDetails").open = false;
@@ -140,6 +171,7 @@ export async function runAction(action, button = null, options = {}) {
       if (!silent) toast("只读归档已刷新", "success");
       return;
     }
+    if (action === "refreshManagedTasks") { await resumeManagedTasks(); return; }
     if (action === "refreshStickers") {
       const snapshot = await host.call("getStickers");
       renderStickers(snapshot);
@@ -153,16 +185,16 @@ export async function runAction(action, button = null, options = {}) {
       return;
     }
     if (action === "refreshApiProviders") {
-      renderApiProviders(await host.call("getApiProviders"));
+      renderApiProviders(await host.call("getApiProviders"), { force: true });
       if (!silent) toast("API 状态已刷新", "success");
       return;
     }
     if (action === "saveConfig") payload = configPayload();
     if (action === "saveApiProvider") payload = apiProviderPayload();
     if (action === "testApiProvider") payload = { action: "test-provider", providerId: uiState.selectedApiProviderId };
-    if (action === "deleteApiProvider") payload = { action: "delete-provider", providerId: uiState.selectedApiProviderId };
+    if (action === "deleteApiProvider") payload = { action: "delete-provider", providerId: uiState.selectedApiProviderId, configurationRevision: uiState.apiSnapshot.configurationRevision };
     if (action === "saveApiRoutes") payload = apiRoutesPayload();
-    if (action === "rollbackApiProviders") payload = { action: "rollback" };
+    if (action === "rollbackApiProviders") payload = { action: "rollback", configurationRevision: uiState.apiSnapshot.configurationRevision };
     if (action === "syncStickers") payload = { action: "sync", analyze: true, analysisLimit: 4 };
     if (action === "analyzeStickers") payload = { action: "analyze", limit: 4 };
     if (action === "saveStickerSettings") payload = stickerSettingsPayload();
@@ -210,11 +242,23 @@ export async function runAction(action, button = null, options = {}) {
       ? "manageApiProviders"
         : action === "refreshLogs" ? "getLogs" : action;
     const result = await callManagedAction(hostAction, payload, {
-      onProgress: task => showActivity(ACTION_LABELS[action] || "后台任务", "working", taskPhaseLabel(task.phase)),
+      onProgress: task => {
+        showActivity(ACTION_LABELS[action] || "后台任务", "working", taskPhaseLabel(task.phase));
+        if (STICKER_ACTIONS.includes(action)) $("stickerStatus").textContent = taskPhaseLabel(task.phase);
+      },
     });
+
+    if (action !== "testApiProvider" && (result?.ok === false || result?.result?.ok === false || result?.cancelled || result?.result?.cancelled)) {
+      throw new Error(result?.error || result?.result?.error || (result?.cancelled || result?.result?.cancelled ? "任务已取消，未完成这次操作。" : "操作未成功。"));
+    }
+    if (host.mode === "browser" && (action === "saveConfig" || apiActions.includes(action) && action !== "testApiProvider") && result?.ok !== true) {
+      throw Object.assign(new Error("操作响应不完整，结果未确认；请刷新核实，勿重复提交。"), { responseInvalid: true });
+    }
 
     if (action === "refresh") {
       renderSnapshot(result);
+      await resumeManagedTasks();
+      if (Object.keys(result.errors || {}).length) throw Object.assign(new Error("运行状态已更新；配置或日志未能刷新，请查看对应页面。"), { partialRefresh: true });
     } else if (STICKER_ACTIONS.includes(action)) {
       if (action === "simulateSticker") {
         renderStickerSimulation(result);
@@ -236,29 +280,28 @@ export async function runAction(action, button = null, options = {}) {
     } else if (apiActions.includes(action)) {
       if (result.snapshot) {
         const keepId = action === "deleteApiProvider" ? "" : uiState.selectedApiProviderId || result.provider?.id;
-        renderApiProviders(result.snapshot, { selectId: keepId });
+        renderApiProviders(result.snapshot, { selectId: keepId, force: true, preserveRoutes: action === "saveApiProvider", preserveProvider: action === "saveApiRoutes" });
       }
       if (action === "testApiProvider") {
-        const message = result.ok
+        const message = result?.ok === true
           ? `连接成功\n耗时：${result.durationMs} ms\n模型回复：${result.output || "OK"}`
-          : `连接失败\n${result.error || "接口没有返回可用正文"}`;
+          : `连接失败\n${result?.error || "接口没有返回已确认的可用正文"}`;
         setOutput("apiTestOutput", message, true);
-        if (!result.ok) throw new Error(result.error || "API 连接测试失败");
+        if (result?.ok !== true) throw new Error(result?.error || "API 连接测试失败");
       } else {
         setOutput("apiRouteOutput", result.message || ACTION_DONE[action], true);
       }
+      setApiNotice(result.message || ACTION_DONE[action], "ready");
     } else if (action === "refreshConfig") {
-      uiState.lastConfigSnapshot = result;
       renderConfigEditor(result, { force: true });
       renderConfig(uiState.lastStatus, uiState.lastConfigSnapshot);
     } else if (action === "saveConfig") {
       let snapshot;
-      try { snapshot = await host.call("getConfig"); }
+      try { snapshot = await host.call("getConfig"); renderConfigEditor(snapshot, { force: true }); }
       catch { throw new Error("配置已保存，但重新读取失败；请刷新确认，暂勿重复提交。"); }
-      uiState.lastConfigSnapshot = snapshot;
-      renderConfigEditor(snapshot, { force: true });
       renderConfig(uiState.lastStatus, snapshot);
       if (host.mode === "browser") {
+        $("configStatus").dataset.state = "ready";
         setOutput(
           "configStatus",
           `${result.message || "配置已保存"}\n请在服务器执行 docker compose restart bridge 或 systemctl restart qqfriend 后生效。`,
@@ -299,10 +342,12 @@ export async function runAction(action, button = null, options = {}) {
     if (!silent) toast(error.message || "操作失败", "error");
   } finally {
     endAction(action);
+    if (actionGroup(action) === "config") syncConfigControls();
+    if (actionGroup(action) === "api-providers") syncApiControls();
     if (actionGroup(action) === "stickers") setStickerCatalogAvailability();
     if (!silent) finishActivity(
-      failure?.taskStateUnknown ? "任务结果尚未确认" : failure ? `${ACTION_LABELS[action] || "操作"}失败` : ACTION_DONE[action] || "操作完成",
-      failure ? "error" : "success", failure?.taskStateUnknown ? failure.message : undefined,
+      failure?.taskStateUnknown ? "任务结果尚未确认" : failure?.partialRefresh ? "部分刷新未完成" : failure ? `${ACTION_LABELS[action] || "操作"}失败` : ACTION_DONE[action] || "操作完成",
+      failure ? "error" : "success", failure?.taskStateUnknown || failure?.partialRefresh ? failure.message : undefined,
     );
   }
 }
@@ -320,18 +365,29 @@ export function showActionError(action, error) {
     return;
   }
   if (action === "refresh" || action === "refreshStatus") {
+    if (error.partialRefresh) return;
     markStatusStale(`数据刷新失败 · ${message}`);
     return;
   }
   if (actionGroup(action) === "config") {
+    if (action === "refreshConfig" || action === "saveConfig" && (error.status === 409 || error.status === 403 || !error.status || error.status >= 500 || error.transportFailure || error.responseInvalid || message.startsWith("配置已保存"))) {
+      configReadFailed(error, action === "saveConfig" && error.status === 409
+        ? "配置已在别处更新，本页修改未被覆盖。请先核对当前输入，再重新读取配置。"
+        : message.startsWith("配置已保存") ? message
+        : action === "saveConfig" && (error.transportFailure || error.responseInvalid || !error.status || error.status >= 500) ? "保存结果未确认；草稿已保留，请先重新读取核实，勿重复提交。" : undefined);
+      return;
+    }
     if (action === "saveConfig" && error.status === 409) {
       setOutput("configStatus", "配置已在别处更新，本页修改未被覆盖。请先核对当前输入，再重新读取配置。", true);
       return;
     }
     setOutput("configStatus", message.startsWith("配置已保存") ? message : `配置操作失败：${message}`, true);
+    $("configStatus").dataset.state = "error";
     return;
   }
   if (actionGroup(action) === "api-providers") {
+    if (action === "refreshApiProviders" || [403, 409].includes(error.status) || error.status >= 500 && action !== "testApiProvider" || error.transportFailure || error.responseInvalid) apiReadFailed(error);
+    else setApiNotice(`API 操作失败：${message}`);
     const outputId = action === "testApiProvider" ? "apiTestOutput" : "apiRouteOutput";
     setOutput(outputId, `API 操作失败：${message}`, true);
     return;
@@ -342,6 +398,12 @@ export function showActionError(action, error) {
   }
   if (actionGroup(action) === "stickers") {
     $("stickerStatus").textContent = `操作失败：${message}`;
+    return;
+  }
+  if (action === "refreshCapabilities") { capabilityReadFailed(error); return; }
+  if (action === "refreshLogs") {
+    uiState.logsLoaded = false;
+    setOutput("logsOutput", `日志读取失败：${message}；请刷新重试。`, true);
     return;
   }
   setOutput(operationOutputId(action), `操作失败：${message}`, true);

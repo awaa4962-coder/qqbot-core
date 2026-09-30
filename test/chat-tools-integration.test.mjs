@@ -130,7 +130,9 @@ test("native-less text provider still supports explicitly requested public searc
   t.mock.method(globalThis, "fetch", async (url, options) => {
     if (String(url).startsWith("https://cn.bing.com/search")) {
       searches++; assert.match(String(url), /Debian/); assert.doesNotMatch(String(url), /HIDDEN_NOTE/);
-      return { ok: true, text: async () => '<li class="b_algo"><h2><a href="https://example.com">Debian</a></h2><p>synthetic public evidence</p></li>' };
+      return new globalThis.Response('<li class="b_algo"><h2><a href="https://example.com">Debian</a></h2><p>synthetic public evidence</p></li>', {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
     }
     assert.ok(String(url).startsWith("https://example.com/")); modelBody = JSON.parse(options.body);
     return response({ content: "这是公开搜索资料。" });

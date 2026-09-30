@@ -23,6 +23,7 @@ const ASSETS = new Map([
   ["/console/api-usage.js", ["api-usage.js", "text/javascript; charset=utf-8"]],
   ["/console/api-usage.css", ["api-usage.css", "text/css; charset=utf-8"]],
   ["/console/diagnostics.js", ["diagnostics.js", "text/javascript; charset=utf-8"]],
+  ["/console/agent-tools.js", ["agent-tools.js", "text/javascript; charset=utf-8"]],
   ["/console/deliveries.js", ["deliveries.js", "text/javascript; charset=utf-8"]],
   ["/console/memory.js", ["memory.js", "text/javascript; charset=utf-8"]],
   ["/console/diagnostics.css", ["diagnostics.css", "text/css; charset=utf-8"]],
