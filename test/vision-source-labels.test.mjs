@@ -34,6 +34,7 @@ const cfg = { groupWhitelist: [50100], botBlacklist: [] };
 const pixelProvider = { enabled: true, capabilities: ["text", "vision"] };
 const textProvider = { enabled: true, capabilities: ["text"] };
 const objectiveText = "Synthetic square; no visible text.";
+const provenanceSuffix = "，provenanceRole=uploading_message_sender，verificationScope=message_origin_only";
 const image = (index, animated = false) => ({ index, animated,
   content: { type: "image_url", image_url: { url: "data:image/jpeg;base64,YWJj" + index } } });
 
@@ -96,7 +97,7 @@ for (const [kind, title] of [["current", "当前消息"], ["quote", "已核验�
       nickname: "SOURCE_SENTINEL", originalmessage: "SOURCE_SENTINEL" }]);
     const direct = await f.session.message(pixelProvider, {});
     const fallback = await f.session.message(textProvider, {});
-    assert.deepEqual(sourceLines(direct), ["图1：" + title + "，消息发送人 uid=60200，message_id=-70200"]);
+    assert.deepEqual(sourceLines(direct), ["图1：" + title + "，消息发送人 uid=60200，message_id=-70200" + provenanceSuffix]);
     assert.equal(label(fallback), label(direct));
     assert.doesNotMatch(label(direct), /作者ID|SOURCE_SENTINEL|originalmessage|at=/);
     assert.deepEqual(direct.message.content.slice(1), f.data.images.map(item => item.content));
@@ -118,9 +119,9 @@ test("mixed sources follow original image indexes after failed or reordered prep
   const direct = await f.session.message(pixelProvider, {});
   const fallback = await f.session.message(textProvider, {});
   assert.deepEqual(sourceLines(direct), [
-    "图4：当前消息，消息发送人 uid=60104，message_id=70104",
-    "图2：已核验引用消息，消息发送人 uid=60102，message_id=70102，动态图片仅首帧",
-    "图3：已选近期消息，消息发送人 uid=60103，message_id=70103",
+    "图4：当前消息，消息发送人 uid=60104，message_id=70104" + provenanceSuffix,
+    "图2：已核验引用消息，消息发送人 uid=60102，message_id=70102" + provenanceSuffix + "，动态图片仅首帧",
+    "图3：已选近期消息，消息发送人 uid=60103，message_id=70103" + provenanceSuffix,
   ]);
   assert.equal(label(fallback), label(direct));
   assert.match(label(direct), /未能读取=1；超出本轮上限=1/);
@@ -132,8 +133,8 @@ test("IDs accept bounded decimal strings and safe integer primitives only", { ti
     ["9".repeat(20), "-" + "8".repeat(20)]]) {
     const f = fixture([{ kind: "quote", userId, messageId }]);
     const result = await f.session.message(pixelProvider, {});
-    assert.deepEqual(sourceLines(result), ["图1：已核验引用消息，消息发送人 uid=" + userId + "，message_id=" + messageId]);
-    assert.ok(sourceLines(result)[0].length < 90);
+    assert.deepEqual(sourceLines(result), ["图1：已核验引用消息，消息发送人 uid=" + userId + "，message_id=" + messageId + provenanceSuffix]);
+    assert.ok(sourceLines(result)[0].length < 90 + provenanceSuffix.length);
   }
 });
 
@@ -146,11 +147,11 @@ test("invalid ID metadata is omitted without coercion or injection", { timeout: 
   for (const value of invalid) {
     const f = fixture([{ kind: "recent", userId: value, messageId: value, at: "SOURCE_SENTINEL" }]);
     const result = await f.session.message(pixelProvider, {});
-    assert.deepEqual(sourceLines(result), ["图1：已选近期消息"]);
+    assert.deepEqual(sourceLines(result), ["图1：已选近期消息" + provenanceSuffix]);
     assert.doesNotMatch(label(result), /消息发送人 uid|message_id|SOURCE_SENTINEL/);
   }
   const f = fixture([{ kind: "current", userId: -60200, messageId: "--70200" }]);
-  assert.deepEqual(sourceLines(await f.session.message(textProvider, {})), ["图1：当前消息"]);
+  assert.deepEqual(sourceLines(await f.session.message(textProvider, {})), ["图1：当前消息" + provenanceSuffix]);
 });
 
 test("valid IDs are preserved independently when the other ID is invalid", { timeout: 2000 }, async () => {
@@ -159,8 +160,8 @@ test("valid IDs are preserved independently when the other ID is invalid", { tim
     [{ kind: "quote", userId: "SOURCE_SENTINEL", messageId: "-70200" }, "图1：已核验引用消息，message_id=-70200"],
   ]) {
     const f = fixture([source]);
-    assert.deepEqual(sourceLines(await f.session.message(pixelProvider, {})), [expected]);
-    assert.deepEqual(sourceLines(await f.session.message(textProvider, {})), [expected]);
+    assert.deepEqual(sourceLines(await f.session.message(pixelProvider, {})), [expected + provenanceSuffix]);
+    assert.deepEqual(sourceLines(await f.session.message(textProvider, {})), [expected + provenanceSuffix]);
   }
 });
 
@@ -241,7 +242,7 @@ for (const imagePolicy of [IMAGE_POLICY_EVIDENCE, IMAGE_POLICY_STABLE]) {
     assert.equal(label(fallback), label(direct));
     assert.deepEqual(repeat, fallback);
     assert.deepEqual(sourceLines(direct), [evidence
-      ? "图1：已核验引用消息，消息发送人 uid=60200，message_id=70200"
+      ? "图1：已核验引用消息，消息发送人 uid=60200，message_id=70200" + provenanceSuffix
       : "图1：已核验引用消息，作者ID=60200"]);
     assert.match(fallback.message.content, evidence ? /解读任务：/ : /理解要求：/);
     assert.doesNotMatch(JSON.stringify(fallback), /SOURCE_SENTINEL|CONVERSATION_SENTINEL|data:image/);

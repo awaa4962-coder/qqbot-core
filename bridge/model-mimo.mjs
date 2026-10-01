@@ -100,6 +100,7 @@ export async function tryMiMoResult(userMsg, userName, history, imageUrls, group
     toolSession: options.toolSession,
     visionSession: options.visionSession,
     imagePolicy: imagePolicyFromOptions({ ...options, groupId }),
+    imageTask: options.imageTask === true,
     thinking: options.replyMode === 'interjection' ? { type: 'disabled' } : undefined,
     personaCue: options.personaCue || selectPersonaCue(userMsg, {
       replyMode: options.replyMode || 'chat',

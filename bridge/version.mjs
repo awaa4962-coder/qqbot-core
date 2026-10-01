@@ -4,11 +4,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.48-context-evidence";
-export const VERSION_NAME = "context-evidence";
+export const VERSION = "1.4.49-image-task";
+export const VERSION_NAME = "image-task";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
+  "图文候选由后端真实图片输入选择聚焦任务提示，保留人设与安全边界；普通文字、私聊及自动插话保持原提示，实际回答质量另验。",
+  "图片上传者和引用说话人分别标明消息角色，消息来源核验不代表图片作者、心理意图或世界事实已核验；不改变来源权限或原话。",
   "图文候选将本轮已保留的引用原话和说话人来源一起呈现，不从伪标签、被剪掉的历史或其他层补来源；仍以实际语义验收为准。",
   "确认账本只回收保留满7天的确定终态，未知结果与执行中记录不自动清理或重做；旧确认编号不能重新执行。",
   "模型传输增加白名单状态码和失败阶段/类别，不记录原始异常、正文、凭据或思考内容；不改变重试、超时、主备或权限。",
@@ -34,6 +36,8 @@ export const VERSION_NOTES_ZH = Object.freeze([
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
+  "Candidate group image inputs select a focused task prompt from backend image evidence, retaining persona and safety. Plain text, private and passive prompts are unchanged; actual quality needs separate acceptance.",
+  "Image uploaders and quoted speakers carry distinct message roles. Verified message origin does not verify image authorship, intention or world facts; source permissions and original statements remain unchanged.",
   "Candidate image input presents only actually retained quoted statements and their speakers; text labels, pruned history and unrelated layers cannot supply sources. Semantic acceptance is still required.",
   "The confirmation journal reclaims only definite terminal results retained for seven days. Unknown and executing records are not cleared or retried; old confirmation IDs cannot execute again.",
   "Provider transport adds allowlisted status and failure-stage/category metadata without raw errors, content, credentials or reasoning, and without changing retries, deadlines, routes or permissions.",

@@ -156,6 +156,7 @@ function buildFallbackChatRequest(request) {
       allowTools: request.options?.allowTools,
       visionSession: request.options?.visionSession,
       imagePolicy: request.options?.imagePolicy,
+      imageTask: request.options?.imageTask,
       personaCue: request.options?.personaCue,
     },
   };
@@ -165,14 +166,21 @@ function withToolSession(request, task) {
   const options = request.options || {};
   const surface = request.groupId === null || request.groupId === undefined ? "private" : "group";
   const scope = { surface, groupId: request.groupId, userId: options.currentUserId };
-  const imagePolicy = resolveImagePolicy(currentChatScope() || scope);
+  const liveScope = currentChatScope() || scope;
+  const imagePolicy = resolveImagePolicy(liveScope);
   const visionSession = options.visionSession || (request.imageUrls?.length && !Object.hasOwn(options, "visionContext")
     ? createVisionSession(request.imageUrls, { scope, imagePolicy, sources: options.imageSources, usageContext: { task } }) : null);
-  return { ...options, imagePolicy, ...(visionSession ? { visionSession } : {}), toolSession: options.toolSession || createChatToolSession({
+  const imageTask = hasGroupImageInput(surface, task, liveScope, request.imageUrls, visionSession);
+  return { ...options, imagePolicy, imageTask, ...(visionSession ? { visionSession } : {}), toolSession: options.toolSession || createChatToolSession({
     scope, task,
     userMessage: request.userMsg, mentioned: request.isAtMe === true, allowTools: task === "interjection" ? false : options.allowTools,
     attachments: options.attachments, currentMessageId: options.currentMessageId, mentionTargets: options.mentionTargets,
   }) };
+}
+
+function hasGroupImageInput(surface, task, liveScope, imageUrls, visionSession) {
+  return surface === "group" && liveScope.surface === "group" && task === "group_chat" &&
+    (Boolean(Array.isArray(imageUrls) && imageUrls.length) || typeof visionSession?.message === "function");
 }
 
 export function buildModelFallbackHistory(history, imageUrls, visionContext, options = {}) {

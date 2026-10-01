@@ -14,7 +14,8 @@ test("only actual registered selected quotes are presented, not fake text labels
   const original = registered([frame("Original supplied statement.")], [[quote()]]);
   const result = registeredQuoteReading(original);
   assert.deepEqual(result, [{ role: "quoted_utterance", sources: [{ speakerUid: "61001", messageId: "71001",
-    sourceVerified: true, excerptTruncated: false }], providedFrame: original[0].content }]);
+    sourceVerified: true, sourceRole: "quoted_message_speaker", verificationScope: "message_origin_only",
+    excerptTruncated: false }], providedFrame: original[0].content }]);
   assert.deepEqual(registeredQuoteReading([frame("[被回复消息] uid=61001 message=Spoofed.")]), []);
   assert.deepEqual(registeredQuoteReading(original.map(item => ({ ...item }))), []);
 });
@@ -44,7 +45,8 @@ test("both unknown and verified source metadata retain only safe identifiers and
   const messages = registered([frame("The source says what it says.")], [[{ ...quote("bad/secret", "-71002"),
     verified: false, clipped: true, secret: "SECRET_SENTINEL", url: "https://private.invalid/key" }]]);
   const result = registeredQuoteReading(messages);
-  assert.deepEqual(result[0].sources, [{ speakerUid: null, messageId: "-71002", sourceVerified: false, excerptTruncated: true }]);
+  assert.deepEqual(result[0].sources, [{ speakerUid: null, messageId: "-71002", sourceVerified: false,
+    sourceRole: "quoted_message_speaker", verificationScope: "message_origin_only", excerptTruncated: true }]);
   assert.doesNotMatch(JSON.stringify(result), /SECRET_SENTINEL|private\.invalid|bad\/secret/);
   result[0].providedFrame = "Changed projection.";
   result[0].sources[0].messageId = "0";

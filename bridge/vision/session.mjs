@@ -68,6 +68,9 @@ function imageEvidenceLabel(data, sources = [], imagePolicy) {
     return "图" + image.index + "：" + kind + author + (image.animated ? "，动态图片仅首帧" : "");
   });
   return ["[本轮图片证据]", ...labels,
+    ...(imagePolicy === IMAGE_POLICY_EVIDENCE ? [
+      "来源字段：provenanceRole=uploading_message_sender 仅指图片所在消息的发送人；verificationScope=message_origin_only 仅界定消息来源，image_authorship/intent=not_verified_by_message_origin，原话声明的世界真实性也不由消息来源核验；明确意图原话仍保留为其说话人的自述。",
+    ] : []),
     "未能读取=" + data.failed + "；超出本轮上限=" + data.omitted + "。不能把未读取的图片说成已看见。",
     imagePolicy === IMAGE_POLICY_EVIDENCE
       ? "本轮解读：回答[当前输入]的问题，不把图片当作脱离原话的独立图册。结合本轮已提供的相关原话或反馈，解释可读画面与具体事情的相符或反差；不能只读图中文字而漏掉这些背景。引用者主动说明图的用途时，归属为该引用者的自述，不转成当前提交图片者的心理事实。分别核对提交者、引用者和图片作者：已核验的相同uid可对应同一说话人，但同名或上传图片本身不能证明这些身份相同，图片原作者仍需来源证据。原话未说明的动机不从反差补出来。最终直接自然回答，不输出分析步骤。"
@@ -82,7 +85,8 @@ function evidenceSourceLabel(source) {
   if (!kind) return "当前消息附件";
   const userId = sourceIdentifier(source.userId);
   const messageId = sourceIdentifier(source.messageId, true);
-  return kind + (userId ? "，消息发送人 uid=" + userId : "") + (messageId ? "，message_id=" + messageId : "");
+  return kind + (userId ? "，消息发送人 uid=" + userId : "") + (messageId ? "，message_id=" + messageId : "") +
+    "，provenanceRole=uploading_message_sender，verificationScope=message_origin_only";
 }
 
 function sourceIdentifier(value, signed = false) {

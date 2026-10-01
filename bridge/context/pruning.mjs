@@ -43,7 +43,9 @@ export function registeredQuoteReading(messages = []) {
       !layer.sources.length || quotes.length >= 2) continue;
     const sources = layer.sources.map(source => ({ speakerUid: readingIdentifier(source.userId),
       messageId: readingIdentifier(source.messageId, true), sourceVerified: source.verified,
+      sourceRole: "quoted_message_speaker", verificationScope: "message_origin_only",
       excerptTruncated: source.clipped }));
+    // providedFrame is the supplied utterance, not verified world facts or psychological intent.
     const quote = { role: "quoted_utterance", sources, providedFrame: layer.content };
     const size = JSON.stringify(quote).length;
     if (chars + size > 2000) continue;

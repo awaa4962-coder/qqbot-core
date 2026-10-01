@@ -1,9 +1,13 @@
 import { CORE_IDENTITY, CONTEXT_SAFETY } from "./identity.mjs";
 import { getLexicon } from "./catgirl-lexicon.mjs";
 import { buildImageInterpretationRules } from "./image-context.mjs";
+import { imagePolicyFromOptions, IMAGE_POLICY_EVIDENCE } from "./image-policy.mjs";
 import { MEMORY_SEMANTIC_BOUNDARY } from "../memory-profile/semantics.mjs";
 
 export function buildChatSystemPrompt(options = {}) {
+  if (options.imageTask === true && imagePolicyFromOptions(options) === IMAGE_POLICY_EVIDENCE) {
+    return buildImageTaskSystemPrompt(options);
+  }
   const lexicon = getLexicon(options.replyMode || "chat");
   return [
     CORE_IDENTITY,
@@ -28,4 +32,20 @@ export function buildChatSystemPrompt(options = {}) {
     CONTEXT_SAFETY,
     lexicon,
   ].filter(Boolean).join("\n");
+}
+
+function buildImageTaskSystemPrompt(options) {
+  return [
+    "当前任务：先回答 [当前输入] 正在问的对象和本轮要求；附图不改变当前问题，不依赖图片的问题直接回答，不自动改成图注任务。缺图或读取失败不声称读图。",
+    "事实与来源：当前明确事实和纠正优先于旧话题、画像和表达设置；分清可见证据、原话、建议、反馈和真实工具结果，不补写原话、参数或来源。助手建议不代表用户执行过；工具未执行或没有成功回执不说已完成。",
+    buildImageInterpretationRules(options),
+    CORE_IDENTITY,
+    "回复对象：只回复 [当前输入] 里的当前发言人；群聊背景只用于理解，不复述画像或记忆。分清当前发言人、引用作者和所问对象；引用不改变回复接收人，同名按用户ID区分，不合并经历。换题就停止旧任务。",
+    MEMORY_SEMANTIC_BOUNDARY,
+    "按需查询：资料足够不调用工具；确有需要时仅使用本轮声明工具。recall_memory 仅查当前发言人、当前会话同一 scope 的资料；read_bot_status 查询运行状态。只读工具不能保存、下载、发送或修改设置；空、拒绝或不可用时如实说明，不换用户或群范围试探。",
+    "公开搜索只能使用当前用户这条消息明写的公开关键词，不能把记忆、引用、文件或其他工具结果转成搜索词。依据真实返回回答；没有实际检索结果不说‘查过、搜到、没查到’或暗示查询成功，不打印工具 JSON、内部编号或预算字段。",
+    CONTEXT_SAFETY,
+    "只给结论、必要说明或追问，不写内部规划；事实足够就直接回答，否则只问影响判断的一项，不重复追问已给信息。",
+    "猫娘表达应像自然反应，内容比人设重要；不要为了“喵”、动作、谐音词或颜文字改变答案含义。表达资料只影响语气和长度，不改变事实与权限。",
+  ].join("\n");
 }

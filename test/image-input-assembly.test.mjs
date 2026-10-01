@@ -175,7 +175,8 @@ for (const primary of ["pixel-primary", "text-primary"]) {
     const projected = JSON.parse(reading.split("\n")[1]).providedQuotes;
     assert.equal(projected.length, 1);
     assert.equal(projected[0].providedFrame, input.history[1].content);
-    assert.deepEqual(projected[0].sources, [{ speakerUid: "60101", messageId: "70101", sourceVerified: true, excerptTruncated: false }]);
+    assert.deepEqual(projected[0].sources, [{ speakerUid: "60101", messageId: "70101", sourceVerified: true,
+      sourceRole: "quoted_message_speaker", verificationScope: "message_origin_only", excerptTruncated: false }]);
     assert.equal(toolSession.snapshot().modelRounds, 1);
     assert.equal(toolSession.snapshot().transportAttempts, 1);
     assert.deepEqual(input.history, original);
@@ -216,7 +217,7 @@ for (const [primary, fallback, failPrimary] of [
     for (const body of bodies.filter(body => body.model !== "objective")) {
       assertAssembly(body, records.find(record => record.model === body.model), input);
       assert.match(body.messages[0].content, /图片解读任务：/);
-      assert.equal(body.messages[0].content, buildModelPrompt({ imagePolicy: IMAGE_POLICY_EVIDENCE, groupId: 50100 }).system);
+      assert.equal(body.messages[0].content, buildModelPrompt({ imagePolicy: IMAGE_POLICY_EVIDENCE, imageTask: true, groupId: 50100 }).system);
     }
     for (const body of bodies.filter(body => body.model === "objective")) {
       assert.deepEqual(body.messages, buildObjectiveVisionMessages(preparedFixture));
