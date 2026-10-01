@@ -1,11 +1,40 @@
 # P5 Linux Candidate And Gray Acceptance
 
-Status: prepared operational candidate, not P5-04/P5-05 acceptance. The exact final executable commit is still TBD. The parent owns the combined gate, actual quality review and deployment authorization. Windows remains frozen. Nothing in this document authorizes test messages, paid probes or an automatic expansion.
+Status: tested engineering candidate, not P5-04/P5-05 acceptance. Current executable
+is `8db8833`; the final `2.0.0` candidate is still pending. The parent owns the
+combined gate, actual quality review and deployment authorization. Windows stays
+frozen. This document does not authorize test messages, paid probes or expansion.
 
-Current checkpoint (2026-10-01): source `41f3a9c` / `1.4.44-console-state`,
-original 37/43 plus Agent 3/12 = 40/55 (72.7%). P5-01 and P5-03 are accepted;
+Current checkpoint (2026-10-02): executable `8db8833` / `1.4.46-confirmed-actions`,
+original 37/43 plus Agent 10/12 = 47/55 (85.5%). P5-01 and P5-03 are accepted;
 P3-06, P5-02 and P5-04 through P5-07 remain open. No production switch or new
 gray path has occurred. A1-04 actual native-tool compatibility/gray is separate.
+
+The current candidate passed same-source Linux engineering acceptance: 2746 tests /
+2706 pass / 40 optional skips / zero failures, lint0/0, replay13 and 332 image-file
+byte checks. Current MiMo/DeepSeek native protocol roundtrips both passed using
+four requests, original tool identity and shared quota; the single-group and
+actual write/operational gates remain open. The Oct1 paragraph below describes
+the archived v5 candidate, not the current image or permission to activate it.
+
+The corrected formal-entry v6 replay has also completed one16-request paid batch
+after its same-source network-none dry and two independent operator closures.
+Five cases remain below unchanged semantic thresholds. No image gray or
+production promotion is eligible from this result. Original failed outputs,
+plans and budgets remain intact; do not rerun the batch or substitute older
+activation commands to bypass the quality gate.
+
+The retained Sep28 private snapshot was restored to a new isolated candidate
+directory and independently matched to the archive file bytes; all 155 JSON
+files parsed. The original archive, production symlink and Bridge/NapCat start
+times were unchanged. This is a rehearsal of a retained consistent snapshot,
+not a fresh production backup or proof of future Agent-sidecar compatibility.
+Before promotion, take a new consistent restricted snapshot under the existing
+summary lock and a verified clean Bridge shutdown, retain every current ledger,
+and repeat restore/read-only compatibility checks. Old activation helpers are
+hardcoded for earlier versions and must not be invoked with candidate46 by
+substitution. Do not instantiate confirmation/reminder services merely to read
+an offline snapshot: their recovery can change state; parse it read-only instead.
 
 Actual Oct1 candidate engineering gate is complete for exact source `41f3a9c`:
 2406 tests / 2380 pass / 26 environment-optional skips / zero failures, lint0/0,
@@ -30,7 +59,7 @@ fresh server verification and a reviewed eligible semantic result.
 
 | Item | Required Value |
 | --- | --- |
-| Prepared image version | `1.4.44-console-state`; exact tested image/commit still required, not final `2.0.0` |
+| Prepared image version | `1.4.46-confirmed-actions` / executable `8db8833`; tested engineering candidate, not final `2.0.0` or permission to activate |
 | Initial selected group | `1105126214` only |
 | Bridge process setting | `QQBOT_IMAGE_CONTEXT_ROLLOUT=1105126214` |
 | Observation starts | Actual new-image Bridge `/ready`, health and parsed live verification have passed |

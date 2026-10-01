@@ -2,11 +2,21 @@
 
 Scope: Linux candidate on `agent/linux-server-preview`, executable base `b85bd00`, documentation HEAD `6552950`. This is a synthetic acceptance harness, not a deployment or a declaration that P5-02 is complete. The original P5 checklist in `MODULAR-RUNTIME.md` and quality requirements in `ROADMAP.md` remain authoritative. Windows installation stays frozen.
 
-Current checkpoint (2026-10-01): original 37/43, Agent 3/12, combined 40/55=72.7%.
+Current checkpoint (2026-10-02): original 37/43, Agent 10/12, combined 47/55=85.5%.
 The base/HEAD above describe the original matrix preparation, not current source
-or deployment. Current prepared v5 source is `41f3a9c` / `1.4.44-console-state`;
+or deployment. The archived v5 source is `41f3a9c` / `1.4.44-console-state`;
 P3-06 and P5-02 remain open. The accepted frontend/CI work does not fix the six
 recorded real v4 counterexamples by itself.
+
+Current executable candidate `8db8833` / `1.4.46-confirmed-actions` has passed
+the exact-source isolated Linux gate (2746 total / 2706 pass / 40 optional skips /
+zero failures), matching CI, and 332 runtime-file byte checks. Production remains
+39. A once-only native protocol probe using the unchanged five-tool declaration
+and shared 24-hour ledger verified both current configured slots in four HTTP
+attempts, with no retry or QQ send. This is not image quality, business-tool
+semantic acceptance or completed group observation. A new private v6 harness is
+being prepared to invoke formal `executeChatTask` with source-bound image context;
+old v4/v5 operators, paid outputs and failure reviews remain unchanged.
 
 ## Evidence Layers
 
@@ -193,6 +203,38 @@ After the final integration commit, the parent must preselect probes/routes and 
 Use the real current route/self-context injection at transport time; fixture packets never prove the provider actually used. Preserve actual primary/fallback config and reasoning settings. Recompute final request fingerprints after runtime self-facts/pixel injection. Keep complete synthetic outputs and human evidence in the parent's restricted report, not in public fixtures. Missing runs, usage or review remain unverified.
 
 ## Scoped Commands And Status
+
+### Formal-Entry V6: Actual Replay Completed, Not Accepted
+
+2026-10-02: a new private caller used actual `executeChatTask`, bound current
+picture sources and question text, and the same frozen eight inputs/rubrics,
+bitmap assets, historical baseline and configured deep-mode providers. Actual
+1024/1536 group limits were preserved; Docker's random hostname was not treated
+as a semantic setting. Preparation failures now emit only a fixed code, verified
+by two independent audits and19/19 bounded cases. Original operators and the first
+dry record were retained; the corrected identity used a fresh QA directory.
+
+Same executable `8db8833`, archive `b2fecd77e01d...` and tested image `a7102bbd...`
+passed the new16-request network-none dry with zero native transport. A single
+durably reserved paid batch then completed exactly16 physical attempts, no
+retry, baseline call, production history or QQ send. Primary and explicitly
+forced fallback evaluation lanes remained separate; exact dry request hashes
+and source/config/dependency identities were checked before each actual call.
+
+Parent and independent cleaned-text reviews found **five below-threshold cases**:
+primary inferred comfort after failure, omitted the success/negative-word
+contrast, and left an explicit peer intent unattributed; fallback omitted that
+explicit comfort source and added an unrequested memory-command workflow after
+the naming/arithmetic task. Literal praise, possible joking irony and a normal
+nickname acknowledgment were not failed by word matching. All original thresholds
+remain;11/16 meeting cases do not constitute candidate acceptance or user sign-off.
+
+Reported usage:40700 prompt /32640 cached /2372 completion /1790 reasoning /
+43072 total. These are observed counts, not general savings or a cold/hot
+comparison. The private outputs/review stay out of releases. P3-06/P5-02, image
+gray and promotion remain open. Next batch addresses context-task priority,
+quoted-intent attribution and unrequested capability guidance together; no
+repeating this frozen batch to seek a pass.
 
 From repository root, on Linux:
 
