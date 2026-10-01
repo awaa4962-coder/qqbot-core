@@ -4,12 +4,18 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export function testExitCode(code, signal) {
   return signal || !Number.isInteger(code) ? 1 : code;
+}
+
+export function testRunArguments(files) {
+  return ["--test", "--test-concurrency=1", "--test-reporter=spec",
+    "--test-reporter=" + pathToFileURL(path.join(ROOT, "scripts", "test-failure-reporter.mjs")).href,
+    "--test-reporter-destination=stdout", "--test-reporter-destination=stderr", ...files];
 }
 
 async function main() {
@@ -26,7 +32,7 @@ async function main() {
 
   const files = collectTests(path.join(ROOT, "test"));
   // Test files share one temporary data root; serialize files so their privacy and summary locks cannot collide.
-  const child = spawn(process.execPath, ["--test", "--test-concurrency=1", ...files], {
+  const child = spawn(process.execPath, testRunArguments(files), {
     cwd: ROOT,
     stdio: "inherit",
     windowsHide: true,

@@ -213,7 +213,10 @@ function run(command, args, options = {}) {
   const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
   if (result.status !== 0) {
     const cause = result.error ? result.error.message + "\n" : "";
-    const detail = options.redactOutput ? "" : "\n" + cause + output;
+    const locations = options.redactOutput ? parseTestFailureLocations(output, knownTestFiles(options.cwd || ROOT)) : [];
+    const detail = options.redactOutput
+      ? locations.length ? "\n[release] test failure locations " + JSON.stringify(locations) : ""
+      : "\n" + cause + output;
     throw new Error(`${command} ${args.join(" ")} failed${detail}`);
   }
   return output;
@@ -224,6 +227,35 @@ function runCheck(label, command, args, checks, options = {}) {
   const output = (options.runner || run)(command, args, options);
   checks[label] = "pass";
   return output;
+}
+
+export function parseTestFailureLocations(output, knownFiles = []) {
+  if (typeof output !== "string") return [];
+  const allowed = new Set(knownFiles);
+  const locations = new Map();
+  for (const line of output.split(/\r?\n/)) {
+    if (!line.startsWith("[qqfriend-test-failure] ")) continue;
+    let value;
+    try { value = JSON.parse(line.slice("[qqfriend-test-failure] ".length)); }
+    catch { continue; }
+    if (!validTestFailureLocation(value) || !allowed.has(value.file)) continue;
+    locations.set(value.file + ":" + value.line + ":" + value.column, value);
+    if (locations.size === 20) break;
+  }
+  return [...locations.values()];
+}
+
+function knownTestFiles(root) {
+  try { return collectReleaseFiles(root).filter(file => file.startsWith("test/")); }
+  catch { return []; }
+}
+
+function validTestFailureLocation(value) {
+  return value && typeof value === "object" && !Array.isArray(value) &&
+    Object.keys(value).length === 3 && typeof value.file === "string" &&
+    /^test\/(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+\.(?:mjs|js)$/.test(value.file) &&
+    !value.file.includes("..") && !value.file.split("/").includes(".") && value.file.length <= 240 &&
+    [value.line, value.column].every(number => Number.isSafeInteger(number) && number > 0 && number <= 10000000);
 }
 
 export function parseTestCounts(output) {
