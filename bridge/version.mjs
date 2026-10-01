@@ -4,11 +4,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.44-console-state";
-export const VERSION_NAME = "console-state";
+export const VERSION = "1.4.47-contextual-answer";
+export const VERSION_NAME = "contextual-answer";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
+  "图片解读候选结合本轮问题和已提供原话解释字面与语境，不把上传者当成引用者或原图作者；意图只转述明确的来源声明，实际质量仍须验收。",
+  "普通聊天不自动附带记忆或功能命令；本轮称呼可以使用，准备草稿不代表已保存，正式个人变更仍需本人另行确认。",
+  "统一包、锁文件和运行版本，修复先前包版本为1.4.46而启动及版本命令仍显示1.4.44的问题；Linux候选不代表正式2.0.0已发布。",
+  "本人偏好/明确记忆草稿、一次性确认及提醒恢复工程已验收，新增工具默认关闭；保留JM、既有权限与模型预算。",
   "控制台表情编辑保留独立草稿并校验原值，完整响应须匹配本次提交；日志失败不会被筛选隐藏，手机导航与操作反馈避免遮挡。",
   "表情保存失败关闭目录读写，删除响应不暴露发送凭据或发送者摘要；JM、模型及工具预算不变，正式2.0.0仍待整体验收。",
   "图片v5候选把本轮提问与图片放在同一条输入，标明消息发送人及原消息编号；历史原话和工具协议保持完整，真实解读质量仍待验收。",
@@ -27,6 +31,10 @@ export const VERSION_NOTES_ZH = Object.freeze([
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
+  "Candidate image interpretation follows the current question and supplied statements. Uploaders, quoted speakers and original authors remain distinct; intent is attributed only to an explicit source claim. Semantic acceptance is still required.",
+  "Ordinary replies do not append unsolicited memory or feature commands. Current names may be used; drafts are not saved changes, and personal changes still require separate owner confirmation.",
+  "Package, lockfile and runtime versions now agree. The prior package said1.4.46 while startup and version commands still said1.4.44. This Linux candidate is not the final2.0.0 release.",
+  "Owned personal-change drafts, one-time confirmation and reminder recovery passed engineering acceptance. New tools remain off by default; JM, permissions and shared model budgets are preserved.",
   "The console preserves independent sticker drafts and checks original values. Confirmations match the submitted edit; log filters retain failure notices, and mobile navigation and feedback avoid overlap.",
   "Failed catalog persistence disables authoritative reads and writes. Removal responses hide send credentials and sender hashes; JM, models and tool limits remain unchanged. Version2.0.0 is not yet released.",
   "The image-v5 candidate keeps the current question beside its image and identifies the message sender and source ID. History and tool transcripts remain intact; semantic acceptance is still pending.",

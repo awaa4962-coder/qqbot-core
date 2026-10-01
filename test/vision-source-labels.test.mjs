@@ -74,6 +74,22 @@ function sourceLines(result) {
   return label(result).split("\n").filter(line => /^图\d+：/.test(line));
 }
 
+test("candidate picture cue retains current-question context and source-role uncertainty on both paths", async () => {
+  const f = fixture([{ kind: "current", userId: "60100", messageId: "70100" }]);
+  for (const provider of [pixelProvider, textProvider]) {
+    const cue = label(await f.session.message(provider, {}));
+    assert.match(cue, /回答\[当前输入\]的问题.*结合本轮已提供的相关原话或反馈/);
+    assert.match(cue, /不能只读图中文字而漏掉这些背景/);
+    assert.match(cue, /归属为该引用者的自述.*不转成当前提交图片者的心理事实/);
+    assert.match(cue, /已核验的相同uid可对应同一说话人/);
+    assert.match(cue, /同名或上传图片本身不能证明这些身份相同.*图片原作者仍需来源证据/);
+    assert.match(cue, /原话未说明的动机不从反差补出来/);
+    assert.match(cue, /最终直接自然回答，不输出分析步骤/);
+  }
+  assert.equal(f.prepared(), 1);
+  assert.equal(f.descriptions.length, 1);
+});
+
 for (const [kind, title] of [["current", "当前消息"], ["quote", "已核验引用消息"], ["recent", "已选近期消息"]]) {
   test(kind + " uploader and message ID label is identical on pixel and description paths", { timeout: 2000 }, async () => {
     const f = fixture([{ kind, userId: "60200", messageId: "-70200", at: "SOURCE_SENTINEL",

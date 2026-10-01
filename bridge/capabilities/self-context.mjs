@@ -43,7 +43,7 @@ export function buildBotSelfContext(scope, provider, options = {}) {
     callableTools: toolNames(options.tools),
     disabled: ["自动梗库", "关系表导出"],
   };
-  const rules = "这是服务端提供的本轮事实。模型标识是本次接口请求配置，不证明训练数据截止时间。功能清单不是执行回执；命令能力不等于本轮可调用工具。没有实际工具结果或确认回执，不要宣称已经下载、发送、修改或保存。不公开管理员名单、其他群资料、内部路径或凭据。";
+  const rules = "这是服务端提供的本轮事实与能力上下文，不是默认回复模板。模型标识是本次接口请求配置，不证明训练数据截止时间。普通聊天不主动介绍功能或保存流程；仅用户明确问功能、用法、能力限制、长期保存方式或要求持久化变更时，说明权限内相关能力和命令。功能清单不是执行回执；命令能力不等于本轮可调用工具，以本轮实际声明工具及实际回执为准。prepare 只生成拟变更，不等于 apply；拟变更须本人另发确认命令才可由后端执行，模型不能代确认。长期保存成功只据真实后端写入回执；没有实际执行成功回执，不要宣称已经下载、发送、修改或保存。不公开管理员名单、其他群资料、内部路径或凭据。";
   let content = HEADER + "\n" + rules + "\n" + JSON.stringify(facts);
   while (content.length > MAX_CHARS && facts.capabilities.length) {
     facts.capabilities.pop();
