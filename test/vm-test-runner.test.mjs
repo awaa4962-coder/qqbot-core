@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import childProcess from "node:child_process";
 import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -118,7 +120,7 @@ test("synthetic failing assertion", () => {
   assert.deepEqual(child.markers(), ["pass:executed", "fail:executed"]);
 });
 
-test("a genuinely started child that exceeds the helper timeout is rejected without a TAP summary", async () => {
+test("a timed-out runner stays rejected even if its worker finishes and produces a TAP summary", async () => {
   const child = fixture(`
 import { setTimeout } from "node:timers/promises";
 test("synthetic bounded delayed case", async () => {
@@ -133,14 +135,33 @@ test("synthetic bounded delayed case", async () => {
       assert.equal(error.code, "ERR_ASSERTION");
       assert.equal(error.actual, null, "timed-out child must not report a completed exit status");
       assert.equal(error.expected, 0);
-      assert.doesNotMatch(error.message, /^# tests \d+$/m);
       return true;
     });
     assert.ok(Date.now() - started >= 1300, "rejection must come from the configured timeout, not a launch failure");
-    assert.deepEqual(child.markers(), ["timeout:started"], "the child must actually enter its delayed test");
+    const markers = child.markers();
+    assert.equal(markers[0], "timeout:started", "the child must actually enter its delayed test");
+    assert.ok(markers.length <= 2 && markers.slice(1).every(value => value === "timeout:finished"),
+      "only the runner timeout or its still-running worker completion may be observed");
   } finally {
     // A bounded worker can finish even if the platform only terminates its runner.
     await setTimeout(2500);
+  }
+});
+
+test("complete passing TAP cannot confirm a runner whose exit status is still timed out", t => {
+  const child = fixture('test("synthetic late completion", () => mark("completed"));');
+  const mock = t.mock.method(childProcess, "spawnSync", () => ({
+    status: null, signal: "SIGTERM", error: Object.assign(new Error("synthetic timeout"), { code: "ETIMEDOUT" }),
+    stdout: "TAP version 13\n# Subtest: synthetic late completion\nok 1 - synthetic late completion\n1..1\n# tests 1\n# pass 1\n# fail 0\n# cancelled 0\n", stderr: "",
+  }));
+  syncBuiltinESMExports();
+  try {
+    assert.throws(() => runVmTestFile(child.url), error => error.code === "ERR_ASSERTION" &&
+      error.actual === null && error.expected === 0);
+    assert.equal(mock.mock.callCount(), 1);
+  } finally {
+    mock.mock.restore();
+    syncBuiltinESMExports();
   }
 });
 

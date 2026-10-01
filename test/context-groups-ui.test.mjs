@@ -69,7 +69,9 @@ const context = (extra = {}, elapsedMs = 1) => ({ stage: "context", status: "ok"
 
 if (!vm.SourceTextModule) {
   test("context group diagnostics render in isolated VM modules", t => {
-    t.diagnostic(JSON.stringify(runVmTestFile(import.meta.url, { minTests: 7 })));
+    const counts = runVmTestFile(import.meta.url, { minTests: 6 });
+    assert.ok(counts.tests >= 7, "all six mandatory cases and the optional browser case must remain registered");
+    t.diagnostic(JSON.stringify(counts));
   });
 } else {
   test("diagnostics compare source reasons and request parts without showing prompt text", async () => {
