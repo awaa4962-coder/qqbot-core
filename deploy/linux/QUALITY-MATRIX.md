@@ -2,6 +2,12 @@
 
 Scope: Linux candidate on `agent/linux-server-preview`, executable base `b85bd00`, documentation HEAD `6552950`. This is a synthetic acceptance harness, not a deployment or a declaration that P5-02 is complete. The original P5 checklist in `MODULAR-RUNTIME.md` and quality requirements in `ROADMAP.md` remain authoritative. Windows installation stays frozen.
 
+Current checkpoint (2026-10-01): original 37/43, Agent 3/12, combined 40/55=72.7%.
+The base/HEAD above describe the original matrix preparation, not current source
+or deployment. Current prepared v5 source is `41f3a9c` / `1.4.44-console-state`;
+P3-06 and P5-02 remain open. The accepted frontend/CI work does not fix the six
+recorded real v4 counterexamples by itself.
+
 ## Evidence Layers
 
 1. Existing `npm run replay:check`: retained unchanged, 11 fixed inputs plus two output boundaries (13 checks). Passing it does not prove model answer quality.
@@ -118,6 +124,69 @@ still failed. No new attempt was paid to seek a passing answer. Private reports
 retain the full synthetic evidence and native reported usage; public documents
 record only aggregated outcomes. P5-03 is separately accepted from its complete
 source/consumer, two-audit and final Linux gate, not from this quality replay.
+
+### Evidence-V5 Follow-Up: Completed, Not Accepted
+
+The frozen comparison keeps all eight inputs, quote authors, bitmaps and thresholds
+unchanged. The meaningful candidate change pairs current prepared pixels and
+the exact current question in one message, with source attribution kept separate
+from image authorship. It does not add a planning request or rerun the failed v4
+candidate. The archived 32-request run, both outputs and its review stay intact.
+
+The prepared private runner permits only **one candidate lane: 16 physical HTTP
+attempts maximum**, eight cases times the actual primary/fallback slots. The
+historical accepted-39 baseline is read-only evidence, pinned by its exact report
+bytes. Its case/spec, fixture, bitmap assets and actual model configuration must
+match the candidate; any mismatch stops before calls. No new baseline HTTP is
+authorized. Changed provider/configuration requires a separate parent decision,
+not forcing the old configuration or silently replaying it.
+
+Output allowance is at most 24576 tokens, each request at most the existing 1536,
+with one ten-minute lane deadline, no retry, warm-up, QQ send or production chat
+read. Source commit/archive/image, runner plus contract and preparation dependencies, fixtures,
+assets, spec and configuration fingerprints are frozen before access. Plan and
+paid reservations are exclusive and durable; failure never clears a reservation.
+No native-tool ledger or previous paid quota is reset by this follow-up.
+
+The entire candidate must first complete its sixteen-request **network-none
+mocked dry run** using that image's actual code and current read-only config.
+Exact source/hash/counter evidence is required, not a report merely existing.
+Dry validation grants neither network authorization, semantic acceptance nor
+gray expansion. Private operator scripts and reports are not public artifacts.
+
+Actual follow-up (2026-10-01): SSH was verified, original bitmap code recovered
+with the exact historical hash, and the current isolated Linux candidate passed
+the full 2406-test release gate (2380 pass, 26 environment-optional skips, zero
+failures), lint 0/0, replay, startup/JM and 316 image runtime-file comparisons.
+Its sixteen-request network-none dry completed with zero native transport;
+the once-only paid candidate then completed exactly sixteen native attempts,
+zero retries, zero new baseline calls and zero QQ sends. Original records and
+the native-tool rolling quota remain intact. No production switch occurred.
+
+Parent and independent final-text review found six candidate cases below the
+unchanged thresholds: primary failure/positive contrast, personal-record/negative
+contrast, both slots' explicit comforting-source attribution, and both slots'
+unsolicited memory-command guidance after the arithmetic/nickname request.
+Literal positive praise and evidence-supported possible joking irony are not
+reclassified as private motive merely because they contain a particular word.
+The parent corrected two reviewer misreadings of explicit quote-author parameters
+and allowed tone; no threshold or fixture was changed to obtain a pass.
+
+Further read-only integration review found a QA limitation: the private runner
+calls bottom-level slots directly and omits image sources and the resolved
+combination policy. The normal QQ path uses `executeChatTask`, which resolves
+the policy and retains picture sources. Thus the QA slot-layout difference is
+not proof of a production source-loss bug, nor a proven cause of these answers.
+The supplied quote text and author IDs survived the local real-code mock wire;
+the paid reports retain hashes, not raw requests. The next combined batch must
+align the acceptance caller with the formal entry before another paid decision.
+
+Reported candidate usage was 40540 prompt / 31872 cached / 2232 completion /
+1595 reasoning / 42772 total tokens. These are observed counts, not a controlled
+cold/hot comparison, a training-version claim or a monetary-savings estimate.
+Private final texts and reviews are not published. The candidate remains
+ineligible for gray; P3-06 and P5-02 are open, and these eight probes do not
+complete the full seventeen-row semantic matrix.
 
 After the final integration commit, the parent must preselect probes/routes and persist a hard budget before network access. Count physical HTTP attempts, including retries, fallback, description generation and tool rounds, not only logical cases. A suggested upper plan for these eight text-only probes is eight primary attempts plus at most eight explicitly reserved fallback attempts, no automatic retry/warm-up; use a tighter parent limit when appropriate. This document is a budget proposal, not authorization or an enforced replay executor. Also predeclare total Token/output/time limits and fail closed if actual transport accounting is incomplete. Do not run all routes or extra controls outside that recorded budget. No QQ sends, production history, real private state or private reasoning are needed for the synthetic replay.
 

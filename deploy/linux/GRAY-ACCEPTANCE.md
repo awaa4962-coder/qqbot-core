@@ -2,11 +2,35 @@
 
 Status: prepared operational candidate, not P5-04/P5-05 acceptance. The exact final executable commit is still TBD. The parent owns the combined gate, actual quality review and deployment authorization. Windows remains frozen. Nothing in this document authorizes test messages, paid probes or an automatic expansion.
 
+Current checkpoint (2026-10-01): source `41f3a9c` / `1.4.44-console-state`,
+original 37/43 plus Agent 3/12 = 40/55 (72.7%). P5-01 and P5-03 are accepted;
+P3-06, P5-02 and P5-04 through P5-07 remain open. No production switch or new
+gray path has occurred. A1-04 actual native-tool compatibility/gray is separate.
+
+Actual Oct1 candidate engineering gate is complete for exact source `41f3a9c`:
+2406 tests / 2380 pass / 26 environment-optional skips / zero failures, lint0/0,
+13 replay checks, isolated startup/JM and 316 runtime-file byte comparisons.
+The current server still runs accepted39, with health200/ok, ready200/ready and
+NapCat running. The once-only v5 sixteen-request QA replay has six below-threshold
+final texts and a direct-slot caller limitation documented in QUALITY-MATRIX.
+Neither the replay nor the isolated gate authorizes production promotion,
+P3-06/P5-02 acceptance, or gray activation. Private records stay out of releases.
+
+The old `final-integration` tar/unchanged-dependency/activation commands below
+are a **historical operational blueprint**, not executable authorization for the
+current candidate: the current source adds a production parser dependency and
+uses evidence-v5 plus separate Agent gates. Do not invoke the old stage/promote
+scripts merely by substituting a new commit. Current candidate preparation uses
+the accepted immutable-39 base, reinstalls all production npm dependencies,
+tests fresh current-source files and checks exact image bytes before writing a
+source/image identity. Actual state backup/restore and promotion still require
+fresh server verification and a reviewed eligible semantic result.
+
 ## Predeclared Gray Contract
 
 | Item | Required Value |
 | --- | --- |
-| Next image version | `1.4.40-final-integration`, not final `2.0.0` |
+| Prepared image version | `1.4.44-console-state`; exact tested image/commit still required, not final `2.0.0` |
 | Initial selected group | `1105126214` only |
 | Bridge process setting | `QQBOT_IMAGE_CONTEXT_ROLLOUT=1105126214` |
 | Observation starts | Actual new-image Bridge `/ready`, health and parsed live verification have passed |
