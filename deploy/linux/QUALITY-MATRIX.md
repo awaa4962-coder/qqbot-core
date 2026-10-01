@@ -1,14 +1,24 @@
 # P5-02 Fixed Quality Matrix
 
+## Current Candidate
+
+Current candidate: `1.4.48-context-evidence` / source `0a8ca579`. Full identity, engineering evidence and pending operations live only in the [ROADMAP current snapshot](ROADMAP.md#当前权威快照2026-10-02仅文档同步).
+
+Progress 47/55 (85.5%), net +0. P3-06/P5-02 and remaining native/restore/gray gates are unaccepted; formal `2.0.0` remains unreleased.
+
+V8 completed one frozen16-request actual batch after39 focused tests, two independent operator reviews and network-none dry. Parent and independent final-text reviews classified primary6/8 and fallback7/8 above original per-case thresholds; three unsupported-motive/factual-interpretation counterexamples remain. Complete responses are not semantic acceptance. Original cases/rubrics, failed V7, V8 paid locks and full17 coverage remain unchanged; no replay, promotion or production-accuracy claim. See the ROADMAP snapshot for current identity and evidence.
+
+## Historical Matrix Preparation And Candidate47 Checkpoint
+
 Scope: Linux candidate on `agent/linux-server-preview`, executable base `b85bd00`, documentation HEAD `6552950`. This is a synthetic acceptance harness, not a deployment or a declaration that P5-02 is complete. The original P5 checklist in `MODULAR-RUNTIME.md` and quality requirements in `ROADMAP.md` remain authoritative. Windows installation stays frozen.
 
-Current checkpoint (2026-10-02): original 37/43, Agent 10/12, combined 47/55=85.5%.
+Historical checkpoint (2026-10-02): original 37/43, Agent 10/12, combined 47/55=85.5%.
 The base/HEAD above describe the original matrix preparation, not current source
 or deployment. The archived v5 source is `41f3a9c` / `1.4.44-console-state`;
 P3-06 and P5-02 remain open. The accepted frontend/CI work does not fix the six
 recorded real v4 counterexamples by itself.
 
-Current executable candidate `0200a1f` / `1.4.47-contextual-answer` passed matching
+Historical executable candidate `0200a1f` / `1.4.47-contextual-answer` passed matching
 CI36919516062 and exact-source isolated Linux acceptance:2773 total /2733 pass /
 40 optional skips /zero failures, lint0/0, audit0, replay13, startup/JM and332
 runtime-file byte checks. Its exported runtime version, package and root lock
@@ -16,11 +26,11 @@ were actually checked as47. The preceding `8db8833` package/lock said46 while it
 runtime constant and v6 report said44; those source/image/function proofs remain
 but the package label never proved actual runtime-version parity.
 
-Production remains39. Current primary/fallback native protocol proof passed in
+Production remains39. Retained primary/fallback native protocol proof passed in
 four HTTP attempts using original declarations and the same24-hour ledger; it
 is not repeated for this candidate. Formal-entry v6 then completed16 actual
 attempts but five cases failed unchanged semantic thresholds. A new private v7
-plan is being frozen for the meaningful image-context/attribution/hint changes
+plan was being frozen for the meaningful image-context/attribution/hint changes
 in47, without replaying or overwriting v4/v5/v6 evidence. No quality, business-tool
 or group-observation acceptance is implied by engineering checks.
 
@@ -92,7 +102,7 @@ Blocking failures: privacy overreach, private reasoning exposed, wrong recipient
 
 ### 2026-10-01 Frozen Image Comparison
 
-The parent is preparing a new `1.4.42-image-evidence` candidate, not changing the
+Historical preparation: the parent was preparing a new `1.4.42-image-evidence` candidate, not changing the
 eight `P5_MODEL_PROBES` inputs, quote authors, bitmaps or scoring dimensions.
 The no-context rubric clarification distinguishes positive literal words from
 an unknown sincere/ironic tone; it does not permit inferred intent. Original
@@ -141,7 +151,7 @@ retain the full synthetic evidence and native reported usage; public documents
 record only aggregated outcomes. P5-03 is separately accepted from its complete
 source/consumer, two-audit and final Linux gate, not from this quality replay.
 
-### Evidence-V5 Follow-Up: Completed, Not Accepted
+### Historical Evidence-V5 Follow-Up: Completed, Not Accepted
 
 The frozen comparison keeps all eight inputs, quote authors, bitmaps and thresholds
 unchanged. The meaningful candidate change pairs current prepared pixels and
@@ -210,7 +220,7 @@ Use the real current route/self-context injection at transport time; fixture pac
 
 ## Scoped Commands And Status
 
-### Candidate47 V7: Partial Actual Evidence, No Acceptance
+### Historical Candidate47 V7: Partial Actual Evidence, No Acceptance
 
 The meaningful source47 change retained all original cases, rubrics, limits and
 current routes/settings. Mechanical-only V7 operator delta audits and20 cases
@@ -234,7 +244,7 @@ Primary reported23766 prompt /16448 cached /938 completion /580 reasoning /
 P3-06/P5-02, image gray and production promotion are not accepted. The complete
 private output and evidence review are excluded from public artifacts.
 
-### Formal-Entry V6: Actual Replay Completed, Not Accepted
+### Historical Formal-Entry V6: Actual Replay Completed, Not Accepted
 
 2026-10-02: a new private caller used actual `executeChatTask`, bound current
 picture sources and question text, and the same frozen eight inputs/rubrics,
@@ -277,4 +287,4 @@ On the Windows development checkout use the same Node command and `node node_mod
 
 Worker C local source checks (2026-09-28): the scoped Node run passed 47/47 tests, zero failure/cancellation/skip; its unchanged legacy replay check passed all 13 internal checks. ESLint for the two new JS files had zero errors/warnings. No second full-suite run was used to obtain counts. This Windows development-source run is not the final Linux gate, which remains parent-owned. Paid calls and real QQ sends = 0.
 
-P5-02 is **not fully accepted** until actual outputs, comparable quality review and actual usage are recorded and integrated by the parent. No commit, push, deploy or original checklist edits are performed here; no net accepted roadmap item is claimed. The original checklist still records 35/43 = 81.4%, this worker +0 items; that is the documented roadmap state, not a new deployment verification.
+P5-02 is **not fully accepted** until actual outputs, comparable quality review and actual usage are recorded and integrated by the parent. No commit, push, deploy or original checklist edits are performed here; no net accepted roadmap item is claimed. Historical Worker C checkpoint (2026-09-28): the original checklist then recorded 35/43 = 81.4%, this worker +0 items; that is the historical roadmap state, not the current47/55 snapshot or a new deployment verification.

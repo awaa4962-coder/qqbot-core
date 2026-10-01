@@ -1,21 +1,31 @@
 # P5 Linux Candidate And Gray Acceptance
 
-Status: tested engineering candidate, not P5-04/P5-05 acceptance. Current executable
-is `8db8833`; the final `2.0.0` candidate is still pending. The parent owns the
+## Current Candidate
+
+Current candidate: `1.4.48-context-evidence` / source `0a8ca579`. Full identity, engineering evidence and pending operations live only in the [ROADMAP current snapshot](ROADMAP.md#当前权威快照2026-10-02仅文档同步).
+
+Progress 47/55 (85.5%), net +0. Engineering evidence is not quality/native/restore/gray acceptance or activation authorization; formal `2.0.0` remains unreleased.
+
+Current V8 actual16-request review retains three semantic failures, so candidate48 is not eligible for image gray or promotion. No fresh consistent state restore or natural observation occurred; successful engineering and sixteen responses do not bypass the contract below. Preserve all current paid claims and historical evidence; no retry to seek green.
+
+## Historical Candidate46 Checkpoint (2026-10-02)
+
+Historical status: tested engineering candidate, not P5-04/P5-05 acceptance. The recorded executable
+was `8db8833`; the final `2.0.0` candidate was still pending. The parent owns the
 combined gate, actual quality review and deployment authorization. Windows stays
 frozen. This document does not authorize test messages, paid probes or expansion.
 
-Current checkpoint (2026-10-02): executable `8db8833` / `1.4.46-confirmed-actions`,
+Historical checkpoint (2026-10-02): executable `8db8833` / package label `1.4.46-confirmed-actions` (actual runtime constant44),
 original 37/43 plus Agent 10/12 = 47/55 (85.5%). P5-01 and P5-03 are accepted;
 P3-06, P5-02 and P5-04 through P5-07 remain open. No production switch or new
 gray path has occurred. A1-04 actual native-tool compatibility/gray is separate.
 
-The current candidate passed same-source Linux engineering acceptance: 2746 tests /
+That historical candidate passed same-source Linux engineering acceptance: 2746 tests /
 2706 pass / 40 optional skips / zero failures, lint0/0, replay13 and 332 image-file
-byte checks. Current MiMo/DeepSeek native protocol roundtrips both passed using
+byte checks. Earlier MiMo/DeepSeek native protocol roundtrips both passed using
 four requests, original tool identity and shared quota; the single-group and
 actual write/operational gates remain open. The Oct1 paragraph below describes
-the archived v5 candidate, not the current image or permission to activate it.
+the archived v5 candidate, not the current48 image or permission to activate it.
 
 The corrected formal-entry v6 replay has also completed one16-request paid batch
 after its same-source network-none dry and two independent operator closures.
@@ -47,7 +57,7 @@ P3-06/P5-02 acceptance, or gray activation. Private records stay out of releases
 
 The old `final-integration` tar/unchanged-dependency/activation commands below
 are a **historical operational blueprint**, not executable authorization for the
-current candidate: the current source adds a production parser dependency and
+current candidate: the then-current source added a production parser dependency and
 uses evidence-v5 plus separate Agent gates. Do not invoke the old stage/promote
 scripts merely by substituting a new commit. Current candidate preparation uses
 the accepted immutable-39 base, reinstalls all production npm dependencies,
@@ -59,7 +69,7 @@ fresh server verification and a reviewed eligible semantic result.
 
 | Item | Required Value |
 | --- | --- |
-| Prepared image version | `1.4.46-confirmed-actions` / executable `8db8833`; tested engineering candidate, not final `2.0.0` or permission to activate |
+| Prepared image version | `1.4.48-context-evidence` / isolated image `sha256:ae5cf92764471c15385b949fbb10337349a23ed2aa62f75ea85fd921a812f272`; [source/engineering identity](ROADMAP.md#当前权威快照2026-10-02仅文档同步), not final `2.0.0` or permission to activate |
 | Initial selected group | `1105126214` only |
 | Bridge process setting | `QQBOT_IMAGE_CONTEXT_ROLLOUT=1105126214` |
 | Observation starts | Actual new-image Bridge `/ready`, health and parsed live verification have passed |
@@ -74,7 +84,7 @@ Rare permission, cancellation, transport, privacy-generation and protocol cases 
 
 If natural traffic, image evidence, continuous coverage or incident evidence is insufficient, leave **P5-05 unaccepted**. Do not lower the thresholds after observing results or set the rollout to `all`. A passing metadata summary is only eligible for parent review, never expansion authorization.
 
-## Concrete Candidate
+## Historical Concrete Candidate Blueprint
 
 Private operational files live in the sibling `outputs/` directory, not the public release. They reuse the stable-cache build/promote/backup pattern. There is no approval registry or mandatory placeholder-hook framework.
 
@@ -102,7 +112,7 @@ Stage success writes the top-level `final-integration-candidate-<full-commit>.id
 
 No identity is written after a failed gate. Activation promotes this exact image ID without rebuilding, rechecks source/config/image identity, and references the parent's actual reviewed private report by file and digest. Report existence is not semantic proof: the parent must inspect the report and same-commit Linux CI before invoking activation.
 
-## Persistent Rollout And Recovery
+## Historical Persistent Rollout And Recovery Blueprint
 
 Activation copies the old release environment files with mode 0600. It changes the existing image-tag line and appends **one nonsecret release `.env` key**, `QQBOT_IMAGE_CONTEXT_ROLLOUT=1105126214`. The public Compose environment mapping passes that value only to the Bridge. This is a predeclared intentional environment delta, not a provider/config mutation. Standard Compose, systemd and daily cron reuse the release `.env`; no one-shot `-f` override is required or allowed to carry the gate. Operational Compose calls clear an ambient rollout variable so a QA process set to `all` cannot override the release file. Standard service environments must likewise not override it with `all`.
 
@@ -112,7 +122,7 @@ Under the existing daily-summary lock, stop the old Bridge cleanly, take a 0700/
 
 On failure or a gray safety incident: stop the new Bridge first. The rollback guard runs the actual accepted 39 image against **current stores mounted read-only**. Only after compatibility and baseline environment/config identity pass may old code restart. Rollback changes code/image/current symlink and restores the captured cron definition; it **never extracts old backup data over live stores**. Stop failure, incompatible stores or failed readiness leave the Bridge stopped for manual review. The structural guard covers existing user memory/group chats/topic branches, not every possible schema; the parent must assess final new-state compatibility and old-code read/write behavior beyond that guard before deployment.
 
-## Metadata Observer
+## Historical Metadata Observer Blueprint
 
 `observe-linux-final-integration.sh` is a foreground, bounded observer, started only after the parent has reviewed deployment and the new Bridge is ready. No background process or automation is created by preparing these files. It reads the admin token **inside** the actual Bridge, uses the authenticated existing `/admin/diagnose/traces` API plus read-only health/readiness/runtime APIs, and prints only an anonymous final summary. No token, raw trace/message/user ID, text, context, prompt or private reasoning is printed or persisted.
 
@@ -122,7 +132,7 @@ Initial incomplete backfill, lost ring overlap, eviction of a processing trace, 
 
 The existing trace API does **not** expose the actual send recipient or outbound body. Its privacy/reasoning markers and hashed duplicate-event checks are useful alerts, but cannot prove complete absence of those four incident classes. The parent must reconcile actual recipient/receipt/privacy evidence and the bounded quality review using existing authorized operational evidence. Missing evidence remains unknown and blocks acceptance; do not add raw payload logging to fill the gap. Legitimate blocked privacy-generation cancellations are counted separately from suspected sent-after-privacy-change alerts.
 
-## Reviewed Commands
+## Historical Reviewed Command Templates (Not V8 Authorization)
 
 These are parameter templates, not commands executed by Worker D. Run only after the parent has reviewed the exact files, final commit, CI, source scan and actual private quality report. All source/version/frontend edits and the final combined gate remain parent-owned.
 
