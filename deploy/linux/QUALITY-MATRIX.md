@@ -8,15 +8,21 @@ or deployment. The archived v5 source is `41f3a9c` / `1.4.44-console-state`;
 P3-06 and P5-02 remain open. The accepted frontend/CI work does not fix the six
 recorded real v4 counterexamples by itself.
 
-Current executable candidate `8db8833` / `1.4.46-confirmed-actions` has passed
-the exact-source isolated Linux gate (2746 total / 2706 pass / 40 optional skips /
-zero failures), matching CI, and 332 runtime-file byte checks. Production remains
-39. A once-only native protocol probe using the unchanged five-tool declaration
-and shared 24-hour ledger verified both current configured slots in four HTTP
-attempts, with no retry or QQ send. This is not image quality, business-tool
-semantic acceptance or completed group observation. A new private v6 harness is
-being prepared to invoke formal `executeChatTask` with source-bound image context;
-old v4/v5 operators, paid outputs and failure reviews remain unchanged.
+Current executable candidate `0200a1f` / `1.4.47-contextual-answer` passed matching
+CI36919516062 and exact-source isolated Linux acceptance:2773 total /2733 pass /
+40 optional skips /zero failures, lint0/0, audit0, replay13, startup/JM and332
+runtime-file byte checks. Its exported runtime version, package and root lock
+were actually checked as47. The preceding `8db8833` package/lock said46 while its
+runtime constant and v6 report said44; those source/image/function proofs remain
+but the package label never proved actual runtime-version parity.
+
+Production remains39. Current primary/fallback native protocol proof passed in
+four HTTP attempts using original declarations and the same24-hour ledger; it
+is not repeated for this candidate. Formal-entry v6 then completed16 actual
+attempts but five cases failed unchanged semantic thresholds. A new private v7
+plan is being frozen for the meaningful image-context/attribution/hint changes
+in47, without replaying or overwriting v4/v5/v6 evidence. No quality, business-tool
+or group-observation acceptance is implied by engineering checks.
 
 ## Evidence Layers
 
@@ -203,6 +209,30 @@ After the final integration commit, the parent must preselect probes/routes and 
 Use the real current route/self-context injection at transport time; fixture packets never prove the provider actually used. Preserve actual primary/fallback config and reasoning settings. Recompute final request fingerprints after runtime self-facts/pixel injection. Keep complete synthetic outputs and human evidence in the parent's restricted report, not in public fixtures. Missing runs, usage or review remain unverified.
 
 ## Scoped Commands And Status
+
+### Candidate47 V7: Partial Actual Evidence, No Acceptance
+
+The meaningful source47 change retained all original cases, rubrics, limits and
+current routes/settings. Mechanical-only V7 operator delta audits and20 cases
+passed; actual same-source prepare/dry made16 mock posts with network disabled.
+The once-only separately reserved paid batch terminated failed-closed after9
+native entries/attempts:8 primary replies plus1 fallback error;7 fallback cases
+were not executed. It is not resumed or supplemented and the paid lock remains.
+
+Parent and independent primary review found7/8 meeting original case thresholds:
+record contrast, quoted explicit-purpose attribution and concise current naming
+improved, but the failure/positive-words case still invents comfort and a victory
+frame. This is partial evidence, not a passing16-case batch or full17-row matrix.
+First fallback usage values are unknown, not zero. The current report lacks HTTP
+status/exception category and outcome/catch reason, so it does not identify a
+network, timeout, parsing or thinking-mode cause. No raw response or reasoning
+is retained to fill that gap. Subsequent instrumentation must stay bounded and
+metadata-only, and never justify re-running this failed paid batch.
+
+Primary reported23766 prompt /16448 cached /938 completion /580 reasoning /
+24704 total; fallback and batch totals remain unknown. Progress remains47/55;
+P3-06/P5-02, image gray and production promotion are not accepted. The complete
+private output and evidence review are excluded from public artifacts.
 
 ### Formal-Entry V6: Actual Replay Completed, Not Accepted
 
