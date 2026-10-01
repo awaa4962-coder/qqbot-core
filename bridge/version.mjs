@@ -4,11 +4,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.47-contextual-answer";
-export const VERSION_NAME = "contextual-answer";
+export const VERSION = "1.4.48-context-evidence";
+export const VERSION_NAME = "context-evidence";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
+  "图文候选将本轮已保留的引用原话和说话人来源一起呈现，不从伪标签、被剪掉的历史或其他层补来源；仍以实际语义验收为准。",
+  "确认账本只回收保留满7天的确定终态，未知结果与执行中记录不自动清理或重做；旧确认编号不能重新执行。",
+  "模型传输增加白名单状态码和失败阶段/类别，不记录原始异常、正文、凭据或思考内容；不改变重试、超时、主备或权限。",
   "图片解读候选结合本轮问题和已提供原话解释字面与语境，不把上传者当成引用者或原图作者；意图只转述明确的来源声明，实际质量仍须验收。",
   "普通聊天不自动附带记忆或功能命令；本轮称呼可以使用，准备草稿不代表已保存，正式个人变更仍需本人另行确认。",
   "统一包、锁文件和运行版本，修复先前包版本为1.4.46而启动及版本命令仍显示1.4.44的问题；Linux候选不代表正式2.0.0已发布。",
@@ -31,6 +34,9 @@ export const VERSION_NOTES_ZH = Object.freeze([
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
+  "Candidate image input presents only actually retained quoted statements and their speakers; text labels, pruned history and unrelated layers cannot supply sources. Semantic acceptance is still required.",
+  "The confirmation journal reclaims only definite terminal results retained for seven days. Unknown and executing records are not cleared or retried; old confirmation IDs cannot execute again.",
+  "Provider transport adds allowlisted status and failure-stage/category metadata without raw errors, content, credentials or reasoning, and without changing retries, deadlines, routes or permissions.",
   "Candidate image interpretation follows the current question and supplied statements. Uploaders, quoted speakers and original authors remain distinct; intent is attributed only to an explicit source claim. Semantic acceptance is still required.",
   "Ordinary replies do not append unsolicited memory or feature commands. Current names may be used; drafts are not saved changes, and personal changes still require separate owner confirmation.",
   "Package, lockfile and runtime versions now agree. The prior package said1.4.46 while startup and version commands still said1.4.44. This Linux candidate is not the final2.0.0 release.",

@@ -27,7 +27,7 @@ const { prepareVisionImages, VISION_IMAGE_LIMITS } = await import("../bridge/vis
 const { clearVisionDescriptionCache, getVisionDescriptionCacheStatus } = await import("../bridge/vision/description-cache.mjs");
 const { withChatRun } = await import("../bridge/cognition/chat-run.mjs");
 const { invalidateMemoryPrivacyGeneration, invalidateUserMemoryGeneration } = await import("../bridge/memory-profile/generation.mjs");
-const { registerContextGroups, registeredContextSources, hasRegisteredContextGroup } = await import("../bridge/context/pruning.mjs");
+const { registerContextGroups, registeredContextSources, registeredQuoteReading, hasRegisteredContextGroup } = await import("../bridge/context/pruning.mjs");
 const { buildModelPrompt } = await import("../bridge/system-prompts/compose.mjs");
 const { buildObjectiveVisionMessages } = await import("../bridge/system-prompts/vision.mjs");
 
@@ -129,13 +129,16 @@ function assertAssembly(body, record, input) {
   const last = body.messages.at(-1);
   assert.equal(last.role, "user");
   const evidence = record.snapshot.message.content;
+  const quotes = registeredQuoteReading(input.history);
+  const reading = quotes.length ? { type: "text", text: "[与本轮图片一起阅读的引用资料]\n" +
+    JSON.stringify({ providedQuotes: quotes }) + "\n这里保留原话及来源，不新增其心理事实；按本轮问题理解，不把引用者自述转成上传者意图。" } : null;
   if (Array.isArray(evidence)) {
-    assert.deepEqual(last.content, [...evidence, { type: "text", text: input.options.currentInput }]);
-    assert.deepEqual(last.content.map(part => part.type), ["text", "image_url", "image_url", "image_url", "text"]);
+    assert.deepEqual(last.content, [...(reading ? [reading] : []), ...evidence, { type: "text", text: input.options.currentInput }]);
+    assert.deepEqual(last.content.map(part => part.type), [...(reading ? ["text"] : []), "text", "image_url", "image_url", "image_url", "text"]);
     assert.equal(images(body).length, 3);
     for (const part of images(body)) assert.match(part.image_url.url, /^data:image\/jpeg;base64,/);
   } else {
-    assert.equal(last.content, evidence + "\n\n" + input.options.currentInput);
+    assert.equal(last.content, (reading ? reading.text + "\n\n" : "") + evidence + "\n\n" + input.options.currentInput);
     assert.equal(images(body).length, 0);
     assert.doesNotMatch(JSON.stringify(body), /data:image|assembly-(?:current|quote|recent)\.png/);
   }
@@ -149,6 +152,38 @@ function assertAssembly(body, record, input) {
   assert.match(evidenceText, /图3：已选近期消息，消息发送人 uid=60102/);
   assert.equal(JSON.stringify(body.messages).split(JSON.stringify(input.options.currentInput).slice(1, -1)).length, 2);
   assert.deepEqual(record.evidence, record.snapshot, "prepared image evidence was mutated");
+}
+
+for (const primary of ["pixel-primary", "text-primary"]) {
+  test(`registered quote reading reaches the exact ${primary} wire next to image evidence`, async t => {
+    routes(primary, "pixel-fallback");
+    const input = request(), original = globalThis.structuredClone(input.history);
+    const sources = input.history.map((message, index) => index === 1
+      ? [{ kind: "quote", reason: "reply_chain", userId: "60101", messageId: "70101", verified: true }]
+      : []);
+    register(input.history, sources);
+    assert.equal(registeredQuoteReading(input.history).length, 1);
+    const { records, toolSession } = observeEvidence(t, input);
+    const { bodies } = capture(t, body => ({ content: body.model === "objective" ? caption : reply }));
+    const result = await executeChatTask(input);
+    assert.equal(result.kind, "reply");
+    const body = bodies.find(item => item.model === primary);
+    assertAssembly(body, records.find(item => item.model === primary), input);
+    const content = body.messages.at(-1).content;
+    const reading = Array.isArray(content) ? content[0].text : content.split("\n\n")[0];
+    assert.ok(reading.startsWith("[与本轮图片一起阅读的引用资料]\n"));
+    const projected = JSON.parse(reading.split("\n")[1]).providedQuotes;
+    assert.equal(projected.length, 1);
+    assert.equal(projected[0].providedFrame, input.history[1].content);
+    assert.deepEqual(projected[0].sources, [{ speakerUid: "60101", messageId: "70101", sourceVerified: true, excerptTruncated: false }]);
+    assert.equal(toolSession.snapshot().modelRounds, 1);
+    assert.equal(toolSession.snapshot().transportAttempts, 1);
+    assert.deepEqual(input.history, original);
+    for (const objective of bodies.filter(item => item.model === "objective")) {
+      assert.deepEqual(objective.messages, buildObjectiveVisionMessages(preparedFixture));
+      assert.doesNotMatch(JSON.stringify(objective.messages), /providedQuotes|Quoted statement|60101|与本轮图片一起阅读/);
+    }
+  });
 }
 
 for (const [primary, fallback, failPrimary] of [

@@ -5,10 +5,12 @@ import { setTimeout as delay } from "node:timers/promises";
 import { redactProviderPayload } from "./request-privacy.mjs";
 import { chatRunSignal, chatRunStopReason } from "../cognition/chat-run.mjs";
 import { normalizeUsage } from "./usage-values.mjs";
+import { traceStage } from "../diagnostics/message-trace.mjs";
 
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const MAX_PROVIDER_RESPONSE_BYTES = 1024 * 1024;
 const MAX_PROVIDER_REQUEST_MS = 5 * 60 * 1000;
+const NETWORK_FAILURE_CODES = new Set(["ECONNRESET", "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "ETIMEDOUT", "EPIPE", "UND_ERR_SOCKET"]);
 
 export async function postProviderJson(provider, key, body, options = {}) {
   const endpoint = validateProviderEndpoint(provider);
@@ -23,7 +25,9 @@ export async function postProviderJson(provider, key, body, options = {}) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     if (signal.aborted) return cancelledOutcome(outcome, transportAttempts, startedAt);
     const reason = chatRunStopReason() || requestStopReason(options);
-    if (reason) return { ok: false, cancelled: true, error: reason, status: 0, transportAttempts, durationMs: Math.max(0, monotonicNow() - startedAt) };
+    if (reason) return traceTransportOutcome({ ok: false, cancelled: true, error: reason, status: 0,
+      httpStatus: 0, failureStage: "cancelled", failureCategory: "unknown",
+      transportAttempts, durationMs: Math.max(0, monotonicNow() - startedAt) });
     const attemptStarted = monotonicNow();
     outcome = await postProviderJsonOnce(endpoint, headers, safeBody, provider, attemptOptions);
     transportAttempts++;
@@ -36,35 +40,76 @@ export async function postProviderJson(provider, key, body, options = {}) {
       throw error;
     }
   }
-  return { ...outcome, transportAttempts, durationMs: Math.max(0, monotonicNow() - startedAt) };
+  return traceTransportOutcome({ ...outcome, transportAttempts, durationMs: Math.max(0, monotonicNow() - startedAt) });
 }
 
 function cancelledOutcome(outcome, transportAttempts, startedAt) {
-  return { ok: false, cancelled: true, error: chatRunStopReason() || "API 请求超时", status: outcome?.status || 0,
-    transportAttempts, durationMs: Math.max(0, monotonicNow() - startedAt) };
+  return traceTransportOutcome({ ok: false, cancelled: true, error: chatRunStopReason() || "API 请求超时", status: outcome?.status || 0,
+    httpStatus: safeHttpStatus(outcome?.httpStatus), failureStage: outcome?.failureStage || "cancelled", failureCategory: "aborted",
+    transportAttempts, durationMs: Math.max(0, monotonicNow() - startedAt) });
 }
 
 function reportAttempt(options, outcome, durationMs) {
   try { options.onUsageAttempt?.({ status: outcome.ok ? "ok" : "error", durationMs,
+    ...transportMetadata(outcome),
     usage: normalizeUsage(outcome.data?.usage || outcome.data?.usageMetadata || outcome.usage) }); } catch { /* Metrics cannot break delivery. */ }
+}
+
+function safeHttpStatus(value) { return Number.isInteger(value) && value >= 100 && value <= 599 ? value : 0; }
+
+function transportMetadata(outcome) {
+  return { httpStatus: safeHttpStatus(outcome.httpStatus),
+    ...(outcome.failureStage ? { failureStage: outcome.failureStage } : {}),
+    ...(outcome.failureCategory ? { failureCategory: outcome.failureCategory } : {}) };
+}
+
+function traceTransportOutcome(outcome) {
+  // Successful model records are emitted by the gateway with normalized usage.
+  if (outcome.ok) return outcome;
+  try { traceStage("model", { status: "failed", transportAttempts: outcome.transportAttempts,
+    ...transportMetadata(outcome) }); } catch { /* Diagnostics cannot break delivery. */ }
+  return outcome;
+}
+
+function ownErrorValue(error, key) {
+  try { return Object.getOwnPropertyDescriptor(error, key)?.value; } catch { return undefined; }
+}
+
+function failureCategory(error, stage) {
+  const code = ownErrorValue(error, "code");
+  const name = ownErrorValue(error, "name");
+  if (code === "ABORT_ERR" || name === "AbortError" || name === "TimeoutError") return "aborted";
+  if (stage === "response_read" && code === "PROVIDER_RESPONSE_LIMIT") return "response_limit";
+  if (stage === "json_parse") return "invalid_json";
+  // Reading a response can fail independently of JSON parsing. No message/name coercion or elapsed-time inference.
+  if (stage === "fetch" || (stage === "response_read" && NETWORK_FAILURE_CODES.has(code))) return "network";
+  return "unknown";
 }
 
 async function postProviderJsonOnce(endpoint, headers, body, provider, options) {
   let status = 0;
+  const diagnostic = {};
   try {
-    const response = await fetch(endpoint, {
+    const request = {
       method: "POST",
       headers,
       body: JSON.stringify(body),
       redirect: "error",
       signal: options.signal,
-    });
+    };
+    diagnostic.failureStage = "fetch";
+    const response = await fetch(endpoint, request);
+    diagnostic.failureStage = "response_read";
     status = Number(response.status || 0);
-    const data = await readResponseJson(response, options.maxResponseBytes);
+    const data = await readResponseJson(response, options.maxResponseBytes, diagnostic);
+    diagnostic.failureStage = "http_status";
     if (response.ok === false) {
       return {
         ok: false,
         status: response.status,
+        httpStatus: safeHttpStatus(status),
+        failureStage: "http_status",
+        failureCategory: "http",
         error: provider.name + " HTTP " + response.status + formatErrorSuffix(data),
         usage: normalizeUsage(data?.usage || data?.usageMetadata),
         durationMs: 0,
@@ -73,6 +118,7 @@ async function postProviderJsonOnce(endpoint, headers, body, provider, options) 
     return {
       ok: true,
       status: response.status,
+      httpStatus: safeHttpStatus(status),
       data,
       durationMs: 0,
     };
@@ -80,6 +126,9 @@ async function postProviderJsonOnce(endpoint, headers, body, provider, options) 
     return {
       ok: false,
       status,
+      httpStatus: safeHttpStatus(status),
+      ...(diagnostic.failureStage ? { failureStage: diagnostic.failureStage } : {}),
+      failureCategory: options.signal.aborted ? "aborted" : diagnostic.failureCategory || failureCategory(error, diagnostic.failureStage),
       error: safeTransportError(error),
       invalidResponse: error?.code === "INVALID_PROVIDER_JSON",
       responseTooLarge: error?.code === "PROVIDER_RESPONSE_LIMIT",
@@ -122,14 +171,19 @@ export function buildProviderHeaders(provider, key) {
   return headers;
 }
 
-async function readResponseJson(response, maxBytes) {
+async function readResponseJson(response, maxBytes, diagnostic) {
+  diagnostic.failureStage = "response_read";
   try {
     const limit = Number.isSafeInteger(maxBytes) && maxBytes > 0
       ? Math.min(maxBytes, MAX_PROVIDER_RESPONSE_BYTES) : MAX_PROVIDER_RESPONSE_BYTES;
-    const data = await readResponseData(response, limit);
+    const data = await readResponseData(response, limit, diagnostic);
+    diagnostic.failureStage = "json_parse";
     if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("invalid response shape");
     return data;
   } catch (cause) {
+    // Keep the legacy INVALID_PROVIDER_JSON wrapper even for aborted/read failures;
+    // the sidecar proves the observed stage, not whether a 30007ms request timed out.
+    diagnostic.failureCategory = failureCategory(cause, diagnostic.failureStage);
     if (cause?.code === "PROVIDER_RESPONSE_LIMIT") throw cause;
     const error = new Error("接口未返回有效 JSON 对象");
     error.code = "INVALID_PROVIDER_JSON";
@@ -137,11 +191,16 @@ async function readResponseJson(response, maxBytes) {
   }
 }
 
-async function readResponseData(response, limit) {
-  if (limit && response.body?.getReader) return JSON.parse(await readBoundedStream(response.body, limit));
+async function readResponseData(response, limit, diagnostic) {
+  if (limit && response.body?.getReader) {
+    const text = await readBoundedStream(response.body, limit);
+    diagnostic.failureStage = "json_parse";
+    return JSON.parse(text);
+  }
   if (typeof response.text === "function") {
     const text = await response.text();
     if (limit && Buffer.byteLength(text) > limit) throw responseLimit();
+    diagnostic.failureStage = "json_parse";
     return JSON.parse(text);
   }
   const data = await response.json();

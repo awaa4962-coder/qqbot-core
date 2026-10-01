@@ -5,7 +5,7 @@ import { chatCancellation, CHAT_CANCEL_REASONS } from "../cognition/chat-run.mjs
 import { traceStage } from "../diagnostics/message-trace.mjs";
 import { createChatToolSession } from "./session.mjs";
 import { CHAT_TOOL_LIMITS, safeToolBatch, publicSearchPhrase } from "./policy.mjs";
-import { hasRegisteredContextGroup } from "../context/pruning.mjs";
+import { hasRegisteredContextGroup, registeredQuoteReading } from "../context/pruning.mjs";
 import { IMAGE_POLICY_EVIDENCE } from "../system-prompts/image-policy.mjs";
 
 export async function runScopedChat(request, options = {}) {
@@ -30,10 +30,13 @@ async function appendVision(context) {
   context.session.assertCurrent();
   const current = context.messages.at(-1);
   if (context.options.imagePolicy === IMAGE_POLICY_EVIDENCE && canCombineImageInput(current)) {
+    const quotes = registeredQuoteReading(context.messages);
+    const reading = quotes.length ? { type: "text", text: "[与本轮图片一起阅读的引用资料]\n" +
+      JSON.stringify({ providedQuotes: quotes }) + "\n这里保留原话及来源，不新增其心理事实；按本轮问题理解，不把引用者自述转成上传者意图。" } : null;
     // Keep the question next to its pixels without mutating shared history or native transcripts.
     const content = Array.isArray(evidence.message.content)
-      ? [...evidence.message.content, { type: "text", text: current.content }]
-      : evidence.message.content + "\n\n" + current.content;
+      ? [...(reading ? [reading] : []), ...evidence.message.content, { type: "text", text: current.content }]
+      : (reading ? reading.text + "\n\n" : "") + evidence.message.content + "\n\n" + current.content;
     context.messages[context.messages.length - 1] = { ...current, content };
   } else {
     context.messages.splice(Math.max(0, context.messages.length - 1), 0, evidence.message);

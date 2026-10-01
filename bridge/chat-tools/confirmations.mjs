@@ -5,6 +5,7 @@ import { types } from "node:util";
 import { readJsonFile, writeJsonFileSync } from "../persistence/json-file.mjs";
 
 const TTL_MS = 300000;
+const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_ROWS = 128;
 const MAX_BYTES = 1024 * 1024;
 const MAX_OPERATION = 4096;
@@ -17,6 +18,7 @@ const HASH = /^[a-f0-9]{64}$/;
 const REF = /^cf_[a-f0-9]{32}$/;
 const INSTANCE = /^[a-f0-9]{32}$/;
 const TERMINAL = new Set(["applied", "not_applied", "unknown", "revoked", "expired", "invalidated"]);
+const COLLECTABLE = new Set(["applied", "not_applied", "revoked", "expired", "invalidated"]);
 const RESULTS = new Set(["applied", "not_applied", "unknown"]);
 const ACTIONS = Object.freeze({ personal: ["set_name", "set_style", "memory_create", "memory_update", "memory_remove"],
   reminder: ["create", "cancel"] });
@@ -205,11 +207,18 @@ function current(guard) {
   } catch { return false; }
 }
 
-function assertObservedRows(state, observed) {
+function replacedReceipt(previous, row) {
+  return TERMINAL.has(previous.status) && (previous.finishedAt !== row.finishedAt ||
+    (row.text !== previous.text && row.text !== ""));
+}
+function assertObservedRows(state, observation) {
+  const observed = observation.rows;
   for (const row of state.rows) {
     const previous = observed.get(row.ref);
+    if (!previous && row.createdAt <= observation.retiredThrough) throw new Error("Retired record");
     if (previous && (previous.seal !== row.seal || (previous.status !== "pending" && row.status === "pending") ||
         (TERMINAL.has(previous.status) && row.status !== previous.status))) throw new Error("Replaced record");
+    if (previous && replacedReceipt(previous, row)) throw new Error("Replaced receipt");
   }
   for (const ref of observed.keys()) if (!state.rows.some(row => row.ref === ref)) throw new Error("Removed record");
 }
@@ -232,11 +241,23 @@ function recoverRows(state, at, deferred, flushRevocations) {
   return changed;
 }
 
+function collectRows(state, at) {
+  let retiredThrough = -1;
+  // Scoped owner/message/operation idempotency lasts while its row is retained:
+  // certain outcomes retain seven days from finishedAt; unknown never ages out.
+  state.rows = state.rows.filter(row => {
+    if (!COLLECTABLE.has(row.status) || at - row.finishedAt < RETENTION_MS) return true;
+    retiredThrough = Math.max(retiredThrough, row.createdAt);
+    return false;
+  });
+  return retiredThrough;
+}
+
 function createStorePersistence({ filename, now, read, write }) {
   const lockfile = `${filename}.lock`;
   let fault = false;
-  let lastAt = 0;
-  const observation = observedStores.get(filename) || { seen: false, rows: new Map(), sequence: -1, digest: null };
+  const observation = observedStores.get(filename) || { seen: false, rows: new Map(), sequence: -1, digest: null,
+    lastAt: 0, retiredThrough: -1 };
   observedStores.set(filename, observation);
   const observed = observation.rows;
   const deferred = deferredRevocations.get(filename) || new Set();
@@ -256,21 +277,23 @@ function createStorePersistence({ filename, now, read, write }) {
     if (Buffer.byteLength(JSON.stringify(state), "utf8") > MAX_BYTES || !validState(state)) throw new Error("Invalid state");
     const digest = hash(state);
     if (state.sequence < observation.sequence || (state.sequence === observation.sequence && observation.digest !== digest)) throw new Error("Replaced state");
-    assertObservedRows(state, observed);
+    assertObservedRows(state, observation);
     observe(state);
     return state;
   }
-  function observe(state) {
+  function observe(state, replace = false) {
     observation.sequence = state.sequence; observation.digest = hash(state);
-    for (const row of state.rows) observed.set(row.ref, { seal: row.seal, status: row.status });
+    if (replace) observed.clear();
+    for (const row of state.rows) observed.set(row.ref, { seal: row.seal, status: row.status,
+      finishedAt: row.finishedAt, text: row.text });
   }
   function time(state) {
     const at = now();
-    if (!integer(at) || !integer(at + TTL_MS) || at < state.updatedAt || at < lastAt) throw new Error("Invalid clock");
-    lastAt = at;
+    if (!integer(at) || !integer(at + TTL_MS) || at < state.updatedAt || at < observation.lastAt) throw new Error("Invalid clock");
+    observation.lastAt = at;
     return at;
   }
-  function persist(state, at) {
+  function persist(state, at, retiredThrough = -1) {
     state.sequence++; state.updatedAt = at;
     if (!validState(state) || Buffer.byteLength(JSON.stringify(state), "utf8") > MAX_BYTES) throw new Error("Invalid state");
     const expected = hash(snapshot(state));
@@ -280,7 +303,10 @@ function createStorePersistence({ filename, now, read, write }) {
     observation.seen = true;
     const verified = snapshot(read(filename, MISSING, { maxBytes: MAX_BYTES }));
     if (!validState(verified) || hash(verified) !== expected) throw new Error("Persistence not confirmed");
-    observe(verified);
+    // Only a durable, verified transaction may retire observations. The scalar
+    // creation-time floor rejects resurrection without retaining old ref/body maps.
+    observe(verified, true);
+    observation.retiredThrough = Math.max(observation.retiredThrough, retiredThrough);
   }
   function locked(change, persistRecovery = true) {
     if (fault) return unavailable();
@@ -295,7 +321,8 @@ function createStorePersistence({ filename, now, read, write }) {
       const at = time(state);
       // A nonpersisting forget only queues refs; all recovery waits for the next normal access.
       const changed = persistRecovery && recoverRows(state, at, deferred, true);
-      if (changed) { persist(state, at); deferred.clear(); }
+      const retiredThrough = persistRecovery ? collectRows(state, at) : -1;
+      if (changed || retiredThrough >= 0) { persist(state, at, retiredThrough); deferred.clear(); }
       const transaction = change(state, at);
       if (transaction.changed) persist(state, at);
       result = transaction.result;
