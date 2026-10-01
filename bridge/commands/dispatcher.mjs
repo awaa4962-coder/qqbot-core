@@ -18,10 +18,12 @@ import {
 } from "./modules/relationship.mjs";
 import { buildUnknownCommandSuggestion } from "../capabilities/catalog.mjs";
 import { isConversationSummaryCommand, conversationSummaryHelp } from "../features/conversation-summary/command.mjs";
+import { agentWriteCommandGuide, buildAgentWriteCommandReply, isAgentWriteCommand } from "./modules/agent-writes.mjs";
 
 export function buildCommandReply(commandText, options = {}) {
   const cmd = normalizeCommand(commandText, options);
   if (!cmd) return null;
+  if (isAgentWriteCommand(cmd)) return agentWriteCommandGuide();
   if (isConversationSummaryCommand(cmd)) return conversationSummaryGuide(options);
   if (!isKnownCommand(cmd)) return buildUnknownCommandSuggestion(cmd, capabilityOptions(options));
 
@@ -40,6 +42,7 @@ export function buildCommandReply(commandText, options = {}) {
 export async function buildCommandReplyAsync(commandText, options = {}) {
   const cmd = normalizeCommand(commandText, options);
   if (!cmd) return null;
+  if (isAgentWriteCommand(cmd)) return await buildAgentWriteCommandReply(cmd, options);
   if (isSelfMemoryCommand(cmd)) return await buildMemoryCommandReplyAsync(cmd, { ...options, rawCommandText: commandText });
   if (isConversationSummaryCommand(cmd)) return conversationSummaryGuide(options);
   if (!isKnownCommand(cmd)) return buildUnknownCommandSuggestion(cmd, capabilityOptions(options));
@@ -109,6 +112,8 @@ function withGroupOptions(ctx, options) {
     groupId: ctx.group_id,
     surface: "group",
     messageId: ctx.message_id,
+    mentioned: ctx.isAtMe === true,
+    currentUserText: ctx.text,
     contextPrivacyGeneration: ctx.contextPrivacyGeneration,
     requireMention: true,
     selfUin: options.selfUin ?? CFG.selfUin,

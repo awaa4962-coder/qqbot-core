@@ -1,6 +1,16 @@
 // bridge/modules/manifest.mjs - declarative module metadata for console and agents.
 
 export const MODULE_DEFINITIONS = Object.freeze([
+  { id: "agent-actions", name: "本人确认与有限提醒", category: "core", enabled: true,
+    entrypoints: ["bridge/chat-tools/write-coordinator.mjs", "bridge/chat-tools/confirmations.mjs", "bridge/agent-reminders/service.mjs"],
+    commands: ["待确认", "确认 <cf_编号>", "取消确认 <cf_编号>", "我的提醒", "取消提醒 <rem_编号>"],
+    configFields: ["agentGroupWhitelist", "agentWriteGroupWhitelist", "agentReminderGroupWhitelist"],
+    editableConfigFields: ["agentWriteGroupWhitelist", "agentReminderGroupWhitelist"],
+    healthChecks: ["default-off group intersection", "durable one-time claim", "actual reminder drain"],
+    diagnostics: ["admin/agent-actions"],
+    tests: ["test/agent-confirmations.test.mjs", "test/agent-reminders.test.mjs", "test/agent-write-integration.test.mjs"],
+    riskLevel: "high", privacy: "own current-group actions only; global projections contain bounded status metadata, not private bodies",
+  },
   {
     id: "diagnostics", name: "消息诊断与对话回放", category: "operations", enabled: true,
     entrypoints: ["bridge/diagnostics/", "bridge/admin-api/routes.mjs"],

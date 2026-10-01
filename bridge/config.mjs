@@ -312,6 +312,8 @@ export const CFG = {
   agentGroupWhitelist: _readOptionalListState('.env_agent_groups', 'QQBOT_AGENT_GROUPS', parseAgentGroupList).values,
   agentMaterialGroupWhitelist: _readOptionalListState('.env_agent_material_groups', 'QQBOT_AGENT_MATERIAL_GROUPS', parseAgentGroupList).values,
   agentDraftGroupWhitelist: _readOptionalListState('.env_agent_draft_groups', 'QQBOT_AGENT_DRAFT_GROUPS', parseAgentGroupList).values,
+  agentWriteGroupWhitelist: _readOptionalListState('.env_agent_write_groups', 'QQBOT_AGENT_WRITE_GROUPS', parseAgentGroupList).values,
+  agentReminderGroupWhitelist: _readOptionalListState('.env_agent_reminder_groups', 'QQBOT_AGENT_REMINDER_GROUPS', parseAgentGroupList).values,
   jmUserWhitelist: readJmUserWhitelist(),
   adminUins: _readOptionalList('.env_admins', 'QQBOT_ADMINS'),
   botNames: readBotNames(),

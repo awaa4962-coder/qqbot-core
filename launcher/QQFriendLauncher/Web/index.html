@@ -91,6 +91,8 @@
             <div id="agentToolsPanel" aria-live="polite"></div>
             <div id="agentDraftsPanel" aria-live="polite"></div>
             <pre class="output compact-empty" id="agentDraftActionStatus" role="status" aria-live="polite">尚未读取草稿任务</pre>
+            <div id="agentWritesPanel" aria-live="polite"></div>
+            <p class="page-notice" id="agentWriteActionStatus" role="status" aria-live="polite" data-state="unread">尚未读取写入状态</p>
           </section>
         </section>
 
@@ -250,6 +252,8 @@
                   <div class="list-field"><span>有限工具灰度群</span><div class="list-editor" data-list-editor-for="cfgAgentGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增有限工具群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgAgentGroups" type="hidden"></div>
                   <div class="list-field"><span>附件工具群</span><div class="list-editor" data-list-editor-for="cfgAgentMaterialGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增附件工具群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgAgentMaterialGroups" type="hidden"></div>
                   <div class="list-field"><span>草稿工具群</span><div class="list-editor" data-list-editor-for="cfgAgentDraftGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增草稿工具群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgAgentDraftGroups" type="hidden"></div>
+                  <div class="list-field"><span>个人写入工具群</span><div class="list-editor" data-list-editor-for="cfgAgentWriteGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增个人写入工具群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgAgentWriteGroups" type="hidden"></div>
+                  <div class="list-field"><span>提醒工具群</span><div class="list-editor" data-list-editor-for="cfgAgentReminderGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增提醒工具群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgAgentReminderGroups" type="hidden"></div>
                   <div class="list-field"><span>长上下文群</span><div class="list-editor" data-list-editor-for="cfgLongGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增长上下文群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgLongGroups" type="hidden"></div>
                 </div>
               </section>

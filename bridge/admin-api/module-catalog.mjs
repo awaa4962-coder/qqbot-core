@@ -75,6 +75,7 @@ function configFieldSummary(field, cfg, longGroups) {
 }
 
 const LIST_CONFIG_FIELDS = new Set([
+  "agentGroupWhitelist", "agentWriteGroupWhitelist", "agentReminderGroupWhitelist",
   "botNames",
   "adminUins",
   "resourceGroupWhitelist",

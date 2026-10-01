@@ -33,6 +33,7 @@ import { buildAgentToolSnapshot } from "../chat-tools/registry.mjs";
 import { CHAT_TOOL_LIMITS } from "../chat-tools/policy.mjs";
 import { buildNativeToolCompatibilitySnapshot } from "../chat-tools/compatibility.mjs";
 import { agentDraftTasks } from "../chat-tools/draft-tasks.mjs";
+import { agentWriteCoordinator } from "../chat-tools/write-coordinator.mjs";
 
 const GET_ROUTES = new Map([
   ["/admin/status", handleStatusRoute],
@@ -58,6 +59,7 @@ const GET_ROUTES = new Map([
   ["/admin/tasks", handleTasksReadRoute],
   ["/admin/conversation-summaries", handleConversationSummariesRoute],
   ["/admin/agent-drafts", handleAgentDraftsReadRoute],
+  ["/admin/agent-actions", handleAgentActionsReadRoute],
 ]);
 
 const POST_ROUTES = new Map([
@@ -161,7 +163,11 @@ function handleCapabilitiesRoute(_req, res, context) {
     moduleStates: buildModuleCatalog().modules,
   });
   context.sendJson(res, 200, { ...catalog, agentTools: { ...buildAgentToolSnapshot(CFG, buildNativeToolCompatibilitySnapshot()), limits: CHAT_TOOL_LIMITS },
-    agentDrafts: agentDraftTasks.snapshot() }, 2);
+    agentDrafts: agentDraftTasks.snapshot(), agentWrites: agentWriteCoordinator.snapshot() }, 2);
+}
+
+function handleAgentActionsReadRoute(_req, res, context) {
+  context.sendJson(res, 200, agentWriteCoordinator.snapshot(), 2);
 }
 
 function handleModulesRoute(_req, res, context) {

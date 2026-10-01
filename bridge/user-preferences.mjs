@@ -11,6 +11,7 @@ import { memoryNoteService } from "./memory-profile/notes.mjs";
 import { flushMemoryProfilesSync } from "./memory-profile/store.mjs";
 import { forgetStickerSender } from "./features/stickers/catalog-store.mjs";
 import { forgetStickerCaptureUser } from "./features/stickers/capture-service.mjs";
+import { clearAgentOwnedState } from "./chat-tools/owned-state.mjs";
 
 const DEFAULT_STYLE = Object.freeze({
   length: "normal",
@@ -204,6 +205,7 @@ export function forgetUserData(uid, options = {}) {
   if (!id) return { ok: false, text: "没有找到可清理的用户。" };
   // Even a partially failed erase must stop older asynchronous results from returning.
   invalidateUserMemoryGeneration(id);
+  const agentStateCleared = clearAgentOwnedState(id, { persist: !options.skipSave });
   const notesCleared = clearAdditionalUserRecords(id, options);
   const userStore = options.users || users;
   const chatStore = options.groupChats || groupChats;
@@ -234,7 +236,7 @@ export function forgetUserData(uid, options = {}) {
   const storesCleared = options.skipSave || persistForgottenMemory();
   const stickersCleared = clearStickerPersonalData(id, options);
   const result = finishForgetDelivery(id, options);
-  return combineForgetResult(result, notesCleared, usageCleared, storesCleared, stickersCleared);
+  return combineForgetResult(result, notesCleared, usageCleared, storesCleared, stickersCleared, agentStateCleared);
 }
 
 function clearStickerPersonalData(id, options) {
@@ -252,7 +254,8 @@ function persistForgottenMemory() {
   return chatsSaved && profilesSaved;
 }
 
-function combineForgetResult(result, notesCleared, usageCleared, storesCleared, stickersCleared) {
+function combineForgetResult(result, notesCleared, usageCleared, storesCleared, stickersCleared, agentStateCleared) {
+  if (!agentStateCleared) return { ok: false, text: "已停止使用旧记忆，但待确认操作或提醒的清理未能确认，请管理员检查状态；不要重复执行旧操作。" };
   if (!notesCleared) return { ok: false, text: "已清理原聊天记忆，但明确记忆文件清理未能确认，请管理员检查存储后重试。" };
   if (!usageCleared) return { ok: false, text: "已处理聊天记忆清理，但个人用量统计清除未能确认，请管理员检查存储后重试。" };
   if (!storesCleared) return { ok: false, text: "已停止使用旧记忆，但聊天或画像文件清理未能确认落盘，请管理员检查存储后重试。" };
@@ -382,7 +385,7 @@ function normalizeStyle(style = {}) {
   };
 }
 
-function sanitizeDisplayName(name) {
+export function sanitizeDisplayName(name) {
   const value = String(name || "").trim().replace(/\s+/g, "");
   if (!value) return { ok: false, text: "称呼不能为空。" };
   if (value.length > 16) return { ok: false, text: "称呼太长了，控制在 16 个字符以内吧。" };

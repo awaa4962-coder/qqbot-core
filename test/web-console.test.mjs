@@ -122,6 +122,21 @@ test("web console rejects unknown and traversal-like asset paths", async () => {
   }
 });
 
+test("confirmed actions renderer and controller are served only through exact local asset routes", async () => {
+  for (const pathname of ["/console/agent-writes.js", "/console/ui/agent-write-actions.js"]) {
+    for (const method of ["GET", "HEAD"]) {
+      const response = createResponse();
+      assert.equal(await handleWebConsoleRequest(createRequest("127.0.0.1", method), response, { enabled: true, pathname }), true);
+      assert.equal(response.statusCode, 200);
+      assert.match(response.headers["Content-Type"], /javascript/);
+      assert.equal(response.body.length === 0, method === "HEAD");
+    }
+    const denied = createResponse();
+    await handleWebConsoleRequest(createRequest("8.8.8.8"), denied, { enabled: true, pathname });
+    assert.equal(denied.statusCode, 404);
+  }
+});
+
 function createRequest(remoteAddress, method = "GET") {
   return { method, socket: { remoteAddress } };
 }

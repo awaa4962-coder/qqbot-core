@@ -15,6 +15,59 @@ export const PAGE_TOOL = toolDefinition("read_public_page");
 export const ATTACHMENT_TOOL = toolDefinition("read_current_attachment");
 export const DRAFT_TOOL = toolDefinition("draft_chat_summary");
 export const DRAFT_TASK_TOOL = toolDefinition("read_draft_task");
+export const PERSONAL_CHANGE_TOOL = toolDefinition("prepare_personal_change");
+export const REMINDER_TOOL = toolDefinition("prepare_reminder");
+export const PERSONAL_ACTIONS_TOOL = toolDefinition("read_personal_actions");
+
+export function permitsReminderPreparation(message) {
+  return Boolean(reminderRequest(message));
+}
+
+const REMINDER_PREFIX = /^(?:(?:请|麻烦)(?:帮我)?|帮我)?\s*/u;
+const TIME_PREFIX = /^[\d一二三四五六七八九十百两半个分秒钟小时天日后今明年月周星期上下早晚中午凌晨点在:：T+.Z\-\s]{0,80}$/u;
+const RELATIVE = /^([0-9]{1,5}|一|二|两|三|四|五|六|七|八|九|十|半)(?:个)?(分钟|小时|天|周)(?:以后|之后|后)\s*/u;
+
+function relativeMinutes(text) {
+  const match = RELATIVE.exec(text);
+  if (!match) return null;
+  const numbers = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10, 半: 0.5 };
+  const value = numbers[match[1]] ?? Number(match[1]);
+  const scale = { 分钟: 1, 小时: 60, 天: 1440, 周: 10080 }[match[2]];
+  return { minutes: value * scale, length: match[0].length };
+}
+
+function reminderRequest(message) {
+  const text = typeof message === "string" ? message.normalize("NFKC").replace(/\p{Cf}/gu, "").trim() : "";
+  const source = text.replace(/^@[^\s@]{1,32}\s+/u, "").replace(REMINDER_PREFIX, "");
+  if (!source || /(?:只是|仅|只).{0,8}(?:解释|引用|分析)|(?:不要|不用|别|禁止|不必).{0,8}(?:提醒|取消|执行|创建|设置)|不执行/u.test(source)) return null;
+  const first = source.trim();
+  const cancel = /^取消(?:我的)?提醒\s+(rem_[a-f0-9]{32})$/u.exec(first);
+  if (cancel) return { action: "cancel", ref: cancel[1] };
+  const create = /^(.*?)提醒(?:我|一下)(?:一下)?\s*[:：]?\s*(.+)$/u.exec(first);
+  if (!create || !TIME_PREFIX.test(create[1])) return null;
+  const body = create[2].trim();
+  const relative = relativeMinutes(create[1].trim()) || relativeMinutes(body);
+  const withoutTime = relativeMinutes(body);
+  return { action: "create", body, shortenedBody: withoutTime ? body.slice(withoutTime.length).trim() : body, relative };
+}
+
+export function authorizedReminderArguments(args, message) {
+  const request = reminderRequest(message);
+  if (!request || !args || ![Object.prototype, null].includes(Object.getPrototypeOf(args))) return false;
+  const field = key => Object.getOwnPropertyDescriptor(args, key)?.value;
+  if (field("action") !== request.action) return false;
+  if (request.action === "cancel") return field("ref") === request.ref;
+  if (typeof field("text") !== "string" || ![request.body, request.shortenedBody].includes(field("text"))) return false;
+  return !request.relative || (field("delay_minutes") === request.relative.minutes && field("when") === undefined);
+}
+
+export function agentPersonalAllowed(scope, cfg = CFG, options = {}) {
+  return agentScopeAllowed(scope, cfg, options) && (cfg.agentWriteGroupWhitelist || []).some(id => String(id) === String(scope.groupId));
+}
+
+export function agentRemindersAllowed(scope, cfg = CFG, options = {}) {
+  return agentScopeAllowed(scope, cfg, options) && (cfg.agentReminderGroupWhitelist || []).some(id => String(id) === String(scope.groupId));
+}
 
 export function agentMaterialsAllowed(scope, cfg = CFG, options = {}) {
   return agentScopeAllowed(scope, cfg, options) && (cfg.agentMaterialGroupWhitelist || []).some(id => String(id) === String(scope.groupId));

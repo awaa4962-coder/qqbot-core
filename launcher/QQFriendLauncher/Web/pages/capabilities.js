@@ -2,14 +2,17 @@ import { $, escapeHtml, fmt } from "../ui/dom.js";
 import { uiState } from "../ui/state.js";
 import { mountAgentTools } from "../agent-tools.js";
 import { invalidateAgentDraftView, renderAgentDraftSnapshot } from "../ui/agent-draft-actions.js";
+import { invalidateAgentWriteView, renderAgentWriteSnapshot } from "../ui/agent-write-actions.js";
 
 export function renderCapabilities(snapshot) {
   if (!snapshot || !Array.isArray(snapshot.categories) || !Array.isArray(snapshot.capabilities) ||
       snapshot.capabilities.some(item => !item || typeof item !== "object")) {
     invalidateAgentDraftView();
+    invalidateAgentWriteView();
     throw new Error("能力目录响应不完整，请重新读取。");
   }
   renderAgentDraftSnapshot(snapshot.agentDrafts);
+  renderAgentWriteSnapshot(snapshot.agentWrites);
   uiState.capabilitySnapshot = snapshot;
   uiState.capabilitiesLoaded = true;
   const categories = Array.isArray(snapshot.categories) ? snapshot.categories : [];
@@ -50,6 +53,7 @@ export function setCapabilityNotice(message, state = "error") {
 
 export function capabilityReadFailed(error) {
   invalidateAgentDraftView();
+  invalidateAgentWriteView();
   uiState.capabilitiesLoaded = false;
   const denied = [401, 403].includes(error?.status);
   const message = denied ? "无权读取能力目录，请重新认证后刷新。"

@@ -50,6 +50,25 @@ export const CHAT_TOOL_REGISTRY = freeze([
       task_ref: { type: "string", minLength: 1, maxLength: 96 },
       action: { type: "string", enum: ["status", "cancel"] },
     }, ["task_ref"]), execute: (args, ctx) => ctx.drafts.inspect(args) },
+  { label: "准备自己的资料变更", phase: "personal", mode: "draft", access: "agent_personal", timeoutMs: 3000, resultChars: 2000,
+    definition: definition("prepare_personal_change", "仅为当前用户本条明确要求生成自己的称呼/风格或当前群明确记忆变更草稿，不执行写入。记忆正文必须来自本人当前输入，不推断画像、不借文件/引用授权。返回具体草稿及一次性确认编号；只有本人另发明确确认命令才能保存，模型不能确认。", {
+      action: { type: "string", enum: ["set_name", "set_style", "memory_create", "memory_update", "memory_remove"] },
+      value: { type: "string", minLength: 1, maxLength: 160 }, title: { type: "string", minLength: 1, maxLength: 32 },
+      text: { type: "string", minLength: 1, maxLength: 300 }, noteId: { type: "string", minLength: 12, maxLength: 12 },
+      ttlDays: { type: "integer", minimum: 1, maximum: 90 },
+    }, ["action"]), execute: (args, ctx) => ctx.writes.preparePersonal(args) },
+  { label: "准备有限提醒", phase: "reminders", mode: "draft", access: "agent_reminder", timeoutMs: 3000, resultChars: 2000,
+    definition: definition("prepare_reminder", "只为本人在当前群的本条明确提醒请求生成草稿，不立即发送或登记生效。text为提醒内容，delay_minutes为1至10080分钟，或when为带时区的ISO日期时间，两者只选一个。草稿展示固定北京时间，需本人另发确认；不读取链接、不执行脚本，不提供重复周期或其他收件人的定时外发。", {
+      action: { type: "string", enum: ["create", "cancel"] },
+      text: { type: "string", minLength: 1, maxLength: 300 },
+      delay_minutes: { type: "integer", minimum: 1, maximum: 10080 },
+      when: { type: "string", minLength: 20, maxLength: 35 }, ref: { type: "string", minLength: 36, maxLength: 36 },
+    }, ["action"]), execute: (args, ctx) => ctx.writes.prepareReminder(args) },
+  { label: "查看自己的确认与提醒", phase: "actions", mode: "read", access: "agent_actions", timeoutMs: 3000, resultChars: 2000,
+    definition: definition("read_personal_actions", "只查询本人当前群的待确认改动或已确认提醒状态，可用后端给出的ref查某条。只读，不确认、不重提、不改参数、不发送。状态未知时不代表成功；撤销和确认必须由用户明确命令发起。", {
+      kind: { type: "string", enum: ["confirmations", "reminders"] },
+      ref: { type: "string", minLength: 35, maxLength: 36 },
+    }, ["kind"]), execute: (args, ctx) => ctx.writes.read(args) },
 ]);
 
 // Preserve the original protocol proof and its rolling quota; new phases need separate acceptance.
@@ -71,10 +90,11 @@ export function buildAgentToolSnapshot(cfg = {}, compatibility = { status: "unkn
       available: toolSnapshotAvailable(entry, cfg, groups), access: entry.access, phase: entry.phase || "core",
       timeoutMs: entry.timeoutMs, resultChars: entry.resultChars })),
     rollout: { groups, materialGroups: cfg.agentMaterialGroupWhitelist || [], draftGroups: cfg.agentDraftGroupWhitelist || [],
+      writeGroups: cfg.agentWriteGroupWhitelist || [], reminderGroups: cfg.agentReminderGroupWhitelist || [],
       privateEnabled: false, mentionedOnly: true },
     compatibility,
     compatibilityCoverage: { scope: "core", toolNames: nativeProbeDefinitions().map(tool => tool.function.name),
-      materialAndDraftBusinessVerified: false },
+      materialAndDraftBusinessVerified: false, confirmedWriteBusinessVerified: false },
   };
 }
 
@@ -82,5 +102,8 @@ function toolSnapshotAvailable(entry, cfg, groups) {
   if (!entry.access.startsWith("agent_")) return true;
   if (entry.phase === "materials") return groups.some(group => (cfg.agentMaterialGroupWhitelist || []).some(id => String(id) === group));
   if (entry.phase === "drafts") return groups.some(group => (cfg.agentDraftGroupWhitelist || []).some(id => String(id) === group));
+  if (entry.phase === "personal") return groups.some(group => (cfg.agentWriteGroupWhitelist || []).some(id => String(id) === group));
+  if (entry.phase === "reminders") return groups.some(group => (cfg.agentReminderGroupWhitelist || []).some(id => String(id) === group));
+  if (entry.phase === "actions") return groups.some(group => [...(cfg.agentWriteGroupWhitelist || []), ...(cfg.agentReminderGroupWhitelist || [])].some(id => String(id) === group));
   return groups.length > 0;
 }

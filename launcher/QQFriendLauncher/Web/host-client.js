@@ -19,6 +19,7 @@
   }
 
   function call(action, payload = {}) {
+    if (mode !== "browser" && action === "getAgentActions") return Promise.reject(new Error("Windows 桌面版暂不支持读取 Agent 写入状态。"));
     return mode === "desktop" ? callDesktop(action, payload) : callBrowser(action, payload);
   }
 
@@ -46,6 +47,7 @@
     if (action === "refresh") return buildBrowserSnapshot();
     if (action === "refreshStatus") return apiRequest("/admin/status");
     if (action === "getCapabilities") return apiRequest("/admin/capabilities");
+    if (action === "getAgentActions") return apiRequest("/admin/agent-actions", {}, false);
     if (action === "getAgentDrafts") return apiRequest("/admin/agent-drafts" + (payload.id ? "?id=" + encodeURIComponent(payload.id) : ""));
     if (action === "cancelAgentDraft") return apiPost("/admin/agent-drafts", { action: "cancel", id: payload.id });
     if (action === "getLogs" || action === "refreshLogs") return apiRequest("/admin/logs?tail=120");

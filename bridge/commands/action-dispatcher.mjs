@@ -14,6 +14,7 @@ import { handleConversationSummaryCommand, parseConversationSummaryCommand } fro
 import { createMemoryCommandGuard, isSelfMemoryCommand } from "./modules/memory.mjs";
 import { createPersonalReadGuard, isPersonalReadCommand } from "./read-guard.mjs";
 import { isGroupSummaryCommand, queueGroupSummaryCommand } from "../group-summary/commands.mjs";
+import { createAgentWriteCommandGuard, isAgentWriteCommand } from "./modules/agent-writes.mjs";
 
 const SPECIAL_GROUP_ACTIONS = Object.freeze([
   { id: "conversation-summary", parse: parseConversationSummaryCommand, handle: handleConversationSummaryCommand },
@@ -96,6 +97,8 @@ async function dispatchCatalogCommand(ctx, commandText, options) {
     groupId: ctx.group_id,
     surface: "group",
     messageId: ctx.message_id,
+    mentioned: ctx.isAtMe === true,
+    currentUserText: ctx.text,
     contextPrivacyGeneration: ctx.contextPrivacyGeneration,
     memoryGuard,
     requireMention: false,
@@ -116,7 +119,8 @@ async function dispatchCatalogCommand(ctx, commandText, options) {
 }
 
 function catalogMemoryGuard(ctx, commandText, options) {
-  const create = isSelfMemoryCommand(commandText) ? createMemoryCommandGuard : isPersonalReadCommand(commandText) ? createPersonalReadGuard : null;
+  const create = isAgentWriteCommand(commandText) ? createAgentWriteCommandGuard
+    : isSelfMemoryCommand(commandText) ? createMemoryCommandGuard : isPersonalReadCommand(commandText) ? createPersonalReadGuard : null;
   return create ? create({ ...options, commandText, userId: ctx.user_id,
     groupId: ctx.group_id, surface: "group", contextPrivacyGeneration: ctx.contextPrivacyGeneration }) : null;
 }

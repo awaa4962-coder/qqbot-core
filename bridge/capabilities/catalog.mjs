@@ -21,6 +21,14 @@ export const CAPABILITY_CATEGORIES = Object.freeze([
 ]);
 
 export const CAPABILITY_DEFINITIONS = Object.freeze([
+  capability({ id: "personal.actions", moduleId: "agent-actions", category: "personal", name: "待确认的个人变更",
+    summary: "只处理本人当前群的具体拟变更；另发确认编号后才执行，模型不能代确认。",
+    scopes: ["group"], examples: ["@夜星 待确认", "@夜星 确认 <cf_编号>", "@夜星 取消确认 <cf_编号>"],
+    keywords: ["待确认", "确认", "取消确认", "my-actions"], access: "agent-actions-groups" }),
+  capability({ id: "personal.reminders", moduleId: "agent-actions", category: "personal", name: "我的提醒（单次）",
+    summary: "在当前群提出一次提醒，核对时间与内容后确认；发送未知不自动重发。",
+    scopes: ["group"], examples: ["@夜星 两分钟后提醒我喝水", "@夜星 我的提醒", "@夜星 取消提醒 <rem_编号>"],
+    keywords: ["提醒", "我的提醒", "取消提醒", "my-reminders"], access: "agent-reminder-groups" }),
   capability({
     id: "chat.reply",
     moduleId: "api-providers",
@@ -396,6 +404,7 @@ function availabilityWithRuntime(state, module, runtime, item) {
 
 function resolveAvailability(item, options, cfg) {
   if (item.reserved) return makeAvailability("reserved", "预留", "当前版本尚未启用", { enabled: false, permitted: false });
+  if (["agent-actions-groups", "agent-reminder-groups"].includes(item.access)) return agentActionAvailability(item, options, cfg);
   if (item.id === "chat.reply") {
     return chatModelAvailability(options);
   }
@@ -436,6 +445,14 @@ function resolveAccessAvailability(item, options, cfg) {
   }
   if (item.access === "jm") return jmAvailability(options, cfg);
   return makeAvailability("available", "可用", item.interaction === "automatic" ? "自动生效" : "命令可用");
+}
+
+function agentActionAvailability(item, options, cfg) {
+  const phases = item.access === "agent-reminder-groups" ? cfg.agentReminderGroupWhitelist || []
+    : [...(cfg.agentWriteGroupWhitelist || []), ...(cfg.agentReminderGroupWhitelist || [])];
+  const groups = [...new Set(phases.map(String))].filter(group =>
+    (cfg.agentGroupWhitelist || []).some(id => String(id) === group) && (cfg.groupWhitelist || []).some(id => String(id) === group));
+  return whitelistAvailability(groups, options, "本人确认与提醒", false);
 }
 
 function stickerAvailability(options, cfg) {

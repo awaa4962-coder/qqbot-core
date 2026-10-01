@@ -9,6 +9,7 @@ export const PROFILE_FILE = CFG.memoryProfileFile;
 
 let needsRedactionSave = false;
 let loadFailed = false;
+let persistenceUnknown = false;
 export const memoryProfiles = loadProfiles();
 
 const saver = createJsonSaver(PROFILE_FILE, () => memoryProfiles, {
@@ -17,7 +18,7 @@ const saver = createJsonSaver(PROFILE_FILE, () => memoryProfiles, {
   onError: error => logE("saveMemoryProfiles failed:", error.message),
 });
 export function persistLoadedProfileRepairs() {
-  if (needsRedactionSave && !loadFailed) { saver.markDirty(); needsRedactionSave = false; }
+  if (needsRedactionSave && !loadFailed && !persistenceUnknown) { saver.markDirty(); needsRedactionSave = false; }
 }
 
 export function createRoot() {
@@ -50,16 +51,23 @@ export function loadProfiles() {
 }
 
 export function saveMemoryProfiles() {
-  if (loadFailed) return false;
+  if (loadFailed || persistenceUnknown) return false;
   saver.markDirty();
   return true;
 }
 
 export function flushMemoryProfilesSync() {
+  if (loadFailed || persistenceUnknown) return false;
   persistLoadedProfileRepairs();
-  return !loadFailed && saver.flushSync();
+  return saver.flushSync();
 }
 
-export function memoryProfilesAvailable() { return !loadFailed; }
+export function latchMemoryProfilePersistenceUnknown() {
+  persistenceUnknown = true;
+  // Cancel queued checkpoints and invalidate staged asynchronous writes until process replacement.
+  saver.dispose();
+}
+
+export function memoryProfilesAvailable() { return !loadFailed && !persistenceUnknown; }
 
 function plainCollection(value) { return value && typeof value === "object" && !Array.isArray(value); }

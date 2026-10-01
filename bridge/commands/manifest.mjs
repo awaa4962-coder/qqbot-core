@@ -1,6 +1,16 @@
 // bridge/commands/manifest.mjs - declarative command metadata shared by registry and help.
 
 export const COMMAND_DEFINITIONS = Object.freeze([
+  { id: "agent-confirm", capabilityId: "personal.actions", permission: "user", aliases: ["确认"], pattern: /^确认(?:\s|$)/,
+    helpPage: 4, helpLine: "  确认 <cf_编号>       执行本人已核对的拟变更" },
+  { id: "agent-pending", capabilityId: "personal.actions", permission: "user", aliases: ["待确认", "my-actions"],
+    helpPage: 4, helpLine: "  待确认               查看本群自己的拟变更" },
+  { id: "agent-revoke", capabilityId: "personal.actions", permission: "user", aliases: ["取消确认"], pattern: /^取消确认(?:\s|$)/,
+    helpPage: 4, helpLine: "  取消确认 <cf_编号>   撤销本人拟变更" },
+  { id: "agent-reminders", capabilityId: "personal.reminders", permission: "user", aliases: ["我的提醒", "my-reminders"],
+    helpPage: 4, helpLine: "  我的提醒             查看本群自己的提醒" },
+  { id: "agent-reminder-cancel", capabilityId: "personal.reminders", permission: "user", aliases: ["取消提醒"], pattern: /^取消提醒(?:\s|$)/,
+    helpPage: 4, helpLine: "  取消提醒 <rem_编号>  取消自己的提醒" },
   {
     id: "conversation-summary", capabilityId: "group.conversation-summary", permission: "user", aliases: ["总结我", "总结帮助"], helpPage: 2,
     pattern: /^(?:总结我|分别总结|总结)(?:\s|$|\[CQ:at,|@)/,

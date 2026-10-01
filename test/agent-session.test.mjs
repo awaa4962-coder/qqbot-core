@@ -33,13 +33,14 @@ const response = result => JSON.parse(result.content);
 test("registry owns phased immutable declarations and keeps the five-tool native proof unchanged", () => {
   assert.deepEqual(CHAT_TOOL_REGISTRY.map(entry => entry.definition.function.name),
     ["recall_memory", "read_bot_status", "web_search", "calculate", "read_public_page",
-      "read_current_attachment", "draft_chat_summary", "read_draft_task"]);
+      "read_current_attachment", "draft_chat_summary", "read_draft_task", "prepare_personal_change", "prepare_reminder", "read_personal_actions"]);
   assert.deepEqual(nativeProbeDefinitions().map(entry => entry.function.name),
     ["recall_memory", "read_bot_status", "web_search", "calculate", "read_public_page"]);
   assert.equal(registeredTool("send_message"), undefined);
   assert.throws(() => { CALCULATE_TOOL.function.parameters.properties.expression.maxLength = 99999; }, TypeError);
   for (const entry of CHAT_TOOL_REGISTRY) {
-    assert.equal(entry.mode, entry.phase === "drafts" ? entry.definition.function.name === "read_draft_task" ? "task" : "draft" : "read");
+    assert.equal(entry.mode, ["personal", "reminders"].includes(entry.phase) ? "draft"
+      : entry.phase === "drafts" ? entry.definition.function.name === "read_draft_task" ? "task" : "draft" : "read");
     assert.equal(entry.definition.function.parameters.additionalProperties, false);
     assert.ok(entry.resultChars <= 2000 && entry.timeoutMs <= (entry.phase === "drafts" ? 85000 : 23000));
   }
@@ -69,6 +70,38 @@ test("startup and editable gray group lists accept only canonical decimal group 
   const actual = saveEditableConfig({ editable: { agentGroupWhitelist: ["50100"] } }, { root, env: {} });
   assert.equal(actual.restartRequired, true);
   assert.deepEqual(parseAgentGroupList(fs.readFileSync(path.join(root, ".env_agent_groups"), "utf8")), [50100]);
+});
+
+test("personal and reminder rollout fields are default closed and preserve independent canonical config sources", () => {
+  for (const [field, file, env] of [["agentWriteGroupWhitelist", ".env_agent_write_groups", "QQBOT_AGENT_WRITE_GROUPS"],
+    ["agentReminderGroupWhitelist", ".env_agent_reminder_groups", "QQBOT_AGENT_REMINDER_GROUPS"]]) {
+    const baseline = buildEditableConfigSnapshot({ root, cfg: config(), env: {} });
+    assert.deepEqual(baseline.editable[field], []);
+    for (const invalid of ["0", "00001", "0xC3B4", "50100 invalid", "+50100"])
+      assert.throws(() => saveEditableConfig({ editable: { [field]: invalid } }, { root, env: {} }));
+    assert.equal(saveEditableConfig({ editable: { [field]: ["50100"] } }, { root, env: {} }).restartRequired, true);
+    assert.deepEqual(parseAgentGroupList(fs.readFileSync(path.join(root, file), "utf8")), [50100]);
+    const snapshot = buildEditableConfigSnapshot({ root, cfg: config(), env: { [env]: "50100" } });
+    assert.equal(snapshot.files[field].source, "environment");
+    assert.throws(() => buildEditableConfigSnapshot({ root, cfg: config(), env: { [env]: "00001" } }));
+  }
+});
+
+test("personal action queries stay fresh and cannot become execute tools or survive withdrawn rollout", async () => {
+  let reads = 0;
+  const cfg = { ...config(), agentWriteGroupWhitelist: [50100], agentReminderGroupWhitelist: [50100] };
+  const session = create({ cfg, currentMessageId: "0", userMessage: "查看我的提醒", writeCoordinator: {
+    read: () => ({ status: "ok", text: "state " + ++reads }),
+    confirm: () => assert.fail("model must never confirm"),
+  } });
+  const definitions = session.definitions();
+  const query = call("read_personal_actions", { kind: "reminders" });
+  assert.equal(response(await session.execute(query, definitions)).text, "state 1");
+  assert.equal(response(await session.execute(query, definitions)).text, "state 2");
+  assert.equal(reads, 2);
+  assert.ok(!JSON.stringify(session.fallbackContext()).includes("state 1"));
+  cfg.agentReminderGroupWhitelist = [];
+  await assert.rejects(session.execute(query, definitions), /tool_configuration_changed/);
 });
 
 test("gray snapshots never hide invalid sidecar or environment values behind a normalized active ID", () => {

@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { memoryProfiles, memoryProfilesAvailable, saveMemoryProfiles, flushMemoryProfilesSync } from "./store.mjs";
+import { memoryProfiles, memoryProfilesAvailable, saveMemoryProfiles, flushMemoryProfilesSync, latchMemoryProfilePersistenceUnknown } from "./store.mjs";
 import { invalidateMemoryPrivacyGeneration } from "./generation.mjs";
 import { containsSensitiveText, redactSensitiveText } from "../privacy.mjs";
 import { summaryPrivacy } from "../group-summary/state.mjs";
@@ -20,6 +20,7 @@ export function createMemoryNoteService(options = {}) {
   const available = options.available || memoryProfilesAvailable;
   const now = options.now || Date.now;
   const invalidate = options.invalidate || invalidateMemoryPrivacyGeneration;
+  const defaultPersistence = !options.persist;
   const persist = options.persist || (() => saveMemoryProfiles() && flushMemoryProfilesSync());
   const readPrivacy = options.readPrivacy || summaryPrivacy;
 
@@ -34,6 +35,18 @@ export function createMemoryNoteService(options = {}) {
     const normalized = normalizeNoteScope(scope);
     const value = root();
     return projectSnapshot(value, normalized, now(), privacyCutoff(normalized, readPrivacy));
+  }
+
+  function ownedRevision(scope) {
+    const normalized = normalizeNoteScope(scope);
+    const value = root();
+    const cutoff = privacyCutoff(normalized, readPrivacy);
+    // A clock-independent owner fingerprint includes raw bodies and own retractions, not inferred profiles or the global revision.
+    const items = value.items.filter(item => sameScope(item, normalized) && item.source.at > cutoff)
+      .map(item => ({ ...projectNote(item, 0), title: item.title, text: item.text }));
+    const retractions = value.retractions.filter(item => sameScope(item, normalized))
+      .map(item => ({ userId: item.userId, groupId: item.groupId, noteId: item.noteId, messageId: item.messageId, at: item.at }));
+    return createHash("sha256").update(JSON.stringify([normalized, cutoff, items, retractions])).digest("hex");
   }
 
   function act(payload, context = {}) {
@@ -52,7 +65,10 @@ export function createMemoryNoteService(options = {}) {
     try {
       if (!persist()) throw memoryError("记忆未保存，请检查存储后重试。", 503);
     } catch {
-      profiles.notes = previous;
+      if (defaultPersistence) {
+        latchMemoryProfilePersistenceUnknown();
+        invalidate();
+      } else profiles.notes = previous;
       throw memoryError("记忆未保存，请检查存储后重试。", 503);
     }
     invalidate();
@@ -127,7 +143,7 @@ export function createMemoryNoteService(options = {}) {
     if (!settings.withLinks) return { entries };
     return { entries, links: storedScopeSourceLinks(normalized) };
   }
-  return { snapshot, act, clear, prune, corrections, metadata };
+  return { snapshot, ownedRevision, act, clear, prune, corrections, metadata };
 }
 
 function applyAction(root, index, scope, payload, context, now) {
@@ -310,6 +326,7 @@ function privacyCutoff(scope, readPrivacy) {
 
 export const memoryNoteService = createMemoryNoteService();
 export const memoryNotesSnapshot = scope => memoryNoteService.snapshot(scope);
+export const memoryNotesOwnedRevision = scope => memoryNoteService.ownedRevision(scope);
 export const applyMemoryNoteAction = (payload, context) => memoryNoteService.act(payload, context);
 export const memoryCorrectionSnapshot = scope => memoryNoteService.corrections(scope);
 export const memoryReadMetadata = (scope, settings) => memoryNoteService.metadata(scope, settings);

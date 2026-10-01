@@ -60,6 +60,21 @@ test("automatic capabilities remain visible without inventing a command alias", 
   assert.ok(!COMMAND_DEFINITIONS.some(item => item.capabilityId === "vision.context"));
 });
 
+test("confirmed action capabilities share real command metadata and intersect all rollout lists", async () => {
+  const closed = fixture();
+  for (const id of ["personal.actions", "personal.reminders"])
+    assert.equal(closed.find(id, { surface: "console" }).status, "unavailable");
+  const f = fixture({ agentGroupWhitelist: [100], agentWriteGroupWhitelist: [100], agentReminderGroupWhitelist: [100] });
+  for (const id of ["personal.actions", "personal.reminders"]) {
+    assert.equal(f.find(id, { surface: "group", groupId: 100, userId: 200 }).status, "available");
+    assert.equal(f.find(id, { surface: "private", userId: 200 }).state.permitted, false);
+    assert.equal(f.find(id, { surface: "group", groupId: 100, userId: 200, cfg: { ...f.cfg, agentGroupWhitelist: [] } }).state.enabled, false);
+  }
+  const help = await buildCommandReplyAsync("帮助 4", { ...f.options, userId: 200, groupId: 100 });
+  assert.match(help, /待确认/);
+  assert.match(help, /我的提醒/);
+});
+
 test("direct visual chat remains available when the separate description route is unavailable", () => {
   const f = fixture();
   f.config.providers.mimo.capabilities = ["text", "vision"];
