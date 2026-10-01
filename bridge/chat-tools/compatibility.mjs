@@ -4,7 +4,7 @@ import { CFG } from "../config.mjs";
 import { getProvider, getTaskRoute, loadApiConfig, readProviderSecret } from "../api-providers/store.mjs";
 import { applyReasoningPolicy } from "../api-providers/reasoning-policy.mjs";
 import { safeModelIdentity } from "../capabilities/self-context.mjs";
-import { CHAT_TOOL_REGISTRY } from "./registry.mjs";
+import { nativeProbeDefinitions } from "./registry.mjs";
 import { createToolCompatibilityStore } from "./compatibility-store.mjs";
 
 export const NATIVE_PROBE_VERSION = "native-tools-v1";
@@ -28,7 +28,7 @@ export function nativeToolIdentity(provider, options = {}) {
   const input = [NATIVE_PROBE_VERSION, options.provenance === "qa" ? "qa" : "live", provider.id, provider.model, provider.endpoint, provider.protocol,
     provider.auth, provider.tokenField || "max_tokens", provider.enabled !== false, [...provider.capabilities].sort(),
     route.reasoning, policy.meta.effectiveMode, policy.meta.control, policy.meta.applied, keyIdentity,
-    CHAT_TOOL_REGISTRY.map(entry => entry.definition)];
+    nativeProbeDefinitions()];
   return createHash("sha256").update(JSON.stringify(input)).digest("hex");
 }
 

@@ -1113,6 +1113,11 @@ img[data-sticker-preview][data-state="loading"] { opacity: 0; }
 .memory-facts dt { color: var(--muted); }
 .agent-tools { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
 .agent-tool-label { max-width: 160px; overflow-wrap: anywhere; }
+.agent-drafts-head h3 { font-size: 15px; }
+.agent-drafts-command { min-width: 80px; min-height: 32px; padding: 5px 8px; }
+.agent-drafts-preview { min-width: 0; padding-top: 12px; }
+.agent-drafts-text { margin: 8px 0 0; max-width: 100%; max-height: 480px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 13px; line-height: 1.7; }
+.agent-drafts-table small { color: var(--muted); font-size: 11px; }
 .memory-facts dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .memory-context { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 16px 0; }
 .memory-inferences { margin: 10px 0; padding-left: 18px; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
@@ -1123,6 +1128,12 @@ img[data-sticker-preview][data-state="loading"] { opacity: 0; }
   .memory-list { max-height: 220px; }
 }
 @media (max-width: 620px) {
+  .agent-drafts-table { min-width: 0 !important; }
+  .agent-drafts-table th, .agent-drafts-table td { padding: 6px !important; }
+  .agent-drafts-table th:nth-child(1) { width: 40% !important; }
+  .agent-drafts-table th:nth-child(2) { width: 28% !important; }
+  .agent-drafts-table th:nth-child(3) { width: 32% !important; }
+  .agent-drafts-command { min-width: 0; width: 100%; padding: 4px; font-size: 12px; }
   .memory-query { grid-template-columns: minmax(0, 1fr) 36px; }
   .memory-query label { grid-column: 1 / -1; }
   .memory-classification { grid-template-columns: minmax(0, 1fr); }

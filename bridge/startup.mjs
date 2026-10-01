@@ -6,6 +6,7 @@ import { CFG } from "./config.mjs";
 import { log, logE, cleanupLogger, getStormStatus } from "./logger.mjs";
 import { stopChatRuns } from "./cognition/chat-run.mjs";
 import { chatWorkScheduler } from "./cognition/chat-work.mjs";
+import { agentDraftTasks } from "./chat-tools/draft-tasks.mjs";
 import { classifyOutboundDelivery } from "./cognition/outcome.mjs";
 import { users, groupChats, flushSavesSync, persistLoadedStorageRepairs } from "./storage.mjs";
 import { persistLoadedProfileRepairs } from "./memory-profile/store.mjs";
@@ -279,6 +280,7 @@ async function shutdown(signal) {
     const drainResults = await Promise.allSettled([
       Promise.resolve().then(() => oneBotLink.stop({ drainMs: 10000 })),
       Promise.resolve().then(() => chatWorkScheduler.stop({ drainMs: 10000 })),
+      Promise.resolve().then(() => agentDraftTasks.stop({ drainMs: 10000 })),
     ]);
     await new Promise(resolve => server.close(resolve));
     drained = drainResults.every(result => result.status === 'fulfilled' && result.value !== false);

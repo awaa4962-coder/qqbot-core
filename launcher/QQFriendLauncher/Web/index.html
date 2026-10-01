@@ -89,6 +89,8 @@
             <div class="capability-summary" id="capabilitySummary">等待读取能力目录</div>
             <div class="capability-list" id="capabilityList"></div>
             <div id="agentToolsPanel" aria-live="polite"></div>
+            <div id="agentDraftsPanel" aria-live="polite"></div>
+            <pre class="output compact-empty" id="agentDraftActionStatus" role="status" aria-live="polite">尚未读取草稿任务</pre>
           </section>
         </section>
 
@@ -246,6 +248,8 @@
                   <div class="list-field"><span>功能群</span><div class="list-editor" data-list-editor-for="cfgFeatureGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增功能群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgFeatureGroups" type="hidden"></div>
                   <div class="list-field"><span>聊天总结群</span><div class="list-editor" data-list-editor-for="cfgConversationSummaryGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增聊天总结群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgConversationSummaryGroups" type="hidden"></div>
                   <div class="list-field"><span>有限工具灰度群</span><div class="list-editor" data-list-editor-for="cfgAgentGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增有限工具群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgAgentGroups" type="hidden"></div>
+                  <div class="list-field"><span>附件工具群</span><div class="list-editor" data-list-editor-for="cfgAgentMaterialGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增附件工具群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgAgentMaterialGroups" type="hidden"></div>
+                  <div class="list-field"><span>草稿工具群</span><div class="list-editor" data-list-editor-for="cfgAgentDraftGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增草稿工具群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgAgentDraftGroups" type="hidden"></div>
                   <div class="list-field"><span>长上下文群</span><div class="list-editor" data-list-editor-for="cfgLongGroups" data-numeric="true"><div class="list-editor-chips"></div><input aria-label="新增长上下文群" inputmode="numeric" placeholder="输入群号"><button type="button" class="icon-button" data-list-add title="添加群" aria-label="添加群">+</button></div><input id="cfgLongGroups" type="hidden"></div>
                 </div>
               </section>

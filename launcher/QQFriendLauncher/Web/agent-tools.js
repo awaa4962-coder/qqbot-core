@@ -26,6 +26,7 @@ const slotLabels = [["primary", "主模型"], ["fallback", "备用模型"]];
 const accessLabels = {
   current_scope: "当前会话权限（含获准私聊）", public_query: "本条公开关键词（按当前会话权限）",
   agent_group: "Agent 群白名单", agent_public_source: "本轮授权公开来源（Agent 群白名单）",
+  agent_attachment: "本轮附件引用（附件工具群）", agent_draft: "本人当前群草稿（草稿工具群）",
 };
 
 function groupWhitelist(groups) {
@@ -155,8 +156,10 @@ export function mountAgentTools(container, snapshot) {
   };
   row("新增工具范围", data.rollout?.mentionedOnly === true ? "主动@ · 灰度群" : "未知");
   row("灰度群白名单", groupWhitelist(data.rollout?.groups));
+  if (Object.hasOwn(data.rollout || {}, "materialGroups")) row("附件工具群", groupWhitelist(data.rollout.materialGroups));
+  if (Object.hasOwn(data.rollout || {}, "draftGroups")) row("草稿工具群", groupWhitelist(data.rollout.draftGroups));
   const compatibility = compatibilityView(data.compatibility);
-  row("原生工具兼容性", `${compatibilityLabels[compatibility.status]}${compatibility.reason ? ` · ${compatibility.reason}` : ""}`);
+  row(data.compatibilityCoverage?.scope === "core" ? "基础工具协议兼容性" : "原生工具兼容性", `${compatibilityLabels[compatibility.status]}${compatibility.reason ? ` · ${compatibility.reason}` : ""}`);
   for (const slot of compatibility.slots) {
     row(slot.label, `${slot.model} · ${compatibilityLabels[slot.status]}${slot.expired ? "（已过期）" : ""}${slot.reason ? ` · ${slot.reason}` : ""}`);
   }
@@ -169,7 +172,7 @@ export function mountAgentTools(container, snapshot) {
   } else {
     for (const tool of tools) {
       const label = text(tool.label) || tool.name;
-      const mode = ["read", "readonly", "read_only"].includes(tool.mode) ? "只读" : "模式未知";
+      const mode = ["read", "readonly", "read_only"].includes(tool.mode) ? "只读" : tool.mode === "draft" ? "草稿" : tool.mode === "task" ? "状态/取消" : "模式未知";
       const availability = tool.available === true ? "服务端标记可用" : tool.available === false ? "不可用" : "未知";
       const access = typeof tool.access === "string" && Object.hasOwn(accessLabels, tool.access)
         ? accessLabels[tool.access] : "权限范围未知";

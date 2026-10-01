@@ -18,6 +18,8 @@ const EDITABLE_FILES = Object.freeze({
   longGroups: { file: ".env_long_groups", env: "QQBOT_LONG_GROUPS" },
   friendWhitelist: { file: ".env_friends", env: "QQBOT_FRIENDS" },
   agentGroupWhitelist: { file: ".env_agent_groups", env: "QQBOT_AGENT_GROUPS" },
+  agentMaterialGroupWhitelist: { file: ".env_agent_material_groups", env: "QQBOT_AGENT_MATERIAL_GROUPS" },
+  agentDraftGroupWhitelist: { file: ".env_agent_draft_groups", env: "QQBOT_AGENT_DRAFT_GROUPS" },
   jmUserWhitelist: { file: ".env_jm_users", env: "QQBOT_JM_USERS" },
   botBlacklist: { file: ".env_bot_blacklist", env: "QQBOT_BLACKLIST" },
   adminUins: { file: ".env_admins", env: "QQBOT_ADMINS" },
@@ -33,6 +35,8 @@ const NUMBER_LIST_FIELDS = new Set([
   "longGroups",
   "friendWhitelist",
   "agentGroupWhitelist",
+  "agentMaterialGroupWhitelist",
+  "agentDraftGroupWhitelist",
   "jmUserWhitelist",
   "botBlacklist",
   "adminUins",
@@ -157,7 +161,7 @@ function readSavedList(root, file, field) {
 }
 
 function parseConfigList(value, field) {
-  if (field === "agentGroupWhitelist") return parseAgentGroupList(value);
+  if (field.startsWith("agent") && NUMBER_LIST_FIELDS.has(field)) return parseAgentGroupList(value);
   const values = normalizeRawList(value);
   if (!NUMBER_LIST_FIELDS.has(field) || field === "adminUins") return values;
   const numbers = values.map(Number).filter(number => Number.isSafeInteger(number) && number > 0);
@@ -218,7 +222,7 @@ function normalizeNumberList(value, field) {
   const numbers = [];
   for (const item of items) {
     const text = String(item).trim();
-    const format = field === "agentGroupWhitelist" ? /^[1-9]\d{4,14}$/ : /^\d{5,15}$/;
+    const format = field.startsWith("agent") ? /^[1-9]\d{4,14}$/ : /^\d{5,15}$/;
     if (!format.test(text)) throw new Error("invalid " + field + " item");
     const num = Number(text);
     if (!Number.isSafeInteger(num) || num <= 0) throw new Error("invalid " + field + " item");

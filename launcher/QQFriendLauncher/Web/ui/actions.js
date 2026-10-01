@@ -13,6 +13,7 @@ import { ACTION_DONE, ACTION_LABELS, STICKER_ACTIONS } from "./metadata.js";
 import { host, uiState } from "./state.js";
 import { callManagedAction, managedTaskIsBlocked, resumeManagedTasks, taskPhaseLabel } from "./tasks.js";
 import { hasVerifiedNativeTools } from "../agent-tools.js";
+import { isAgentDraftAction, runAgentDraftAction } from "./agent-draft-actions.js";
 
 async function runAgentToolsProbe(silent) {
   let terminalError;
@@ -181,6 +182,7 @@ export function configureRuntimeUi() {
 }
 
 export async function runAction(action, button = null, options = {}) {
+  if (isAgentDraftAction(action)) return await runAgentDraftAction(action, button, options);
   const silent = options.silent === true;
   if (action === "refreshStickers" && !silent && !canDiscardStickerDrafts()) return;
   if (action === "newApiProvider") {

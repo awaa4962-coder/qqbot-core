@@ -65,6 +65,7 @@ async function exercise(scenario, modules, source) {
       cleanupLogger: () => step("logger cleanup"), getStormStatus: () => ({}) },
     "./cognition/chat-run.mjs": { stopChatRuns: () => step("chat stop") },
     "./cognition/chat-work.mjs": { chatWorkScheduler: { status: () => ({}), stop: () => drain("work drain") } },
+    "./chat-tools/draft-tasks.mjs": { agentDraftTasks: { stop: () => drain("draft drain") } },
     "./cognition/outcome.mjs": { classifyOutboundDelivery },
     "./storage.mjs": { users: {}, groupChats: {}, flushSavesSync: () => step("storage save"), persistLoadedStorageRepairs() {} },
     "./memory-profile/store.mjs": { persistLoadedProfileRepairs() {} },
@@ -197,7 +198,8 @@ test("a rejected drain still attempts all synchronous saves and exits nonzero", 
   assert.deepEqual(result.calls.slice(-flushes.length), flushes);
 });
 
-for (const [failedDrain, lateDrain] of [["link drain", "work drain"], ["work drain", "link drain"]]) {
+for (const [failedDrain, lateDrain] of [["link drain", "work drain"], ["work drain", "link drain"],
+  ["link drain", "draft drain"], ["draft drain", "work drain"]]) {
   test(`a rejected ${failedDrain} cannot flush or exit before ${lateDrain} settles`, t => {
     const result = run(t, { fail: { [failedDrain]: "throw" }, lateDrain });
     assert.equal(result.code, 1);
@@ -211,13 +213,14 @@ for (const [failedDrain, lateDrain] of [["link drain", "work drain"], ["work dra
 }
 
 for (const exit of ["SIGINT", "SIGTERM"]) {
-  for (const drain of ["work drain", "link drain"]) {
+  for (const drain of ["work drain", "link drain", "draft drain"]) {
     test(`${exit}: false from ${drain} closes the server, flushes all stores and exits nonzero`, t => {
       const result = run(t, { exit, fail: { [drain]: "false" } });
       assert.equal(result.code, 1);
       assert.ok(result.calls.includes("server close"));
       assert.ok(result.calls.includes("work drain"));
       assert.ok(result.calls.includes("link drain"));
+      assert.ok(result.calls.includes("draft drain"));
       assert.deepEqual(result.calls.slice(-flushes.length), flushes);
       assert.ok(Object.values(result.dirty).every(value => !value));
       assert.ok(result.logs.includes("shutdown drain incomplete"));

@@ -32,6 +32,7 @@ import { getApiUsageSnapshot } from "../api-providers/usage-metrics.mjs";
 import { buildAgentToolSnapshot } from "../chat-tools/registry.mjs";
 import { CHAT_TOOL_LIMITS } from "../chat-tools/policy.mjs";
 import { buildNativeToolCompatibilitySnapshot } from "../chat-tools/compatibility.mjs";
+import { agentDraftTasks } from "../chat-tools/draft-tasks.mjs";
 
 const GET_ROUTES = new Map([
   ["/admin/status", handleStatusRoute],
@@ -56,6 +57,7 @@ const GET_ROUTES = new Map([
   ["/admin/summaries", handleSummariesReadRoute],
   ["/admin/tasks", handleTasksReadRoute],
   ["/admin/conversation-summaries", handleConversationSummariesRoute],
+  ["/admin/agent-drafts", handleAgentDraftsReadRoute],
 ]);
 
 const POST_ROUTES = new Map([
@@ -71,6 +73,7 @@ const POST_ROUTES = new Map([
   ["/admin/tasks", handleTasksPostRoute],
   ["/admin/command-scaffold", handleCommandScaffoldRoute],
   ["/admin/backups", handleBackupsPostRoute],
+  ["/admin/agent-drafts", handleAgentDraftsPostRoute],
 ]);
 
 const STICKER_PREVIEW_PATH = "/admin/stickers/image";
@@ -157,7 +160,8 @@ function handleCapabilitiesRoute(_req, res, context) {
     surface: "console",
     moduleStates: buildModuleCatalog().modules,
   });
-  context.sendJson(res, 200, { ...catalog, agentTools: { ...buildAgentToolSnapshot(CFG, buildNativeToolCompatibilitySnapshot()), limits: CHAT_TOOL_LIMITS } }, 2);
+  context.sendJson(res, 200, { ...catalog, agentTools: { ...buildAgentToolSnapshot(CFG, buildNativeToolCompatibilitySnapshot()), limits: CHAT_TOOL_LIMITS },
+    agentDrafts: agentDraftTasks.snapshot() }, 2);
 }
 
 function handleModulesRoute(_req, res, context) {
@@ -304,6 +308,27 @@ function handleConversationSummariesRoute(_req, res, context) {
   try { context.sendJson(res, 200, conversationSummaryService.snapshot()); }
   catch { context.sendJson(res, 503, { error: "暂时读不到成员总结任务，请稍后刷新。" }); }
 }
+
+function handleAgentDraftsReadRoute(_req, res, context) {
+  const values = Object.fromEntries(context.url.searchParams);
+  if (Object.keys(values).some(key => key !== "id") || values.id !== undefined && !validDraftTaskId(values.id)) {
+    context.sendJson(res, 400, { error: "草稿任务参数无效" });
+    return;
+  }
+  context.sendJson(res, 200, agentDraftTasks.snapshot(values.id));
+}
+
+async function handleAgentDraftsPostRoute(req, res, context) {
+  try {
+    const value = await readJsonRequestBody(req, 2048);
+    if (!value || Object.keys(value).some(key => !["action", "id"].includes(key)) || value.action !== "cancel" || !validDraftTaskId(value.id)) {
+      throw new Error("invalid_draft_action");
+    }
+    context.sendJson(res, 200, { ok: true, task: agentDraftTasks.cancel(value.id) });
+  } catch { context.sendJson(res, 409, { ok: false, error: "取消结果未确认，请重新读取任务状态" }); }
+}
+
+function validDraftTaskId(id) { return typeof id === "string" && /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i.test(id); }
 
 async function handleTasksPostRoute(req, res, context) {
   try { context.sendJson(res, 202, adminTaskManager.start(await readJsonRequestBody(req))); }

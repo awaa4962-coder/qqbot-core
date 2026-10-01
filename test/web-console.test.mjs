@@ -58,6 +58,19 @@ test("web console serves allowlisted assets only to loopback clients", async () 
   }
 });
 
+test("new draft modules are served as scripts while preserving HEAD and non-local boundaries", async () => {
+  for (const pathname of ["/console/agent-drafts.js", "/console/ui/agent-draft-actions.js"]) {
+    const response = createResponse();
+    await handleWebConsoleRequest(createRequest("127.0.0.1", "HEAD"), response, { enabled: true, pathname });
+    assert.equal(response.statusCode, 200); assert.equal(response.body.length, 0);
+    assert.match(response.headers["Content-Type"], /javascript/);
+    assert.match(response.headers["Content-Security-Policy"], /script-src 'self'/);
+    const denied = createResponse();
+    await handleWebConsoleRequest(createRequest("192.0.2.10"), denied, { enabled: true, pathname });
+    assert.equal(denied.statusCode, 404);
+  }
+});
+
 test("web console is hidden from non-loopback clients", async () => {
   const response = createResponse();
   const handled = await handleWebConsoleRequest(

@@ -7,7 +7,7 @@ import { monotonicNow } from "../runtime-clock.mjs";
 import { parseChatOutcome } from "../chat-outcome.mjs";
 import { measureVisionRequest } from "../vision/request-budget.mjs";
 import { CHAT_TOOL_LIMITS, parseToolArguments, safeToolBatch, validToolCallEnvelope } from "./policy.mjs";
-import { CHAT_TOOL_REGISTRY } from "./registry.mjs";
+import { nativeProbeDefinitions } from "./registry.mjs";
 import { calculate } from "./calculate.mjs";
 import { assistantToolMessage } from "./runner.mjs";
 import { buildNativeToolCompatibilitySnapshot, nativeToolIdentity, NATIVE_PROBE_MESSAGES, toolCompatibilityStore } from "./compatibility.mjs";
@@ -131,7 +131,7 @@ function noNativeCallReason(message) {
 async function modelRound(state, messages, stage) {
   assertCurrent(state);
   const { context, provider, route } = state;
-  const request = { messages, tools: stage === 0 ? CHAT_TOOL_REGISTRY.map(entry => entry.definition) : [],
+  const request = { messages, tools: stage === 0 ? nativeProbeDefinitions() : [],
     toolChoice: stage === 0 ? "auto" : "none", maxTokens: 512, temperature: 0,
     maxAttempts: 1, maxResponseBytes: CHAT_TOOL_LIMITS.responseBytes, signal: context.signal,
     timeoutMs: Math.max(1, Math.min(30000, Math.floor(CHAT_TOOL_LIMITS.durationMs - (context.clock() - context.started)))),

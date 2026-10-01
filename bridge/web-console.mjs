@@ -24,6 +24,7 @@ const ASSETS = new Map([
   ["/console/api-usage.css", ["api-usage.css", "text/css; charset=utf-8"]],
   ["/console/diagnostics.js", ["diagnostics.js", "text/javascript; charset=utf-8"]],
   ["/console/agent-tools.js", ["agent-tools.js", "text/javascript; charset=utf-8"]],
+  ["/console/agent-drafts.js", ["agent-drafts.js", "text/javascript; charset=utf-8"]],
   ["/console/deliveries.js", ["deliveries.js", "text/javascript; charset=utf-8"]],
   ["/console/memory.js", ["memory.js", "text/javascript; charset=utf-8"]],
   ["/console/diagnostics.css", ["diagnostics.css", "text/css; charset=utf-8"]],
@@ -34,7 +35,7 @@ const ASSETS = new Map([
 
 const MODULE_ASSETS = [
   "ui/state.js", "ui/metadata.js", "ui/dom.js", "ui/appearance.js", "ui/activity.js", "ui/actions.js",
-  "ui/tasks.js", "ui/background-feedback.js",
+  "ui/tasks.js", "ui/background-feedback.js", "ui/agent-draft-actions.js",
   "pages/overview.js", "pages/configuration.js", "pages/capabilities.js", "pages/api.js",
   "pages/logs.js", "pages/stickers.js", "pages/memes.js", "pages/diagnose-message.js",
 ];

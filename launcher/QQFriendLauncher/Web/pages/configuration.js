@@ -76,6 +76,7 @@ export function renderConfigEditor(snapshot, options = {}) {
   uiState.configBlocked = false;
   const editable = snapshot.editable || {};
   for (const [id, field] of Object.entries(CONFIG_FIELDS)) {
+    if (!$(id)) continue;
     const values = Array.isArray(editable[field]) ? editable[field] : [];
     $(id).value = field === "botNames" ? values.join(" ") : values.join("\n");
   }
@@ -106,7 +107,7 @@ export function syncConfigControls() {
 }
 
 export function configFingerprint() {
-  return JSON.stringify(Object.keys(CONFIG_FIELDS).map((id) => [id, $(id).value]));
+  return JSON.stringify(Object.keys(CONFIG_FIELDS).map((id) => [id, $(id)?.value || ""]));
 }
 
 export function setConfigDirty(value) {
@@ -127,7 +128,7 @@ export function configPayload() {
   return {
     revision: uiState.lastConfigSnapshot.revision,
     editable: Object.fromEntries(Object.entries(CONFIG_FIELDS)
-      .filter(([, field]) => uiState.lastConfigSnapshot.files?.[field]?.writable !== false)
+      .filter(([id, field]) => $(id) && Object.hasOwn(uiState.lastConfigSnapshot.editable || {}, field) && uiState.lastConfigSnapshot.files?.[field]?.writable !== false)
       .map(([id, field]) => [field, splitList($(id).value)])),
   };
 }
@@ -140,7 +141,8 @@ export function renderListEditors() {
     const chips = editor.querySelector(".list-editor-chips");
     chips.innerHTML = values.map((value) => `<span class="list-chip">${escapeHtml(value)}<button type="button" data-list-remove="${escapeHtml(value)}" title="移除 ${escapeHtml(value)}" aria-label="移除 ${escapeHtml(value)}">×</button></span>`).join("");
     const metadata = uiState.lastConfigSnapshot.files?.[CONFIG_FIELDS[source.id]];
-    const locked = metadata?.writable === false || !uiState.configLoaded || uiState.configBlocked || groupIsBusy("saveConfig");
+    const supported = Object.hasOwn(uiState.lastConfigSnapshot.editable || {}, CONFIG_FIELDS[source.id]);
+    const locked = !supported || metadata?.writable === false || !uiState.configLoaded || uiState.configBlocked || groupIsBusy("saveConfig");
     source.disabled = locked;
     editor.title = metadata?.writable === false ? `由环境变量 ${metadata.envName || ""} 控制，请修改部署配置` : locked ? "配置尚未读取或待核实" : "";
     editor.querySelectorAll("input,button").forEach(control => { control.disabled = locked; });

@@ -12,6 +12,17 @@ export const READ_TOOLS = Object.freeze([toolDefinition("recall_memory"), toolDe
 export const WEB_TOOL = toolDefinition("web_search");
 export const CALCULATE_TOOL = toolDefinition("calculate");
 export const PAGE_TOOL = toolDefinition("read_public_page");
+export const ATTACHMENT_TOOL = toolDefinition("read_current_attachment");
+export const DRAFT_TOOL = toolDefinition("draft_chat_summary");
+export const DRAFT_TASK_TOOL = toolDefinition("read_draft_task");
+
+export function agentMaterialsAllowed(scope, cfg = CFG, options = {}) {
+  return agentScopeAllowed(scope, cfg, options) && (cfg.agentMaterialGroupWhitelist || []).some(id => String(id) === String(scope.groupId));
+}
+
+export function agentDraftsAllowed(scope, cfg = CFG, options = {}) {
+  return agentScopeAllowed(scope, cfg, options) && (cfg.agentDraftGroupWhitelist || []).some(id => String(id) === String(scope.groupId));
+}
 
 export function agentScopeAllowed(scope, cfg = CFG, options = {}) {
   return options.mentioned === true && options.task === "group_chat" && options.allowTools !== false &&

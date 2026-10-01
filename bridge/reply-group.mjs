@@ -328,7 +328,7 @@ function replyRuntime(ctx) {
     memorySourceExcluded: ctx.memorySourceExcluded === true,
     memorySourceIds: ctx.memorySourceIds,
     replySpeaker: ctx.replySpeaker, replyUserId: ctx.replyUserId, quoteEvidence: ctx.quoteEvidence, contextPrivacyGeneration: ctx.contextPrivacyGeneration,
-    imageSources: ctx.imageSources, imageAnchor: ctx.imageAnchor };
+    imageSources: ctx.imageSources, imageAnchor: ctx.imageAnchor, attachments: ctx.files, mentionTargets: ctx.mentions };
 }
 
 function stopStaleGroupContext(ctx) {

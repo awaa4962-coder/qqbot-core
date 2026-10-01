@@ -171,6 +171,7 @@ function withToolSession(request, task) {
   return { ...options, imagePolicy, ...(visionSession ? { visionSession } : {}), toolSession: options.toolSession || createChatToolSession({
     scope, task,
     userMessage: request.userMsg, mentioned: request.isAtMe === true, allowTools: task === "interjection" ? false : options.allowTools,
+    attachments: options.attachments, currentMessageId: options.currentMessageId, mentionTargets: options.mentionTargets,
   }) };
 }
 

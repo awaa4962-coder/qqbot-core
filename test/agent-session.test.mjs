@@ -12,7 +12,7 @@ Object.assign(process.env, { NODE_ENV: "test", QQBOT_CONFIG_ROOT: root,
 const { createChatToolSession } = await import("../bridge/chat-tools/session.mjs");
 const { parseAgentGroupList } = await import("../bridge/config.mjs");
 const { saveEditableConfig, buildEditableConfigSnapshot } = await import("../bridge/admin-api/config-editor.mjs");
-const { CHAT_TOOL_REGISTRY, buildAgentToolSnapshot, registeredTool } = await import("../bridge/chat-tools/registry.mjs");
+const { CHAT_TOOL_REGISTRY, buildAgentToolSnapshot, registeredTool, nativeProbeDefinitions } = await import("../bridge/chat-tools/registry.mjs");
 const { CALCULATE_TOOL, PAGE_TOOL, WEB_TOOL, authorizedSearchQuery } = await import("../bridge/chat-tools/policy.mjs");
 const { invalidateMemoryPrivacyGeneration } = await import("../bridge/memory-profile/generation.mjs");
 const { createTraceRecorder, withMessageTrace, traceStage } = await import("../bridge/diagnostics/message-trace.mjs");
@@ -30,15 +30,18 @@ const call = (name, args, id = "agent-1") => ({ id, type: "function", function: 
 const names = session => session.definitions().map(entry => entry.function.name);
 const response = result => JSON.parse(result.content);
 
-test("registry owns all five immutable declarations and limits without executable admin actions", () => {
+test("registry owns phased immutable declarations and keeps the five-tool native proof unchanged", () => {
   assert.deepEqual(CHAT_TOOL_REGISTRY.map(entry => entry.definition.function.name),
+    ["recall_memory", "read_bot_status", "web_search", "calculate", "read_public_page",
+      "read_current_attachment", "draft_chat_summary", "read_draft_task"]);
+  assert.deepEqual(nativeProbeDefinitions().map(entry => entry.function.name),
     ["recall_memory", "read_bot_status", "web_search", "calculate", "read_public_page"]);
   assert.equal(registeredTool("send_message"), undefined);
   assert.throws(() => { CALCULATE_TOOL.function.parameters.properties.expression.maxLength = 99999; }, TypeError);
   for (const entry of CHAT_TOOL_REGISTRY) {
-    assert.equal(entry.mode, "read");
+    assert.equal(entry.mode, entry.phase === "drafts" ? entry.definition.function.name === "read_draft_task" ? "task" : "draft" : "read");
     assert.equal(entry.definition.function.parameters.additionalProperties, false);
-    assert.ok(entry.resultChars <= 2000 && entry.timeoutMs <= 23000);
+    assert.ok(entry.resultChars <= 2000 && entry.timeoutMs <= (entry.phase === "drafts" ? 85000 : 23000));
   }
   assert.equal(buildAgentToolSnapshot(config()).compatibility.status, "unknown");
   assert.equal(buildAgentToolSnapshot({}).tools.find(entry => entry.name === "calculate").available, false);

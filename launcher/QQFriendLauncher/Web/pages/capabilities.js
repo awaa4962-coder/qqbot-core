@@ -1,12 +1,15 @@
 import { $, escapeHtml, fmt } from "../ui/dom.js";
 import { uiState } from "../ui/state.js";
 import { mountAgentTools } from "../agent-tools.js";
+import { invalidateAgentDraftView, renderAgentDraftSnapshot } from "../ui/agent-draft-actions.js";
 
 export function renderCapabilities(snapshot) {
   if (!snapshot || !Array.isArray(snapshot.categories) || !Array.isArray(snapshot.capabilities) ||
       snapshot.capabilities.some(item => !item || typeof item !== "object")) {
+    invalidateAgentDraftView();
     throw new Error("能力目录响应不完整，请重新读取。");
   }
+  renderAgentDraftSnapshot(snapshot.agentDrafts);
   uiState.capabilitySnapshot = snapshot;
   uiState.capabilitiesLoaded = true;
   const categories = Array.isArray(snapshot.categories) ? snapshot.categories : [];
@@ -46,9 +49,14 @@ export function setCapabilityNotice(message, state = "error") {
 }
 
 export function capabilityReadFailed(error) {
+  invalidateAgentDraftView();
   uiState.capabilitiesLoaded = false;
-  const denied = [401, 403].includes(error.status);
-  setCapabilityNotice(denied ? "无权读取能力目录，请重新认证后刷新。" : `能力读取失败：${error.message || "暂不可用"}；${uiState.capabilitySnapshot.capabilities.length ? "以下为上次快照，非最新状态。" : "尚未取得目录。"}`);
+  const denied = [401, 403].includes(error?.status);
+  const message = denied ? "无权读取能力目录，请重新认证后刷新。"
+    : [500, 502, 503, 504].includes(error?.status) ? "能力读取失败：服务暂不可用。"
+    : error?.status === 404 ? "能力读取失败：接口未开放。" : "能力读取失败：状态未确认。";
+  const cached = Array.isArray(uiState.capabilitySnapshot?.capabilities) && uiState.capabilitySnapshot.capabilities.length > 0;
+  setCapabilityNotice(denied ? message : `${message}${cached ? "以下为上次快照，非最新状态。" : "尚未取得目录。"}`);
   if (denied) {
     uiState.capabilitySnapshot = { categories: [], capabilities: [] };
     $("capabilityList").innerHTML = "";
@@ -56,6 +64,13 @@ export function capabilityReadFailed(error) {
     $("capabilityNavCount").textContent = "-";
     const agentPanel = $("agentToolsPanel");
     if (agentPanel) mountAgentTools(agentPanel, null);
+  }
+  // Legacy action feedback reuses this same error for its toast after the page handler.
+  if (error && typeof error === "object") {
+    try {
+      error.message = message;
+      if (error.message !== message) throw new Error();
+    } catch { throw new Error(message); }
   }
 }
 

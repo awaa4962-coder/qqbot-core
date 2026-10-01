@@ -46,6 +46,8 @@
     if (action === "refresh") return buildBrowserSnapshot();
     if (action === "refreshStatus") return apiRequest("/admin/status");
     if (action === "getCapabilities") return apiRequest("/admin/capabilities");
+    if (action === "getAgentDrafts") return apiRequest("/admin/agent-drafts" + (payload.id ? "?id=" + encodeURIComponent(payload.id) : ""));
+    if (action === "cancelAgentDraft") return apiPost("/admin/agent-drafts", { action: "cancel", id: payload.id });
     if (action === "getLogs" || action === "refreshLogs") return apiRequest("/admin/logs?tail=120");
     if (action === "getConfig" || action === "refreshConfig") return apiRequest("/admin/config");
     if (action === "getApiProviders") return apiRequest("/admin/api-providers");
