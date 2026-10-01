@@ -133,8 +133,9 @@ test("synthetic bounded delayed case", async () => {
   try {
     assert.throws(() => runVmTestFile(child.url, { timeout: 1500 }), error => {
       assert.equal(error.code, "ERR_ASSERTION");
-      assert.equal(error.actual, null, "timed-out child must not report a completed exit status");
-      assert.equal(error.expected, 0);
+      assert.equal(error.actual, false, "timed-out runner must fail the clean-completion guard");
+      assert.equal(error.expected, true);
+      assert.match(error.message, /VM child did not finish cleanly/);
       return true;
     });
     assert.ok(Date.now() - started >= 1300, "rejection must come from the configured timeout, not a launch failure");
@@ -148,17 +149,23 @@ test("synthetic bounded delayed case", async () => {
   }
 });
 
-test("complete passing TAP cannot confirm a runner whose exit status is still timed out", t => {
+test("complete passing TAP cannot confirm a timed-out or signalled runner, even with a zero exit code", t => {
   const child = fixture('test("synthetic late completion", () => mark("completed"));');
-  const mock = t.mock.method(childProcess, "spawnSync", () => ({
-    status: null, signal: "SIGTERM", error: Object.assign(new Error("synthetic timeout"), { code: "ETIMEDOUT" }),
-    stdout: "TAP version 13\n# Subtest: synthetic late completion\nok 1 - synthetic late completion\n1..1\n# tests 1\n# pass 1\n# fail 0\n# cancelled 0\n", stderr: "",
-  }));
+  const results = [
+    { status: null, signal: "SIGTERM", error: Object.assign(new Error("synthetic timeout"), { code: "ETIMEDOUT" }) },
+    { status: 0, signal: null, error: Object.assign(new Error("synthetic timeout"), { code: "ETIMEDOUT" }) },
+    { status: 0, signal: "SIGTERM" },
+  ];
+  let result;
+  const mock = t.mock.method(childProcess, "spawnSync", () => ({ ...result,
+    stdout: "TAP version 13\n# Subtest: synthetic late completion\nok 1 - synthetic late completion\n1..1\n# tests 1\n# pass 1\n# fail 0\n# cancelled 0\n", stderr: "" }));
   syncBuiltinESMExports();
   try {
-    assert.throws(() => runVmTestFile(child.url), error => error.code === "ERR_ASSERTION" &&
-      error.actual === null && error.expected === 0);
-    assert.equal(mock.mock.callCount(), 1);
+    for (result of results) {
+      assert.throws(() => runVmTestFile(child.url), error => error.code === "ERR_ASSERTION" &&
+        error.actual === false && error.expected === true);
+    }
+    assert.equal(mock.mock.callCount(), results.length);
   } finally {
     mock.mock.restore();
     syncBuiltinESMExports();

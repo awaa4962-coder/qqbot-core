@@ -14,7 +14,8 @@ export function runVmTestFile(url, { pattern, timeout = 15000, minTests = 1 } = 
   const child = spawnSync(process.execPath, args, { env, encoding: "utf8", windowsHide: true,
     timeout, maxBuffer: 8 * 1024 * 1024 });
   const output = String(child.stdout || "") + String(child.stderr || "");
-  assert.equal(child.status, 0, output || String(child.error || "VM child did not finish"));
+  assert.ok(!child.error && !child.signal && child.status === 0,
+    "VM child did not finish cleanly: " + (output || String(child.error || "no completed result")));
   const placeholders = new Set([filename, filename.replace(/\\/g, "\\\\")]);
   const cases = [...String(child.stdout || "").matchAll(/^# Subtest: (.+)$/gm)];
   assert.ok(cases.some(match => !placeholders.has(match[1])), "VM child did not register explicit cases: " + output);
