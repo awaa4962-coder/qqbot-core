@@ -2,11 +2,11 @@
 
 ## Current Candidate
 
-Current candidate: `1.4.48-context-evidence` / source `0a8ca579`. Full identity, engineering evidence and pending operations live only in the [ROADMAP current snapshot](ROADMAP.md#当前权威快照2026-10-02仅文档同步).
+Current candidate: `1.4.49-image-task` / source `2970f29`; actual VERSION, package and root lock all carry this full version. Full identity, engineering evidence and pending operations live only in the [ROADMAP current snapshot](ROADMAP.md#当前权威快照2026-10-02仅文档同步).
 
 Progress 47/55 (85.5%), net +0. P3-06/P5-02 and remaining native/restore/gray gates are unaccepted; formal `2.0.0` remains unreleased.
 
-V8 completed one frozen16-request actual batch after39 focused tests, two independent operator reviews and network-none dry. Parent and independent final-text reviews classified primary6/8 and fallback7/8 above original per-case thresholds; three unsupported-motive/factual-interpretation counterexamples remain. Complete responses are not semantic acceptance. Original cases/rubrics, failed V7, V8 paid locks and full17 coverage remain unchanged; no replay, promotion or production-accuracy claim. See the ROADMAP snapshot for current identity and evidence.
+Historical V8's16 replies retain three semantic failures and immutable paid locks. V9 then passed43 focused cases, two non-author operator reviews and actual network-none dry before one bounded paid batch. It stopped after8 attempts:7 primary final texts,6 meeting original case thresholds and1 failing unsupported-purpose interpretation; the8th primary response-body read was aborted after observed HTTP200. All8 fallback cases were unexecuted. Nine unobserved pairs have no scores, not zero or pass; no replay or supplemental requests. Actual task flags/prompt bodies were verified, not semantic acceptance. See the ROADMAP snapshot for current identity and evidence. Full17, original rubrics, backup/restore/gray gates and all older evidence remain; production39/Windows/new-write defaults unchanged.
 
 ## Historical Matrix Preparation And Candidate47 Checkpoint
 

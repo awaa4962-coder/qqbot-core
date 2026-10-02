@@ -10,20 +10,28 @@
 
 ## 当前权威快照（2026-10-02，仅文档同步）
 
-以下记录本批冻结运行代码及已取得的实测证据，文档同步本身不构成新增验收。原37/43 + Agent10/12 = 47/55 = 85.5%，本次净增0；剩余原6项 + Agent2项，正式2.0.0未发布。生产仍1.4.39，Windows冻结，新增写操作默认关闭。
+以下记录本批Source49冻结运行代码及已有实测证据，文档同步本身不构成新增验收。原37/43 + Agent10/12 = 47/55 = 85.5%，本次净增0；剩余原6项 + Agent2项，正式2.0.0未发布。生产仍1.4.39，Windows冻结，新增写操作默认关闭。
 
 | 项目 | 当前值 |
 | --- | --- |
-| 冻结运行时代码 | `0a8ca5791c925ca7f202487bbe2dc890e28380de` / `1.4.48-context-evidence`；实际VERSION = package = lock |
-| 匹配Linux CI | [36931655318](https://github.com/awaa4962-coder/qqbot-core/actions/runs/36931655318)，`SUCCESS` |
-| 公开源码ZIP | 611文件；SHA-256 `f4635f2ca6aeb51eac129b1982d5359210d07aa0fad360303dbe03c6929247e9` |
-| 实际隔离Linux候选镜像 | `sha256:ae5cf92764471c15385b949fbb10337349a23ed2aa62f75ea85fd921a812f272`，不是生产镜像 |
-| 本地工程门禁 | 2849 total / 2808 pass / 41 optional / 0 fail |
-| 实际Linux工程门禁 | 2849 total / 2809 pass / 40 optional / 0 fail；lint0/0、audit0、replay13、JM、隔离smoke/auth/CAS、332运行文件逐字节核对 |
+| 冻结运行时代码 | `1.4.49-image-task` / `2970f29356358e9edd91509e8fc401728128e8a6`；实际VERSION、package和root lock均为该完整版本号 |
+| 匹配Linux CI | [36943254331](https://github.com/awaa4962-coder/qqbot-core/actions/runs/36943254331)，`SUCCESS` |
+| 公开源码ZIP | 614文件；SHA-256 `33395650cdb95eb76121af9818aa4b65c7a93f5161680b1bd689bb4a0178ba1d` |
+| 实际隔离Linux候选镜像 | `sha256:02b04768cedc794ca5c7d6170e6e58cace1cd907c008d47d92302be1750dade8`，不是生产镜像 |
+| 本地工程门禁 | 2893 total / 2852 pass / 41 optional / 0 fail |
+| 实际Linux工程门禁 | 2893 total / 2853 pass / 40 optional / 0 fail；lint0/0、audit0、replay13、JM、auth/CAS、隔离smoke的not-ready为预期结果、332运行文件逐字节核对 |
 
-选中引用近图投影、失败诊断元数据、固定7天确定终态确认账本GC已通过两轮非作者审计关闭；未知/执行中记录不回收、不重试。全门禁最初4fail记录保留，修复旧断言对应回归且未减测试、未弱化断言。`8db8833` / package标称1.4.46及candidate47等下文旧证据仅为历史；旧8db运行常量实际44已在前批证实，不能当当前48或版本一致证明。native四次实际证明来自早先original5工具声明、deep档位及共享24小时账本，本批未重跑。
+Source49的plain/stable/private/passive提示词字节保持不变；后端选中群的imageTask依实际数据与flag使用strict边界。视觉SYS由3018缩至2278字符，仅为字符变化，不是API Token或节费实测。source roles只证明messageOriginOnly，不证明世界事实、动机或图片创作者身份。
 
-V7旧付费批9次后fail-closed，不恢复或补跑。V8私有操作增量经39个局部用例、两轮非作者关闭和实际禁网16次演练（native0）后，主任务另行一次性授权本版16次真实请求；全部取得正文，主任务及独立复核主6/8、备7/8达到原单例门槛，仍有3条无依据动机/事实解读反例。P3-06/P5-02不接受，不清锁、不续跑、不因本次DS响应正常重分类旧失败；本次观察不代表生产准确率或受控节费效果。原8cases/rubrics、full17质量矩阵、quality/native/restore/gray门禁均保留，孤立8例不等于full17。当前候选没有最新一致备份/恢复或自然单群灰度通过证据；历史恢复不替代它们，[预声明灰度合同](GRAY-ACCEPTANCE.md#predeclared-gray-contract)不降门槛。
+R1复现的8项来源标签预期同步失败已关闭，原15用例及57条断言保留，仅补固定新增字段及对应有界长度；没有发现该问题造成运行时隐私越界。R2私有工具的Node预算/OOM、空ENV根目录、URI allowlist及TEMP基目录继承问题已修复并独立审计关闭；这不是模型语义通过。
+
+私有Linux检查仅结构化只读实际数据，不读取配置、不停止服务、不初始化服务、不调用真实模型或QQ。14项中13通过、1项平台不适用；Windows为12通过/2跳过，其中描述符专项现已在Linux通过。这不证明最新跨文件一致备份/恢复、旧39与新49的完整兼容、HMAC或账本鉴权，也不产生新native证明。ROOT原4次native实际证明及冷却到期时间2026-10-02 18:07 UTC保持不变，不重复；早先工具声明、deep档位及共享24小时账本证据仍属历史。
+
+历史V7旧付费批9次后fail-closed，不恢复或补跑。历史V8一次16请求全部取得正文，主任务及独立复核主6/8、备7/8达原单例门槛，仍3条反例；旧证据及锁不清零、不删除或续跑，也不因DS后来响应正常重分类旧失败。
+
+新V9保留原39局部用例并新增4项实际任务flag/提示体校验，双非作者及一次实际禁网16次演练（native0）关闭后，主任务另行授权本版一次真实批；8次请求后失败停止，7条主模型正文复核6条达原单例门槛、1条无源心理解释仍失败，第8条同名引用无正文，备模型8条未执行。未观测9对不计通过或零分，不补跑剩余额度。观察到HTTP200后的响应读取中止，不是已证的401或清洗故障，不据60004ms猜具体中止来源。失败及全批用量未知，已报告的部分不是完整成本或节费效果；实际新任务flag、提示体及源角色确已进入本次请求，但不等于模型正确理解。P3-06/P5-02及生产不接受。
+
+原8cases/rubrics、full17质量矩阵、quality/native/restore/gray门禁均保留，孤立8例不等于full17。当前Source49没有最新一致备份/恢复或自然单群灰度通过证据；历史恢复及只读结构检查不替代它们，[预声明灰度合同](GRAY-ACCEPTANCE.md#predeclared-gray-contract)不降门槛。
 
 ## 1. 总目标
 
@@ -203,3 +211,18 @@ P0 固定合成或明确授权且脱敏的样例，覆盖：多人同名/@/引�
 4. 对照任务耗时、缓存、用量和人工质量评价，调整路由与上下文预算。
 
 Windows 运行目录继续冻结。每阶段完成验收后单独发布、备份并部署服务器。
+
+### 11.3 历史Source48快照（2026-10-02，非当前候选）
+
+下表及段落从前次当前快照移入，仅保留历史身份与反证，不作为Source49验收或运行版本证明。
+
+| 项目 | 历史Source48值 |
+| --- | --- |
+| 冻结运行时代码 | `0a8ca5791c925ca7f202487bbe2dc890e28380de` / `1.4.48-context-evidence`；当批实际VERSION = package = lock |
+| 匹配Linux CI | [36931655318](https://github.com/awaa4962-coder/qqbot-core/actions/runs/36931655318)，`SUCCESS` |
+| 公开源码ZIP | 611文件；SHA-256 `f4635f2ca6aeb51eac129b1982d5359210d07aa0fad360303dbe03c6929247e9` |
+| 实际隔离Linux候选镜像 | `sha256:ae5cf92764471c15385b949fbb10337349a23ed2aa62f75ea85fd921a812f272`，不是生产镜像 |
+| 本地工程门禁 | 2849 total / 2808 pass / 41 optional / 0 fail |
+| 实际Linux工程门禁 | 2849 total / 2809 pass / 40 optional / 0 fail；lint0/0、audit0、replay13、JM、隔离smoke/auth/CAS、332运行文件逐字节核对 |
+
+Source48的选中引用近图投影、失败诊断元数据、固定7天确定终态确认账本GC已通过两轮非作者审计关闭；未知/执行中记录不回收、不重试。该批全门禁最初4fail记录保留，修复旧断言对应回归且未减测试、未弱化断言。`8db8833` / package标称1.4.46及candidate47等旧证据仅为历史；旧8db运行常量实际44已在前批证实，不能当Source48或当前Source49的版本一致证明。native四次实际证明来自早先original5工具声明、deep档位及共享24小时账本，Source48未重跑；本次文档同步也未重跑。

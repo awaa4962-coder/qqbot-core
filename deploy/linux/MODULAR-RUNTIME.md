@@ -2,9 +2,9 @@
 
 ## 当前候选
 
-当前候选：`1.4.48-context-evidence` / source `0a8ca579`。完整身份、工程证据与待办仅见 [ROADMAP当前权威快照](ROADMAP.md#当前权威快照2026-10-02仅文档同步)。
+当前候选：`1.4.49-image-task` / source `2970f29`，实际VERSION、package和root lock均为该完整版本号。完整身份、工程证据与待办仅见 [ROADMAP当前权威快照](ROADMAP.md#当前权威快照2026-10-02仅文档同步)。
 
-进度47/55=85.5%，本次净增0；工程通过不代表剩余quality/native/restore/gray门禁已接受，正式2.0.0未发布。
+进度47/55=85.5%，本次净增0；工程及结构化只读检查不代表剩余quality/native/restore/gray门禁已接受。V8反例及锁保持不变；V9仅机械准备中，尚无实际dry或付费结果，由主任务更新。生产39、Windows冻结、新写操作关闭，正式2.0.0未发布。
 
 ## 历史规划与维护基线
 

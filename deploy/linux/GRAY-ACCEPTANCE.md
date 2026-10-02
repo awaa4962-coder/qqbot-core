@@ -2,11 +2,11 @@
 
 ## Current Candidate
 
-Current candidate: `1.4.48-context-evidence` / source `0a8ca579`. Full identity, engineering evidence and pending operations live only in the [ROADMAP current snapshot](ROADMAP.md#当前权威快照2026-10-02仅文档同步).
+Current candidate: `1.4.49-image-task` / source `2970f29`; actual VERSION, package and root lock all carry this full version. Full identity, engineering evidence and pending operations live only in the [ROADMAP current snapshot](ROADMAP.md#当前权威快照2026-10-02仅文档同步).
 
 Progress 47/55 (85.5%), net +0. Engineering evidence is not quality/native/restore/gray acceptance or activation authorization; formal `2.0.0` remains unreleased.
 
-Current V8 actual16-request review retains three semantic failures, so candidate48 is not eligible for image gray or promotion. No fresh consistent state restore or natural observation occurred; successful engineering and sixteen responses do not bypass the contract below. Preserve all current paid claims and historical evidence; no retry to seek green.
+Historical V8 retains three semantic failures and immutable paid locks. V9's new actual batch stopped after8 attempts:7 primary final texts include1 below-threshold case, the8th body read was aborted after HTTP200, and all8 fallback cases were unexecuted. Source49 remains ineligible for image gray/promotion; no replay or supplement. Fresh cross-file consistent backup/restore, full old39/new49 compatibility, HMAC/ledger-auth and natural gray proof remain missing. Engineering and Linux structural read-only checks do not bypass the unchanged contract below or create new native proof. Production39, frozen Windows and closed new writes remain unchanged.
 
 ## Historical Candidate46 Checkpoint (2026-10-02)
 
@@ -25,7 +25,7 @@ That historical candidate passed same-source Linux engineering acceptance: 2746 
 byte checks. Earlier MiMo/DeepSeek native protocol roundtrips both passed using
 four requests, original tool identity and shared quota; the single-group and
 actual write/operational gates remain open. The Oct1 paragraph below describes
-the archived v5 candidate, not the current48 image or permission to activate it.
+the archived v5 candidate, not the current Source49 image or permission to activate it.
 
 The corrected formal-entry v6 replay has also completed one16-request paid batch
 after its same-source network-none dry and two independent operator closures.
@@ -69,7 +69,7 @@ fresh server verification and a reviewed eligible semantic result.
 
 | Item | Required Value |
 | --- | --- |
-| Prepared image version | `1.4.48-context-evidence` / isolated image `sha256:ae5cf92764471c15385b949fbb10337349a23ed2aa62f75ea85fd921a812f272`; [source/engineering identity](ROADMAP.md#当前权威快照2026-10-02仅文档同步), not final `2.0.0` or permission to activate |
+| Prepared image version | `1.4.49-image-task` / actual VERSION = package = root lock / source `2970f29` / isolated image `sha256:02b04768cedc794ca5c7d6170e6e58cace1cd907c008d47d92302be1750dade8`; [source/engineering identity](ROADMAP.md#当前权威快照2026-10-02仅文档同步), not final `2.0.0` or permission to activate |
 | Initial selected group | `1105126214` only |
 | Bridge process setting | `QQBOT_IMAGE_CONTEXT_ROLLOUT=1105126214` |
 | Observation starts | Actual new-image Bridge `/ready`, health and parsed live verification have passed |
