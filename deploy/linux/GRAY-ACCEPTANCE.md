@@ -2,7 +2,7 @@
 
 ## Current Candidate
 
-Development batch51 / `1.4.51-image-axes` is unaccepted and does not authorize activation. The Source50 evidence below is retained separately; no older success or missing-data assumption can certify the new batch. Original single-group window, coverage and incident rules stay intact.
+Source51 / `1.4.51-image-axes` has exact-source CI/Linux engineering evidence in ROADMAP, but no activation authorization. Its newly frozen16-reply real evaluation yielded primary5/8 and fallback8/8 under unchanged rubrics; three primary failures still block quality promotion. Full Bot copy startup stopped at candidate-boot exit1 and preserved its failed copy; cold/old39 phases were not run and the specific cause remains unknown. Original snapshot/history and live39 were unchanged, with no leftover QA container. Full17, business delivery and natural gray remain unproved. Source50 evidence below is historical; original group, window, coverage and incident requirements are unchanged.
 
 Current engineering candidate: `1.4.50-evidence-diagnostics` / source `9317374`. Same-source CI/Linux, fresh current39 restore and actual50/new-sidecar/old39 read-write runs on one isolated copy passed. V10 real16 results retain two below-threshold pairs, so no promotion is authorized. Full identity and evidence live only in the [ROADMAP current snapshot](ROADMAP.md#当前权威快照2026-10-02仅文档同步).
 
@@ -71,7 +71,7 @@ fresh server verification and a reviewed eligible semantic result.
 
 | Item | Required Value |
 | --- | --- |
-| Prepared image version | `1.4.49-image-task` / actual VERSION = package = root lock / source `2970f29` / isolated image `sha256:02b04768cedc794ca5c7d6170e6e58cace1cd907c008d47d92302be1750dade8`; [source/engineering identity](ROADMAP.md#当前权威快照2026-10-02仅文档同步), not final `2.0.0` or permission to activate |
+| Prepared image version | `1.4.51-image-axes` / actual VERSION = package = root lock / source `a0944dc`; exact isolated image in [source/engineering identity](ROADMAP.md#当前权威快照2026-10-02仅文档同步), not final `2.0.0` or permission to activate; quality and full Bot-copy gates remain failed/unaccepted |
 | Initial selected group | `1105126214` only |
 | Bridge process setting | `QQBOT_IMAGE_CONTEXT_ROLLOUT=1105126214` |
 | Observation starts | Actual new-image Bridge `/ready`, health and parsed live verification have passed |

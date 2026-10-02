@@ -2,7 +2,9 @@
 
 ## Current Candidate
 
-Development batch51 / `1.4.51-image-axes` is preparing a distinct literal/outcome/stance contract, missing-or-partial semantic packets and a full-copy Bot boot check. None is accepted yet; the Source50 results below remain historical evidence, not a Source51 result. All17 rows, original8 probes and thresholds are retained.
+Source51 / `1.4.51-image-axes` passed exact-source CI/Linux engineering; full identity is in ROADMAP. Its focused rules replace the old binary premise and examples with literal/outcome/stance axes. Private packet29, boot-helper14, wrapper9 and V11-contract50 tests passed separately. One newly frozen16-request real batch returned16 final replies; parent and independent review found primary5/8 and fallback8/8 meet the unchanged per-case threshold. Unsupported self-comfort and categorical exclusion of unknown complexity leave three primary failures. No replay, supplement, new baseline, real-chat reading or QQ send occurred. Source51 semantics/full17/gray remain unaccepted; Source50 evidence below is historical, not a borrowed pass.
+
+The actual full-copy Bot run stopped in candidate-boot with exit1; cold/old39 phases were not run. Original evidence and live39 were unchanged; the failed work copy remains. The parent wrapper did not preserve the child's fixed failure code, so the cause is unknown, not proven to be an application defect or timeout. Packet records remain context-only, not selected model wires or receipt proof. The fixed historical wrapper has verified current bytes but a known generic Python/Node float-serialization mismatch; it is not a universal JSON migration guarantee.
 
 Current engineering candidate: `1.4.50-evidence-diagnostics` / source `9317374`. Same-source CI/Linux and current39 restricted restore passed, followed by actual50 storage/new-sidecar cold runs and old39 read/write on the same private copy. V10 then completed one16-request real batch: primary7/8 and fallback7/8 meet original per-case criteria, with two failures blocking semantic/gray acceptance. Full identity and evidence live only in the [ROADMAP current snapshot](ROADMAP.md#当前权威快照2026-10-02仅文档同步).
 
