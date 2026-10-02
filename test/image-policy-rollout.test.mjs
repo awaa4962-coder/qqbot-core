@@ -86,6 +86,7 @@ test("stable templates stay byte-identical outside gray group and candidate meta
   assert.equal(candidate.system, changedStyle.system);
   assert.equal(candidate.metadata.promptFingerprint, changedStyle.metadata.promptFingerprint);
   assert.equal(candidate.system.split("图片解读任务：").length, 2);
+  assert.doesNotMatch(candidate.system, /图片问答范围：/);
 });
 
 function request(groupId = 50100, extra = {}) {
@@ -109,9 +110,9 @@ test("actual pixel gateway receives one evidence policy only for selected group"
   await executeChatTask(request());
   await executeChatTask(request(50101));
   assert.equal(bodies.length, 2);
-  assert.match(bodies[0].messages[0].content, /图片解读任务：/);
-  assert.doesNotMatch(bodies[1].messages[0].content, /图片解读任务：/);
-  assert.equal(JSON.stringify(bodies[0].messages).split("图片解读任务：").length, 2);
+  assert.match(bodies[0].messages[0].content, /图片问答范围：/);
+  assert.doesNotMatch(bodies[1].messages[0].content, /图片解读任务：|图片问答范围：/);
+  assert.equal(JSON.stringify(bodies[0].messages).split("图片问答范围：").length, 2);
   assert.ok(bodies[0].messages.some(message => Array.isArray(message.content) && message.content.some(part => part.type === "image_url")));
   const candidateParts = bodies[0].messages.at(-1).content;
   assert.ok(Array.isArray(candidateParts));
@@ -130,17 +131,17 @@ test("primary failure and objective description retain captured policy even if r
   const result = await executeChatTask(request());
   assert.equal(result.position, "fallback");
   assert.deepEqual(bodies.map(body => body.model), ["pixel", "objective", "deepseek"]);
-  assert.match(bodies[2].messages[0].content, /图片解读任务：/);
+  assert.match(bodies[2].messages[0].content, /图片问答范围：/);
   assert.match(JSON.stringify(bodies[2].messages), /深红色矩形|我没完成这次项目/);
   assert.doesNotMatch(JSON.stringify(bodies[2].messages), /PRIVATE_SYNTHETIC|data:image/);
-  assert.doesNotMatch(JSON.stringify(bodies[1].messages), /图片解读任务|没完成这次项目/);
+  assert.doesNotMatch(JSON.stringify(bodies[1].messages), /图片解读任务|图片问答范围|没完成这次项目/);
 });
 test("private and file routes remain stable during group-only gray release", async t => {
   process.env.QQBOT_IMAGE_CONTEXT_ROLLOUT = "50100";
   const bodies = capture(t, () => ({ content: "只描述已读取画面。" }));
   for (const task of ["private_chat", "file_chat"]) await executePrivateChatTask(request(null, { task }));
   assert.equal(bodies.length, 2);
-  for (const body of bodies) assert.doesNotMatch(body.messages[0].content, /图片解读任务：/);
+  for (const body of bodies) assert.doesNotMatch(body.messages[0].content, /图片解读任务：|图片问答范围：/);
 });
 test("verified live scope determines rollout instead of a mismatched request scope", async () => {
   process.env.QQBOT_IMAGE_CONTEXT_ROLLOUT = "50100";

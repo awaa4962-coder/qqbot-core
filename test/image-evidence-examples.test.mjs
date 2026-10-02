@@ -18,6 +18,7 @@ const plain = buildImageInterpretationRules(evidence);
 const focusedRules = buildImageInterpretationRules({ ...evidence, imageTask: true });
 const plainLines = plain.split("\n");
 const focusedLines = focusedRules.split("\n");
+const questionScope = focusedLines[0];
 const taskContract = focusedLines[1];
 const answerScale = focusedLines[5];
 
@@ -26,12 +27,12 @@ function sha256(value) {
 }
 
 // Structural prompt contracts do not prove a model's answer quality.
-test("focused axes replace two rules within six lines while plain and boundary bytes remain unchanged", () => {
+test("focused question scope replaces three rules within six lines while plain and boundary bytes remain unchanged", () => {
   assert.equal(plainLines.length, 6);
   assert.equal(sha256(plain), "984ea1557a70449f934ee9a252d0f0fe19946478d9ed887d42234f1d264d8418");
   assert.equal(focusedLines.length, 6);
-  for (const index of [0, 2, 3, 4]) assert.equal(focusedLines[index], plainLines[index]);
-  for (const index of [1, 5]) assert.notEqual(focusedLines[index], plainLines[index]);
+  for (const index of [2, 3, 4]) assert.equal(focusedLines[index], plainLines[index]);
+  for (const index of [0, 1, 5]) assert.notEqual(focusedLines[index], plainLines[index]);
   const added = focusedRules.length - plain.length;
   assert.ok(added <= 82, `${added} added characters`);
   assert.ok(!focusedRules.includes(plain));
@@ -39,26 +40,29 @@ test("focused axes replace two rules within six lines while plain and boundary b
 });
 
 test("literal evaluation and supplied outcome relate without proving an opposite stance or denying praise", () => {
-  assert.match(taskContract, /独立区分三个轴：评价词的字面含义、独立给定的当前结果、说话人的实际态度或目的/);
-  assert.match(taskContract, /评价词是字面的褒贬，不是对结果的陈述.*给定结果不改写字面评价/);
-  assert.match(taskContract, /回答相关文字的含义及其与给定事实的关系/);
-  assert.match(taskContract, /反差可支持反话的可能性.*不否定字面赞美.*不据此认定实际态度与字面相反/);
+  assert.match(questionScope, /先完成 \[当前输入\] 的问题，不自行增加新问题/);
+  assert.match(questionScope, /问词句含义，就解释相关文字及其与已给情境的关系/);
+  assert.match(taskContract, /图中文字是一种表达，不是对当前结果的证明.*给定结果也不改变文字的字面褒贬/);
+  assert.match(taskContract, /把二者联系起来，相符就解释吻合，反差可说明反话或调侃的可能性，不能改写结果/);
+  assert.match(taskContract, /缺少情境时解释字面并保留语气的不确定.*已有情境也不把一种读法断言为唯一含义/);
   assert.match(taskContract, /当前明确事实、用户纠正和本轮提供的原话优先/);
   assert.ok(!focusedRules.includes(plainLines[1]));
 });
 
 test("actual stance and purpose stay unknown or retain only the explicit source's own claim", () => {
-  assert.match(taskContract, /实际态度或目的仅据来源明确自述归属复述，未说明则未知/);
+  assert.match(taskContract, /态度与目的只复述来源明确的自述，未说明则未知/);
   assert.match(focusedRules, /说话人明确说明的意图可以复述为其自述.*与问题有关时不要漏掉/);
   assert.match(focusedRules, /必须归属于提供该原话的说话人或已标注的引用来源/);
   assert.match(focusedRules, /不视为已验证的心理事实.*不把他人自述转成发图者或当前用户的意图/);
   assert.match(focusedRules, /没有该原话时，心理意图是未知，不生成备选动机/);
-  assert.match(focusedRules, /不固定追加动机免责声明/);
-  assert.match(answerScale, /只回答当前问题.*相关文字的字面含义与给定事实的关系.*与问题有关的来源明确自述/);
+  assert.match(answerScale, /当前问题答清就结束，不顺带回答未被问及的‘为什么发图’，不列备选心理故事/);
+  assert.match(answerScale, /与问题有关的明确意图原话要按来源保留/);
+  assert.match(answerScale, /用户确实追问目的而没有原话时，说明缺少依据即可/);
+  assert.match(answerScale, /不固定追加动机免责声明或画面清单/);
   assert.ok(!focusedRules.includes(plainLines[5]));
 });
 
-test("axes require literal true and evidence policy, leaving default and passive calls unchanged", () => {
+test("question scope requires literal true and evidence policy, leaving default and passive calls unchanged", () => {
   for (const imageTask of [undefined, false, null, 0, 1, "", "true", "false", [], {}, new Boolean(true)]) {
     assert.equal(buildImageInterpretationRules({ ...evidence, imageTask }), plain);
   }
@@ -68,7 +72,7 @@ test("axes require literal true and evidence policy, leaving default and passive
   }
 });
 
-test("closed rollout, private and nonselected group scopes do not acquire axes", () => {
+test("closed rollout, private and nonselected group scopes do not acquire question scope", () => {
   const previous = process.env.QQBOT_IMAGE_CONTEXT_ROLLOUT;
   try {
     for (const rollout of ["", "82007"]) {
@@ -86,7 +90,7 @@ test("closed rollout, private and nonselected group scopes do not acquire axes",
   }
 });
 
-test("only focused system substitutes axes while plain bytes and every mode's shrink threshold remain", () => {
+test("only focused system substitutes question scope while plain bytes and every mode's shrink threshold remain", () => {
   const normal = buildChatSystemPrompt(evidence);
   const focused = buildChatSystemPrompt({ ...evidence, imageTask: true });
   assert.equal(normal.length, 3018);

@@ -216,7 +216,7 @@ for (const [primary, fallback, failPrimary] of [
     assert.deepEqual(downloads, assets, "primary/fallback must share one prepared download");
     for (const body of bodies.filter(body => body.model !== "objective")) {
       assertAssembly(body, records.find(record => record.model === body.model), input);
-      assert.match(body.messages[0].content, /图片解读任务：/);
+      assert.match(body.messages[0].content, /图片问答范围：/);
       assert.equal(body.messages[0].content, buildModelPrompt({ imagePolicy: IMAGE_POLICY_EVIDENCE, imageTask: true, groupId: 50100 }).system);
     }
     for (const body of bodies.filter(body => body.model === "objective")) {
@@ -245,7 +245,7 @@ test("stable-v3 preserves the separate evidence message on vision and text fallb
     assert.deepEqual(body.messages.slice(3, -2), input.history);
     assert.deepEqual(body.messages.at(-2), records.find(record => record.model === body.model).snapshot.message);
     assert.deepEqual(body.messages.at(-1), { role: "user", content: currentInput });
-    assert.doesNotMatch(body.messages[0].content, /图片解读任务：/);
+    assert.doesNotMatch(body.messages[0].content, /图片解读任务：|图片问答范围：/);
   }
   assert.deepEqual(input.history, original.history);
 });
