@@ -231,6 +231,7 @@ import { initializeDeliveries } from "./deliveries.js";
       step.imageFirstFrames > 0 && `${step.imageFirstFrames} 张动态图仅读首帧`,
       step.chars !== undefined && `${step.chars} 字符`, step.messages !== undefined && `${step.messages} 层上下文`,
       step.pruned > 0 && `裁剪 ${step.pruned} 层`, step.httpStatus > 0 && `HTTP ${step.httpStatus}`,
+      cancellationDetails(step),
       ...contextDetails(step),
       ...promptCompositionDetails(step),
       step.attempt && `第 ${step.attempt} 次`, step.probability !== undefined && `概率 ${Math.round(step.probability * 100)}%`,
@@ -238,6 +239,13 @@ import { initializeDeliveries } from "./deliveries.js";
       ...modeDetails(step),
       ...tools,
     ].filter(Boolean).join(" · ");
+  }
+
+  function cancellationDetails(step) {
+    const names = { request_timeout: "请求时限", chat_run: "会话中止", caller: "上游中止",
+      ambiguous: "多个中止源", unknown: "来源未知" };
+    const source = Object.getOwnPropertyDescriptor(step, "cancellationSource")?.value;
+    return typeof source === "string" && Object.hasOwn(names, source) ? "中止来源：" + names[source] : "";
   }
 
   function usageDetails(step) {

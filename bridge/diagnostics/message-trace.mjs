@@ -28,6 +28,7 @@ const SOURCE_KINDS = new Set(["quote", "thread", "memory", "group", "image", "no
 const SOURCE_REASONS = new Set(["reply_chain", "continuation", "keywords", "synonyms", "mention", "recent", "image_reference", "explicit_note", "operator_note", "inferred_topic", "attachment"]);
 const FAILURE_STAGES = new Set(["fetch", "response_read", "json_parse", "http_status", "cancelled"]);
 const FAILURE_CATEGORIES = new Set(["network", "http", "invalid_json", "response_limit", "aborted", "unknown"]);
+const CANCELLATION_SOURCES = new Set(["request_timeout", "chat_run", "caller", "ambiguous", "unknown"]);
 const NUMBERS = ["chars", "messages", "pruned", "truncated", "images", "mentions", "attempt", "reasoningLength", "promptTokens", "cachedTokens", "completionTokens", "probability", "selfFactsVersion", "capabilityCount", "turnRevision", "privacyRevision", "staticChars", "dynamicChars", "inputTextChars",
   "currentInputChars", "historyTextChars", "systemTextChars", "userTextChars", "assistantTextChars", "toolTextChars", "otherTextChars", "imageParts", "toolDeclarations", "toolSchemaChars", "sourceReasonOmitted",
   "modelRounds", "transportAttempts", "toolCalls", "toolOutputChars", "requestedCompletionTokens", "toolResultChars", "modelRoundLimit", "toolLimit",
@@ -59,7 +60,7 @@ function safeDetails(details) {
 
 function safeTransportDetails(details) {
   const safe = {};
-  for (const [key, allowed] of [["failureStage", FAILURE_STAGES], ["failureCategory", FAILURE_CATEGORIES]]) {
+  for (const [key, allowed] of [["failureStage", FAILURE_STAGES], ["failureCategory", FAILURE_CATEGORIES], ["cancellationSource", CANCELLATION_SOURCES]]) {
     const value = ownDetailValue(details, key);
     if (allowed.has(value)) safe[key] = value;
   }

@@ -189,6 +189,34 @@ if (!vm.SourceTextModule) {
     assert.ok(tags(h.element("traceDetail")).every(tag => ["DIV", "H3", "P", "OL", "LI", "SPAN"].includes(tag)));
   });
 
+  test("model diagnostics show only observed fixed cancellation sources", async () => {
+    const sources = ["request_timeout", "chat_run", "caller", "ambiguous", "unknown"];
+    const names = ["请求时限", "会话中止", "上游中止", "多个中止源", "来源未知"];
+    const h = await harness([trace(sources.map((cancellationSource, elapsedMs) => ({
+      stage: "model", status: "failed", httpStatus: 200, cancellationSource, elapsedMs,
+    })))]);
+    for (const [index, name] of names.entries()) {
+      assert.equal(h.steps()[index].children[0].textContent, "HTTP 200 · 中止来源：" + name);
+    }
+    assert.equal(h.calls.length, 1);
+  });
+
+  test("elapsed time, raw abort text and unknown or inherited cancellation labels cannot invent a source", async () => {
+    const secret = "PRIVATE-CANCEL-<svg onload=alert(1)>";
+    let getters = 0;
+    const inherited = Object.assign(Object.create({ cancellationSource: "caller" }), { stage: "model", status: "failed", elapsedMs: 60004 });
+    const accessor = { stage: "model", status: "failed", elapsedMs: 60004 };
+    Object.defineProperty(accessor, "cancellationSource", { get() { getters++; return secret; } });
+    const h = await harness([trace([
+      { stage: "model", status: "failed", elapsedMs: 60004, error: secret, abortReason: secret },
+      ...[secret, "constructor", "__proto__", {}, ["request_timeout"]].map(cancellationSource => ({
+        stage: "model", status: "failed", elapsedMs: 60004, cancellationSource,
+      })), inherited, accessor,
+    ])]);
+    assert.equal(getters, 0);
+    assert.doesNotMatch(h.text(), /中止来源|PRIVATE-CANCEL|request_timeout|constructor|__proto__/);
+  });
+
   test("existing context and model details survive selection, refresh and empty trace lists", async () => {
     const legacy = trace([
       { stage: "context", status: "ok", elapsedMs: 5, messages: 2,

@@ -2,7 +2,7 @@
 
 ## Current Candidate
 
-Current candidate: `1.4.49-image-task` / source `2970f29`; actual VERSION, package and root lock all carry this full version. Full identity, engineering evidence and pending operations live only in the [ROADMAP current snapshot](ROADMAP.md#当前权威快照2026-10-02仅文档同步).
+Current development batch: `1.4.50-evidence-diagnostics`. Observed cancellation labels, focused image examples and current39 restricted backup/restore are being validated together; no promotion is authorized. Source49 / `2970f29` remains historical engineering evidence. Full identity, evidence and pending operations live only in the [ROADMAP current snapshot](ROADMAP.md#当前权威快照2026-10-02仅文档同步).
 
 Progress 47/55 (85.5%), net +0. Engineering evidence is not quality/native/restore/gray acceptance or activation authorization; formal `2.0.0` remains unreleased.
 

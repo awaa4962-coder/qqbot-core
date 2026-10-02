@@ -18,35 +18,38 @@ export async function postProviderJson(provider, key, body, options = {}) {
   const startedAt = monotonicNow();
   const maxAttempts = Math.max(1, Math.min(3, Number(options.maxAttempts || 2)));
   const safeBody = redactProviderPayload(body);
-  const signal = requestSignal(options.timeoutMs, options.signal);
-  const attemptOptions = { ...options, signal };
-  let outcome = null;
-  let transportAttempts = 0;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    if (signal.aborted) return cancelledOutcome(outcome, transportAttempts, startedAt);
-    const reason = chatRunStopReason() || requestStopReason(options);
-    if (reason) return traceTransportOutcome({ ok: false, cancelled: true, error: reason, status: 0,
-      httpStatus: 0, failureStage: "cancelled", failureCategory: "unknown",
-      transportAttempts, durationMs: Math.max(0, monotonicNow() - startedAt) });
-    const attemptStarted = monotonicNow();
-    outcome = await postProviderJsonOnce(endpoint, headers, safeBody, provider, attemptOptions);
-    transportAttempts++;
-    reportAttempt(options, outcome, monotonicNow() - attemptStarted);
-    if (signal.aborted) return cancelledOutcome(outcome, transportAttempts, startedAt);
-    if (outcome.ok || !shouldRetry(outcome, attempt, maxAttempts)) break;
-    try { await delay(Math.max(0, Number(options.retryDelayMs ?? 400)) * attempt, undefined, { signal }); }
-    catch (error) {
-      if (signal.aborted) return cancelledOutcome(outcome, transportAttempts, startedAt);
-      throw error;
+  const cancellation = requestSignal(options.timeoutMs, options.signal);
+  const { signal } = cancellation;
+  try {
+    const attemptOptions = { ...options, signal };
+    let outcome = null;
+    let transportAttempts = 0;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (signal.aborted) return cancelledOutcome(outcome, transportAttempts, startedAt, cancellation);
+      const reason = chatRunStopReason() || requestStopReason(options);
+      if (reason) return traceTransportOutcome({ ok: false, cancelled: true, error: reason, status: 0,
+        httpStatus: 0, failureStage: "cancelled", failureCategory: "unknown",
+        ...cancellation.metadata(), transportAttempts, durationMs: Math.max(0, monotonicNow() - startedAt) });
+      const attemptStarted = monotonicNow();
+      outcome = await postProviderJsonOnce(endpoint, headers, safeBody, provider, attemptOptions, cancellation);
+      transportAttempts++;
+      reportAttempt(options, outcome, monotonicNow() - attemptStarted);
+      if (signal.aborted) return cancelledOutcome(outcome, transportAttempts, startedAt, cancellation);
+      if (outcome.ok || !shouldRetry(outcome, attempt, maxAttempts)) break;
+      try { await delay(Math.max(0, Number(options.retryDelayMs ?? 400)) * attempt, undefined, { signal }); }
+      catch (error) {
+        if (signal.aborted) return cancelledOutcome(outcome, transportAttempts, startedAt, cancellation);
+        throw error;
+      }
     }
-  }
-  return traceTransportOutcome({ ...outcome, transportAttempts, durationMs: Math.max(0, monotonicNow() - startedAt) });
+    return traceTransportOutcome({ ...outcome, transportAttempts, durationMs: Math.max(0, monotonicNow() - startedAt) });
+  } finally { cancellation.dispose(); }
 }
 
-function cancelledOutcome(outcome, transportAttempts, startedAt) {
+function cancelledOutcome(outcome, transportAttempts, startedAt, cancellation) {
   return traceTransportOutcome({ ok: false, cancelled: true, error: chatRunStopReason() || "API 请求超时", status: outcome?.status || 0,
     httpStatus: safeHttpStatus(outcome?.httpStatus), failureStage: outcome?.failureStage || "cancelled", failureCategory: "aborted",
-    transportAttempts, durationMs: Math.max(0, monotonicNow() - startedAt) });
+    ...cancellation.metadata(), transportAttempts, durationMs: Math.max(0, monotonicNow() - startedAt) });
 }
 
 function reportAttempt(options, outcome, durationMs) {
@@ -60,7 +63,8 @@ function safeHttpStatus(value) { return Number.isInteger(value) && value >= 100 
 function transportMetadata(outcome) {
   return { httpStatus: safeHttpStatus(outcome.httpStatus),
     ...(outcome.failureStage ? { failureStage: outcome.failureStage } : {}),
-    ...(outcome.failureCategory ? { failureCategory: outcome.failureCategory } : {}) };
+    ...(outcome.failureCategory ? { failureCategory: outcome.failureCategory } : {}),
+    ...(outcome.cancellationSource ? { cancellationSource: outcome.cancellationSource } : {}) };
 }
 
 function traceTransportOutcome(outcome) {
@@ -86,7 +90,7 @@ function failureCategory(error, stage) {
   return "unknown";
 }
 
-async function postProviderJsonOnce(endpoint, headers, body, provider, options) {
+async function postProviderJsonOnce(endpoint, headers, body, provider, options, cancellation) {
   let status = 0;
   const diagnostic = {};
   try {
@@ -110,6 +114,7 @@ async function postProviderJsonOnce(endpoint, headers, body, provider, options) 
         httpStatus: safeHttpStatus(status),
         failureStage: "http_status",
         failureCategory: "http",
+        ...cancellation.metadata(),
         error: provider.name + " HTTP " + response.status + formatErrorSuffix(data),
         usage: normalizeUsage(data?.usage || data?.usageMetadata),
         durationMs: 0,
@@ -120,6 +125,7 @@ async function postProviderJsonOnce(endpoint, headers, body, provider, options) 
       status: response.status,
       httpStatus: safeHttpStatus(status),
       data,
+      ...cancellation.metadata(),
       durationMs: 0,
     };
   } catch (error) {
@@ -129,6 +135,7 @@ async function postProviderJsonOnce(endpoint, headers, body, provider, options) 
       httpStatus: safeHttpStatus(status),
       ...(diagnostic.failureStage ? { failureStage: diagnostic.failureStage } : {}),
       failureCategory: options.signal.aborted ? "aborted" : diagnostic.failureCategory || failureCategory(error, diagnostic.failureStage),
+      ...cancellation.metadata(),
       error: safeTransportError(error),
       invalidResponse: error?.code === "INVALID_PROVIDER_JSON",
       responseTooLarge: error?.code === "PROVIDER_RESPONSE_LIMIT",
@@ -141,7 +148,36 @@ function requestSignal(timeoutMs, external) {
   const duration = Number.isSafeInteger(timeoutMs) && timeoutMs > 0 ? Math.min(timeoutMs, MAX_PROVIDER_REQUEST_MS) : 30000;
   const timeout = AbortSignal.timeout(duration);
   const chatSignal = chatRunSignal();
-  return AbortSignal.any([timeout, chatSignal, external].filter(Boolean));
+  const signal = AbortSignal.any([timeout, chatSignal, external].filter(Boolean));
+  return observeCancellation(signal, [[timeout, "request_timeout"], [chatSignal, "chat_run"], [external, "caller"]]);
+}
+
+function observeCancellation(signal, upstream) {
+  // Deduplicate identity in the existing merge order; never retain or render reasons.
+  const sources = new Map();
+  for (const [source, label] of upstream) if (source && !sources.has(source)) sources.set(source, label);
+  let cancellationSource;
+  const snapshot = () => {
+    if (!signal.aborted || cancellationSource) return;
+    cancellationSource = "unknown";
+    try {
+      const matches = [...sources].filter(([source]) => source.aborted && Object.is(source.reason, signal.reason));
+      if (matches.length === 1) cancellationSource = matches[0][1];
+      else if (matches.length > 1) cancellationSource = "ambiguous";
+    } catch { /* Observation cannot change cancellation behavior. */ }
+  };
+  if (signal.aborted) snapshot();
+  else {
+    try { signal.addEventListener("abort", snapshot, { once: true }); } catch { /* Metadata is best effort. */ }
+  }
+  return {
+    signal,
+    metadata: () => signal.aborted ? { cancellationSource: cancellationSource || "unknown" } : {},
+    dispose: () => {
+      try { signal.removeEventListener("abort", snapshot); } catch { /* Diagnostics cannot break delivery. */ }
+      sources.clear();
+    },
+  };
 }
 
 function requestStopReason(options) {
