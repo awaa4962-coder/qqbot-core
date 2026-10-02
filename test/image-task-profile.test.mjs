@@ -138,14 +138,14 @@ test("focused profile frontloads current question and fact/source consistency be
   assert.match(lines[0], /^当前任务：先回答 \[当前输入\] 正在问的对象和本轮要求/);
   assert.match(lines[1], /^事实与来源：当前明确事实和纠正优先/);
   assert.match(lines[1], /分清可见证据、原话、建议、反馈和真实工具结果/);
-  const imageRules = buildImageInterpretationRules(evidence);
+  const imageRules = buildImageInterpretationRules({ ...evidence, imageTask: true });
   assert.ok(focused.indexOf(imageRules) > focused.indexOf(lines[1]));
   assert.ok(focused.indexOf(imageRules) < focused.indexOf(CORE_IDENTITY));
 });
 
 test("identity, complete safety, memory semantics and image rules are reused without edits or duplication", () => {
   for (const text of [CORE_IDENTITY, CONTEXT_SAFETY, MEMORY_SEMANTIC_BOUNDARY,
-    buildImageInterpretationRules(evidence)]) {
+    buildImageInterpretationRules({ ...evidence, imageTask: true })]) {
     assert.equal(focused.split(text).length, 2);
   }
   assert.match(focused, /AI猫娘助手/);

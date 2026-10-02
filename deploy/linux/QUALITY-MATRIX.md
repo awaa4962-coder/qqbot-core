@@ -2,6 +2,8 @@
 
 ## Current Candidate
 
+Development batch51 / `1.4.51-image-axes` is preparing a distinct literal/outcome/stance contract, missing-or-partial semantic packets and a full-copy Bot boot check. None is accepted yet; the Source50 results below remain historical evidence, not a Source51 result. All17 rows, original8 probes and thresholds are retained.
+
 Current engineering candidate: `1.4.50-evidence-diagnostics` / source `9317374`. Same-source CI/Linux and current39 restricted restore passed, followed by actual50 storage/new-sidecar cold runs and old39 read/write on the same private copy. V10 then completed one16-request real batch: primary7/8 and fallback7/8 meet original per-case criteria, with two failures blocking semantic/gray acceptance. Full identity and evidence live only in the [ROADMAP current snapshot](ROADMAP.md#当前权威快照2026-10-02仅文档同步).
 
 Progress 47/55 (85.5%), whole-item net +0. P3-06/P5-02 and full business/native/gray gates remain unaccepted; scoped runtime compatibility is separate from full Bot/QQ proof and formal `2.0.0` remains unreleased.

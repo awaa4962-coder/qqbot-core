@@ -2,6 +2,8 @@
 
 ## Current Candidate
 
+Development batch51 / `1.4.51-image-axes` is unaccepted and does not authorize activation. The Source50 evidence below is retained separately; no older success or missing-data assumption can certify the new batch. Original single-group window, coverage and incident rules stay intact.
+
 Current engineering candidate: `1.4.50-evidence-diagnostics` / source `9317374`. Same-source CI/Linux, fresh current39 restore and actual50/new-sidecar/old39 read-write runs on one isolated copy passed. V10 real16 results retain two below-threshold pairs, so no promotion is authorized. Full identity and evidence live only in the [ROADMAP current snapshot](ROADMAP.md#当前权威快照2026-10-02仅文档同步).
 
 Progress 47/55 (85.5%), net +0. Engineering evidence is not quality/native/restore/gray acceptance or activation authorization; formal `2.0.0` remains unreleased.

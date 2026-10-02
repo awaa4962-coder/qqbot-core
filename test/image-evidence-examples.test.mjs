@@ -4,46 +4,61 @@ import process from "node:process";
 import { test } from "node:test";
 
 import { buildChatSystemPrompt } from "../bridge/system-prompts/chat.mjs";
+import { CORE_IDENTITY, CONTEXT_SAFETY } from "../bridge/system-prompts/identity.mjs";
 import {
   buildImageContextMessage,
   buildImageInterpretationRules,
 } from "../bridge/system-prompts/image-context.mjs";
 import { IMAGE_POLICY_EVIDENCE, IMAGE_POLICY_STABLE } from "../bridge/system-prompts/image-policy.mjs";
+import { MEMORY_SEMANTIC_BOUNDARY } from "../bridge/memory-profile/semantics.mjs";
 
 const evidence = { imagePolicy: IMAGE_POLICY_EVIDENCE };
 const stable = { imagePolicy: IMAGE_POLICY_STABLE };
 const plain = buildImageInterpretationRules(evidence);
 const focusedRules = buildImageInterpretationRules({ ...evidence, imageTask: true });
-const added = focusedRules.slice(plain.length);
-const [label, contrast, attribution] = added.slice(1).split("\n");
+const plainLines = plain.split("\n");
+const focusedLines = focusedRules.split("\n");
+const taskContract = focusedLines[1];
+const answerScale = focusedLines[5];
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
 // Structural prompt contracts do not prove a model's answer quality.
-test("six evidence instructions retain their bytes before two bounded fictional examples", () => {
-  assert.equal(plain.split("\n").length, 6);
+test("focused axes replace two rules within six lines while plain and boundary bytes remain unchanged", () => {
+  assert.equal(plainLines.length, 6);
   assert.equal(sha256(plain), "984ea1557a70449f934ee9a252d0f0fe19946478d9ed887d42234f1d264d8418");
-  assert.ok(focusedRules.startsWith(plain + "\n"));
-  assert.equal(added.slice(1).split("\n").length, 3);
-  assert.ok(added.length <= 82, `${added.length} added characters`);
-  assert.equal(label, "虚构例非本轮事实，勿套人物、结果或句长：");
+  assert.equal(focusedLines.length, 6);
+  for (const index of [0, 2, 3, 4]) assert.equal(focusedLines[index], plainLines[index]);
+  for (const index of [1, 5]) assert.notEqual(focusedLines[index], plainLines[index]);
+  const added = focusedRules.length - plain.length;
+  assert.ok(added <= 82, `${added} added characters`);
+  assert.ok(!focusedRules.includes(plain));
+  assert.doesNotMatch(focusedRules, /虚构例|图字“|→/);
 });
 
-test("state contrast reply keeps positive literal words and supplied outcome, ending at optional irony", () => {
-  const [input, reply] = contrast.split("→");
-  assert.equal(input, "图字“正常”，故障");
-  assert.equal(reply, "字面正常，与故障相反，可作反话。");
+test("literal evaluation and supplied outcome relate without proving an opposite stance or denying praise", () => {
+  assert.match(taskContract, /独立区分三个轴：评价词的字面含义、独立给定的当前结果、说话人的实际态度或目的/);
+  assert.match(taskContract, /评价词是字面的褒贬，不是对结果的陈述.*给定结果不改写字面评价/);
+  assert.match(taskContract, /回答相关文字的含义及其与给定事实的关系/);
+  assert.match(taskContract, /反差可支持反话的可能性.*不否定字面赞美.*不据此认定实际态度与字面相反/);
+  assert.match(taskContract, /当前明确事实、用户纠正和本轮提供的原话优先/);
+  assert.ok(!focusedRules.includes(plainLines[1]));
 });
 
-test("different-source quoted intent reply ends at literal meaning and that source's own claim", () => {
-  const [input, reply] = attribution.split("→");
-  assert.equal(input, "图字“停机”，他人原话“为检修”");
-  assert.equal(reply, "字面停机；原话说话人自述为检修。");
+test("actual stance and purpose stay unknown or retain only the explicit source's own claim", () => {
+  assert.match(taskContract, /实际态度或目的仅据来源明确自述归属复述，未说明则未知/);
+  assert.match(focusedRules, /说话人明确说明的意图可以复述为其自述.*与问题有关时不要漏掉/);
+  assert.match(focusedRules, /必须归属于提供该原话的说话人或已标注的引用来源/);
+  assert.match(focusedRules, /不视为已验证的心理事实.*不把他人自述转成发图者或当前用户的意图/);
+  assert.match(focusedRules, /没有该原话时，心理意图是未知，不生成备选动机/);
+  assert.match(focusedRules, /不固定追加动机免责声明/);
+  assert.match(answerScale, /只回答当前问题.*相关文字的字面含义与给定事实的关系.*与问题有关的来源明确自述/);
+  assert.ok(!focusedRules.includes(plainLines[5]));
 });
 
-test("examples require literal true and evidence policy, leaving default and passive calls unchanged", () => {
+test("axes require literal true and evidence policy, leaving default and passive calls unchanged", () => {
   for (const imageTask of [undefined, false, null, 0, 1, "", "true", "false", [], {}, new Boolean(true)]) {
     assert.equal(buildImageInterpretationRules({ ...evidence, imageTask }), plain);
   }
@@ -53,7 +68,7 @@ test("examples require literal true and evidence policy, leaving default and pas
   }
 });
 
-test("closed rollout, private and nonselected group scopes do not acquire examples", () => {
+test("closed rollout, private and nonselected group scopes do not acquire axes", () => {
   const previous = process.env.QQBOT_IMAGE_CONTEXT_ROLLOUT;
   try {
     for (const rollout of ["", "82007"]) {
@@ -71,16 +86,29 @@ test("closed rollout, private and nonselected group scopes do not acquire exampl
   }
 });
 
-test("only focused system gains the examples while plain system bytes and shrink threshold remain", () => {
+test("only focused system substitutes axes while plain bytes and every mode's shrink threshold remain", () => {
   const normal = buildChatSystemPrompt(evidence);
   const focused = buildChatSystemPrompt({ ...evidence, imageTask: true });
   assert.equal(normal.length, 3018);
   assert.equal(sha256(normal), "99c0e87a861043ce2ec614019015e125b399e6642dc32be4105a3f18d86cedd3");
-  assert.ok(!normal.includes(label));
-  assert.equal(focused.split(added).length, 2);
-  assert.equal(focused.length, 2278 + added.length);
+  assert.ok(!normal.includes(taskContract));
+  assert.equal(focused.split(focusedRules).length, 2);
+  assert.ok(!focused.includes(plain));
+  const systemLines = focused.split("\n");
+  assert.match(systemLines[0], /^当前任务：先回答 \[当前输入\] 正在问的对象和本轮要求/);
+  assert.match(systemLines[1], /^事实与来源：当前明确事实和纠正优先/);
+  assert.match(systemLines[1], /分清可见证据、原话、建议、反馈和真实工具结果/);
+  assert.ok(focused.indexOf(focusedRules) > focused.indexOf(systemLines[1]));
+  assert.ok(focused.indexOf(focusedRules) < focused.indexOf(CORE_IDENTITY));
+  for (const text of [CORE_IDENTITY, CONTEXT_SAFETY, MEMORY_SEMANTIC_BOUNDARY]) {
+    assert.equal(focused.split(text).length, 2);
+  }
+  assert.equal(focused.length, 2278 + focusedRules.length - plain.length);
+  assert.ok(focused.length <= 2360);
   for (const replyMode of ["chat", "interjection", "technical", "summary", "admin"]) {
-    assert.ok(focused.length <= buildChatSystemPrompt({ ...evidence, replyMode }).length * 0.8);
+    const profile = buildChatSystemPrompt({ ...evidence, replyMode, imageTask: true });
+    assert.equal(profile, focused);
+    assert.ok(profile.length <= buildChatSystemPrompt({ ...evidence, replyMode }).length * 0.8);
   }
 });
 
