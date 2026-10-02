@@ -2,11 +2,11 @@
 
 ## Current Candidate
 
-Current development batch: `1.4.50-evidence-diagnostics`. Observed cancellation labels, focused image examples and current39 restricted backup/restore are being validated together; no promotion is authorized. Source49 / `2970f29` remains historical engineering evidence. Full identity, evidence and pending operations live only in the [ROADMAP current snapshot](ROADMAP.md#当前权威快照2026-10-02仅文档同步).
+Current engineering candidate: `1.4.50-evidence-diagnostics` / source `9317374`. Same-source CI/Linux checks and a fresh current39 restricted snapshot with isolated byte-checked restore passed; no promotion is authorized. Source49 observations remain historical, and Source50 has no new paid semantic result. Full identity, evidence and pending operations live only in the [ROADMAP current snapshot](ROADMAP.md#当前权威快照2026-10-02仅文档同步).
 
 Progress 47/55 (85.5%), net +0. Engineering evidence is not quality/native/restore/gray acceptance or activation authorization; formal `2.0.0` remains unreleased.
 
-Historical V8 retains three semantic failures and immutable paid locks. V9's new actual batch stopped after8 attempts:7 primary final texts include1 below-threshold case, the8th body read was aborted after HTTP200, and all8 fallback cases were unexecuted. Source49 remains ineligible for image gray/promotion; no replay or supplement. Fresh cross-file consistent backup/restore, full old39/new49 compatibility, HMAC/ledger-auth and natural gray proof remain missing. Engineering and Linux structural read-only checks do not bypass the unchanged contract below or create new native proof. Production39, frozen Windows and closed new writes remain unchanged.
+Historical V8 retains three semantic failures and immutable paid locks. V9 stopped after8 attempts:7 primary texts include1 below-threshold case, the8th body read was aborted after HTTP200, and all8 fallback cases were unexecuted; no replay or supplement. Source50's current39 cross-file consistent snapshot and isolated restore now passed, with same39 restart and unchanged NapCat/cron/native bytes. Full new-candidate compatibility, HMAC/ledger-auth and natural gray remain missing; engineering and old-data restore do not bypass the unchanged contract below or create new native proof. Production39, frozen Windows and closed new writes remain unchanged.
 
 ## Historical Candidate46 Checkpoint (2026-10-02)
 

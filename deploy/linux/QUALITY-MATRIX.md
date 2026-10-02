@@ -2,9 +2,9 @@
 
 ## Current Candidate
 
-Current development batch: `1.4.50-evidence-diagnostics`, joining observed cancellation labels, two focused image examples and a restricted current39 backup/restore rehearsal. Acceptance is pending; Source49 / `2970f29` is historical engineering evidence, not a Source50 result. Full identity, evidence and pending operations live only in the [ROADMAP current snapshot](ROADMAP.md#当前权威快照2026-10-02仅文档同步).
+Current engineering candidate: `1.4.50-evidence-diagnostics` / source `9317374`. Same-source CI/Linux checks and a fresh restricted current39 snapshot with isolated byte-checked restore passed. The two image examples have no new paid semantic evidence; Source49's observations cannot accept Source50. Full identity, evidence and pending operations live only in the [ROADMAP current snapshot](ROADMAP.md#当前权威快照2026-10-02仅文档同步).
 
-Progress 47/55 (85.5%), net +0. P3-06/P5-02 and remaining native/restore/gray gates are unaccepted; formal `2.0.0` remains unreleased.
+Progress 47/55 (85.5%), whole-item net +0. P3-06/P5-02 and remaining native/full-candidate-compatibility/gray gates are unaccepted; the current39 restore success is recorded separately and formal `2.0.0` remains unreleased.
 
 Historical V8's16 replies retain three semantic failures and immutable paid locks. V9 then passed43 focused cases, two non-author operator reviews and actual network-none dry before one bounded paid batch. It stopped after8 attempts:7 primary final texts,6 meeting original case thresholds and1 failing unsupported-purpose interpretation; the8th primary response-body read was aborted after observed HTTP200. All8 fallback cases were unexecuted. Nine unobserved pairs have no scores, not zero or pass; no replay or supplemental requests. Actual task flags/prompt bodies were verified, not semantic acceptance. See the ROADMAP snapshot for current identity and evidence. Full17, original rubrics, backup/restore/gray gates and all older evidence remain; production39/Windows/new-write defaults unchanged.
 
