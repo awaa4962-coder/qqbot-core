@@ -27,6 +27,9 @@ const accessLabels = {
   current_scope: "当前会话权限（含获准私聊）", public_query: "本条公开关键词（按当前会话权限）",
   agent_group: "Agent 群白名单", agent_public_source: "本轮授权公开来源（Agent 群白名单）",
   agent_attachment: "本轮附件引用（附件工具群）", agent_draft: "本人当前群草稿（草稿工具群）",
+  agent_personal: "本人当前群资料草稿（需要本人另发确认，非管理员权限）",
+  agent_reminder: "本人当前群提醒草稿（需要本人另发确认，非管理员权限）",
+  agent_actions: "本人当前群确认与提醒状态（只读，非管理员权限）",
 };
 
 function groupWhitelist(groups) {
@@ -158,6 +161,8 @@ export function mountAgentTools(container, snapshot) {
   row("灰度群白名单", groupWhitelist(data.rollout?.groups));
   if (Object.hasOwn(data.rollout || {}, "materialGroups")) row("附件工具群", groupWhitelist(data.rollout.materialGroups));
   if (Object.hasOwn(data.rollout || {}, "draftGroups")) row("草稿工具群", groupWhitelist(data.rollout.draftGroups));
+  if (Object.hasOwn(data.rollout || {}, "writeGroups")) row("本人设置工具群", groupWhitelist(data.rollout.writeGroups));
+  if (Object.hasOwn(data.rollout || {}, "reminderGroups")) row("提醒工具群", groupWhitelist(data.rollout.reminderGroups));
   const compatibility = compatibilityView(data.compatibility);
   row(data.compatibilityCoverage?.scope === "core" ? "基础工具协议兼容性" : "原生工具兼容性", `${compatibilityLabels[compatibility.status]}${compatibility.reason ? ` · ${compatibility.reason}` : ""}`);
   for (const slot of compatibility.slots) {

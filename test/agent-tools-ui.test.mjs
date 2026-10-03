@@ -122,9 +122,96 @@ function snapshot(extra = {}) {
 
 if (!vm.SourceTextModule) {
   test("agent visibility renders in isolated VM modules", t => {
-    t.diagnostic(JSON.stringify(runVmTestFile(import.meta.url, { minTests: 24 })));
+    t.diagnostic(JSON.stringify(runVmTestFile(import.meta.url, { minTests: 28 })));
   });
 } else {
+  test("personal, reminder and action access labels stay scoped and independent of management proof", async () => {
+    for (const mode of ["browser", "native"]) {
+      const h = environment(mode); const { mountAgentTools } = await h.entry("agent-tools.js");
+      const tools = [
+        { name: "prepare_personal_change", label: "准备自己的资料变更", mode: "draft", available: true, access: "agent_personal" },
+        { name: "prepare_reminder", label: "准备有限提醒", mode: "draft", available: false, access: "agent_reminder" },
+        { name: "read_personal_actions", label: "查看自己的确认与提醒", mode: "read", available: true, access: "agent_actions" },
+      ];
+      for (const compatibility of [proof(), proof("unknown"), proof("failed"),
+        proof("verified", { provenance: "qa" }), proof("verified", {
+          slots: [slot("primary", "verified", { expiresAt: NOW - 1 }), slot("fallback")],
+        })]) {
+        const data = snapshot({ tools, compatibility }); const before = JSON.stringify(data);
+        const panel = mountAgentTools(h.element("agent"), data);
+        assert.deepEqual(rows(panel).slice(5, 8).map(({ value }) => value), [
+          "草稿 · 服务端标记可用 · 本人当前群资料草稿（需要本人另发确认，非管理员权限）",
+          "草稿 · 不可用 · 本人当前群提醒草稿（需要本人另发确认，非管理员权限）",
+          "只读 · 服务端标记可用 · 本人当前群确认与提醒状态（只读，非管理员权限）",
+        ]);
+        assert.equal(probeButton(panel).disabled, true);
+        for (const element of descendants(panel)) assert.deepEqual(element.listeners, {});
+        assert.equal(JSON.stringify(data), before);
+      }
+      assert.equal(h.calls.length, 0); assert.equal(h.listeners.size, 0);
+    }
+  });
+
+  test("write and reminder group rows render only supplied fields with strict whitelist formatting", async () => {
+    const h = environment(); const { mountAgentTools } = await h.entry("agent-tools.js");
+    const labels = { writeGroups: "本人设置工具群", reminderGroups: "提醒工具群" };
+    for (const [key, label] of Object.entries(labels)) {
+      for (const [groups, expected] of [
+        [["1105126214", 123456789, "123456789"], "1105126214、123456789"],
+        [[], "未开放（空白名单）"], [undefined, "未知"], [null, "未知"], ["123456789", "未知"],
+        [{}, "未知"], [[0], "未知"], [[-1], "未知"], [[1.5], "未知"],
+        [[Number.MAX_SAFE_INTEGER + 1], "未知"], [["0123"], "未知"],
+        [["1".repeat(21)], "未知"], [["1105126214", "<img onerror=alert(1)>"], "未知"],
+      ]) {
+        const data = snapshot({ rollout: { groups: ["1105126214"], [key]: groups } });
+        const before = JSON.stringify(data); const panel = mountAgentTools(h.element("agent"), data);
+        const rendered = rows(panel);
+        assert.equal(rendered.find(row => row.label === label).value, expected);
+        assert.equal(rendered.filter(row => Object.values(labels).includes(row.label)).length, 1);
+        assert.equal(rendered.find(row => row.label === "灰度群白名单").value, "1105126214");
+        assert.doesNotMatch(panel.textContent, /onerror|\[object|undefined|NaN/);
+        assert.equal(JSON.stringify(data), before);
+      }
+    }
+    const panel = mountAgentTools(h.element("agent"), snapshot({ rollout: {
+      groups: [], writeGroups: ["123456789"], reminderGroups: ["987654321"],
+    } }));
+    assert.deepEqual(rows(panel).slice(1, 4).map(({ label, value }) => [label, value]), [
+      ["灰度群白名单", "未开放（空白名单）"], ["本人设置工具群", "123456789"], ["提醒工具群", "987654321"],
+    ]);
+    assert.equal(h.calls.length, 0); assert.equal(h.listeners.size, 0);
+  });
+
+  test("unknown access values and new snapshot fields cannot imply personal permissions", async () => {
+    const h = environment(); const { mountAgentTools } = await h.entry("agent-tools.js");
+    for (const access of [undefined, null, true, 1, {}, [], "agent_future", "constructor", "__proto__", "agent_personal "]) {
+      const data = snapshot({ tools: [{ name: "future_tool", mode: "read", available: false, access,
+        grant: true, admin: true }], futurePermissions: "SYNTHETIC-PRIVATE", rollout: {
+        groups: [], futureGroups: ["999999999"], permissionsGranted: true,
+      } });
+      const before = JSON.stringify(data); const panel = mountAgentTools(h.element("agent"), data);
+      assert.equal(rows(panel)[5].value, "只读 · 不可用 · 权限范围未知");
+      assert.doesNotMatch(panel.textContent, /本人设置工具群|提醒工具群|SYNTHETIC-PRIVATE|999999999|需要本人另发确认/);
+      assert.equal(JSON.stringify(data), before);
+      for (const element of descendants(panel)) assert.deepEqual(element.listeners, {});
+    }
+    assert.equal(h.calls.length, 0); assert.equal(h.listeners.size, 0);
+  });
+
+  test("legacy snapshots omit optional group rows and remount removes old personal group state", async () => {
+    const h = environment(); const { mountAgentTools } = await h.entry("agent-tools.js");
+    const container = h.element("agent");
+    mountAgentTools(container, snapshot({ rollout: { groups: [], writeGroups: ["123456789"], reminderGroups: [] } }));
+    for (const rollout of [undefined, null, {}, { groups: [] },
+      Object.assign(Object.create({ writeGroups: ["123456789"], reminderGroups: [] }), { groups: [] })]) {
+      const panel = mountAgentTools(container, snapshot({ rollout }));
+      assert.doesNotMatch(panel.textContent, /本人设置工具群|提醒工具群|123456789/);
+      assert.equal(container.children.length, 1);
+      assert.equal(container.children[0], panel);
+    }
+    assert.equal(h.calls.length, 0); assert.equal(h.listeners.size, 0);
+  });
+
   test("read-only compact panel renders only server tools, whitelist, limits and compatibility", async () => {
     const h = environment(); const { mountAgentTools } = await h.entry("agent-tools.js");
     const data = snapshot({ tools: [

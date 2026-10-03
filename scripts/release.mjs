@@ -22,7 +22,7 @@ const PUBLIC_LINUX_FILES = new Set([
   "check.sh", "prepare.sh", "install-docker-host.sh", "install-summary-schedule.sh", "install-time-order.sh",
   "README.md", "ROADMAP.md", "MEMBER-SUMMARY.md", "MODULAR-RUNTIME.md", "SUMMARY-WORKBENCH.md", "MEMORY.md", "CHAT-TOOLS.md", "VISION.md", "USAGE.md", "CONTEXT.md",
   "FRONTEND-ACCEPTANCE.md", "LEGACY-INTERFACES.md", "QUALITY-MATRIX.md", "GRAY-ACCEPTANCE.md",
-  "AGENT-PLAN.md",
+  "AGENT-PLAN.md", "FINISH-2.0.0.md",
   "systemd/docker-chrony-wait.conf", "systemd/qqfriend-summary.service",
   "systemd/qqfriend-summary.timer", "systemd/qqfriend.service",
 ].map(file => "deploy/linux/" + file));
