@@ -19,17 +19,17 @@ const stable = { imagePolicy: IMAGE_POLICY_STABLE };
 const focused = buildChatSystemPrompt({ ...evidence, imageTask: true });
 const replyModes = ["chat", "interjection", "technical", "summary", "admin"];
 
-// Source55 shared memory/failure rules are reviewed; image-policy isolation remains fixed.
+// Source56 shared evidence/failure rules are reviewed; image-policy isolation remains fixed.
 const originalHashes = {
   [IMAGE_POLICY_STABLE]: {
-    chat: "900388198c4dae24d0aa0b2eb329789028ead34441d20eaa75e601eb1c75173e",
-    interjection: "25ac8c1713a2be3939d9031985866e9a6f1ccece64baab6aec4505da128ee348",
-    technical: "4739d73ae4390d0984d5c945ca5eeed52a3a270efabf59e32013521d4d19d9db",
+    chat: "fa6901afa3ccf1faea19e0b99912b16d239e1210b8d7fab44ddae20f9ab67c8f",
+    interjection: "36a4a5fd5efe2c6911af9695a59f6a3b2cd68e4e9fe19ac7be71862764f6134e",
+    technical: "fa75f934bc4966cfa8ae4fa7e913930f138cde5dc7e3fb101166a7d9bc90d15e",
   },
   [IMAGE_POLICY_EVIDENCE]: {
-    chat: "4836d3054a62589ec84af0496eef493ae130a8b0447f7db60e6dddf40349e4aa",
-    interjection: "c30f9ced8d7ad828afbc63b90687a972ae49edd2c5176a46d1c6ccedc004aafa",
-    technical: "48dc8dc32ea9aba59b37e20a416bad358b7a90e0d52a46f721748ca68fe4fb3d",
+    chat: "14c940f6d56e7958520c97bbecdfcbb917f87d99c97274a468e6d0e08c596f06",
+    interjection: "6478fed4cc893b0fa4f74d0a03070576cadd294da1d1f18817fd9ef656bc3e65",
+    technical: "04c82a7172f23d7a4bf0dfc32d888b867e82c66b141dcd8284830daa24625e9c",
   },
 };
 
@@ -218,7 +218,7 @@ test("image task system text is at least twenty percent shorter than each existi
       `${replyMode}: focused ${profile.length} chars, candidate ${original.length} chars`);
   }
   const original = buildChatSystemPrompt(evidence);
-  assert.equal(original.length, 3033);
+  assert.equal(original.length, 3068);
   t.diagnostic(JSON.stringify({ metric: "system-prompt-text-only", candidateChars: original.length,
     imageTaskChars: focused.length, removedChars: original.length - focused.length,
     reductionPercent: Number(((1 - focused.length / original.length) * 100).toFixed(2)) }));

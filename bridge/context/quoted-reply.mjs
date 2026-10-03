@@ -38,7 +38,8 @@ function sourceEvidence(source, now) {
   const at = sourceTime(source.time);
   if (source.senderUserId !== undefined && identifier(source.senderUserId) !== userId) return null;
   if (!messageId || !groupId || !userId || !at || at > now + 300000) return null;
-  return { state: "verified", source: "onebot", messageId, groupId, userId, at };
+  return { state: "verified", source: "onebot", messageId, groupId, userId, at,
+    ...(typeof source.hasReadableText === "boolean" ? { hasReadableText: source.hasReadableText } : {}) };
 }
 
 function erasureReason(userId, at, options) {

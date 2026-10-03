@@ -4,11 +4,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.55-grounded-followups";
-export const VERSION_NAME = "grounded-followups";
+export const VERSION = "1.4.56-evidence-presence";
+export const VERSION_NAME = "evidence-presence";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
+  "明确引用与记忆的可读正文、来源和候选状态，不把一条有效候选当成含糊指代的自动答案；不改变存储或权限过滤。",
+  "图文短答区分字面、事件关系与未知语气，未问目的不枚举动机；错误标签不能证明口令或前置步骤成功。",
+  "真人群内确认、记忆落盘、提醒自然发送和用量已补证，有限Agent前后端项完成；真实质量仍有反例，正式2.0.0与灰度门禁未完成。",
   "记忆候选不自动等于‘那条’指代目标；条目未过期不代表其他记录也有效，本轮无资料不冒称持久删除或全范围清空。",
   "失败反馈先接住已尝试的步骤，再按本次报错或现象选择下一步；工具不可用不自动归因为网络或连接故障。",
   "图文候选用词句含义与已知事件的关系回答，不擅自补谁在自嘲或道贺。模型、权限及JM不改；新回答质量未作付费复测。",
@@ -45,6 +48,9 @@ export const VERSION_NOTES_ZH = Object.freeze([
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
+  "Quote and memory frames distinguish readable bodies, sources and candidate status. A valid candidate is not automatically an ambiguous referent; storage and access filtering are unchanged.",
+  "Short image answers separate literal meaning, event relation and uncertain tone. Unasked motives are not enumerated; error labels do not prove password or prerequisite success.",
+  "Real owner confirmation, durable memory, natural reminder delivery and reported usage complete the limited-agent integration item. Content failures and gray/final2.0.0 gates remain open.",
   "Visible memory candidates are not automatically the user's referent; missing context does not prove durable deletion or a complete search.",
   "Failed attempts require evidence for the next step; an unavailable tool does not prove a network or connection fault.",
   "Focused image replies separate wording and event context from attributed intent. Models, access and JM are unchanged; paid semantic revalidation is pending.",

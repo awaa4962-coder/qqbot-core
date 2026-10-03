@@ -10,7 +10,9 @@ Object.assign(process.env, { QQBOT_CONFIG_ROOT: root, QQBOT_DATA_DIR: path.join(
 const { CFG } = await import("../bridge/config.mjs");
 const { processEvent } = await import("../bridge/reply.mjs");
 const { saveApiProvider, saveApiRoutes } = await import("../bridge/api-providers/store.mjs");
-const { buildCurrentInput } = await import("../bridge/context/messages.mjs");
+const { buildCurrentInput, buildQuotedMessageBlock } = await import("../bridge/context/messages.mjs");
+const { fetchReplyData } = await import("../bridge/napcat.mjs");
+const { validateQuotedReply } = await import("../bridge/context/quoted-reply.mjs");
 const { forgetUserData } = await import("../bridge/user-preferences.mjs");
 const { users } = await import("../bridge/storage.mjs");
 const { getConversationThread } = await import("../bridge/cognition/index.mjs");
@@ -31,6 +33,47 @@ function groupEvent() {
 const quote = (groupId = 50100) => ({ status: "ok", retcode: 0, data: { message_type: "group", group_id: groupId,
   message_id: 70100, user_id: 60100, time: Math.floor(Date.now() / 1000) - 60, sender: { nickname: "同名" },
   message: [{ type: "text", data: { text: "synthetic verified source body" } }] } });
+
+test("actual reply parsing preserves literal image-marker words as readable quoted text", async t => {
+  const value = quote();
+  value.data.message = [{ type: "text", data: { text: "[图片1张]" } }];
+  t.mock.method(globalThis, "fetch", async url => {
+    assert.ok(String(url).includes("/get_msg?"));
+    return response(value);
+  });
+  const reply = await fetchReplyData({ id: "70100" }, { includeSource: true });
+  assert.equal(reply.source.hasReadableText, true);
+  assert.equal(reply.images.length, 0);
+  const evidence = validateQuotedReply({ ...groupEvent(), replyData: { id: "70100" } }, reply,
+    { readPrivacy: () => ({ users: {} }), readCorrections: () => ({ excludedMessageIds: new Set() }) });
+  assert.equal(evidence.state, "verified");
+  assert.equal(evidence.hasReadableText, true);
+  const frame = buildQuotedMessageBlock(reply.text, reply.nickname, evidence);
+  assert.match(frame, /^quoted_text=available$/m);
+  assert.match(frame, /^message=\[图片1张\]$/m);
+  assert.doesNotMatch(frame, /quoted_metadata=/);
+});
+
+test("actual image-only reply keeps backend metadata separate from absent original words", async t => {
+  const value = quote();
+  value.data.message = [{ type: "image", data: { url: "https://example.com/quote-image.png" } }];
+  t.mock.method(globalThis, "fetch", async url => {
+    assert.ok(String(url).includes("/get_msg?"));
+    return response(value);
+  });
+  const reply = await fetchReplyData({ id: "70100" }, { includeSource: true });
+  assert.equal(reply.source.hasReadableText, false);
+  assert.equal(reply.images.length, 1);
+  const evidence = validateQuotedReply({ ...groupEvent(), replyData: { id: "70100" } }, reply,
+    { readPrivacy: () => ({ users: {} }), readCorrections: () => ({ excludedMessageIds: new Set() }) });
+  assert.equal(evidence.state, "verified");
+  assert.equal(evidence.hasReadableText, false);
+  const frame = buildQuotedMessageBlock(reply.text, reply.nickname, evidence);
+  assert.match(frame, /^quoted_text=empty$/m);
+  assert.match(frame, /^message=$/m);
+  assert.match(frame, /^quoted_metadata=\[图片1张\]$/m);
+  assert.doesNotMatch(frame, /quoted_text=available|本帧已提供引用正文/);
+});
 
 test("primary and DS fallback receive the exact assembled input and attributed quote", async t => {
   for (const failPrimary of [false, true]) {
@@ -73,7 +116,8 @@ test("rejected quote content does not reach either model slot, even with earlier
   for (const call of calls) {
     assert.doesNotMatch(JSON.stringify(call.messages), /synthetic verified source body|他是在说明压缩包/);
     assert.match(JSON.stringify(call.messages), /被回复消息暂不可用/);
-    assert.match(call.messages.at(-1).content, /若本轮缺少引用正文/);
+    assert.match(call.messages.at(-1).content, /存在引用请求；正文是否提供以本轮引用帧为准/);
+    assert.match(JSON.stringify(call.messages), /quoted_text=missing/);
   }
 });
 

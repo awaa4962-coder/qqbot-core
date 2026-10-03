@@ -59,7 +59,7 @@ test("both task modes share stable interpretation rules without moving persona i
     assert.equal(plain.system, styled.system);
     assert.equal(plain.metadata.promptFingerprint, styled.metadata.promptFingerprint);
     assert.equal(plain.metadata.promptFingerprint, createHash("sha256").update(plain.system).digest("hex").slice(0, 16));
-    assert.equal(plain.metadata.promptVersion, replyMode === "chat" ? "chat-v13" : "interjection-v7");
+    assert.equal(plain.metadata.promptVersion, replyMode === "chat" ? "chat-v14" : "interjection-v7");
     assert.notEqual(plain.dynamicMessage.content, styled.dynamicMessage.content);
     assert.match(plain.system, /\u5f53\u524d\u660e\u786e\u4e8b\u5b9e\u548c\u7ea0\u6b63\u4f18\u5148/);
     assert.match(plain.system, /\u65e7\u8bdd\u9898\u3001\u753b\u50cf\u548c\u8868\u8fbe\u8bbe\u7f6e\u4e0d\u80fd\u6539\u5199/);

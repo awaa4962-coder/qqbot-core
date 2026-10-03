@@ -22,9 +22,9 @@ export function buildModelPrompt(options = {}) {
     dynamicMessage: { role: "user", content },
     metadata: {
       promptVersion: (passive ? "interjection-v7" :
-        policyOptions.imageTask === true && policyOptions.imagePolicy === IMAGE_POLICY_EVIDENCE ? "chat-image-v2" : "chat-v13") +
+        policyOptions.imageTask === true && policyOptions.imagePolicy === IMAGE_POLICY_EVIDENCE ? "chat-image-v3" : "chat-v14") +
         (policyOptions.imagePolicy === IMAGE_POLICY_EVIDENCE
-          ? policyOptions.imageTask === true && !passive ? "-image-evidence-v6" : "-image-evidence-v5" : ""),
+          ? policyOptions.imageTask === true && !passive ? "-image-evidence-v7" : "-image-evidence-v5" : ""),
       promptFingerprint: createHash("sha256").update(system).digest("hex").slice(0, 16),
       staticChars: system.length,
       dynamicChars: content.length,

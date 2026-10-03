@@ -176,16 +176,16 @@ export async function fetchReplyData(replyData, { timeoutMs = 8000, includeSourc
       let res = text;
       if (images.length) res += ' [图片' + images.length + '张]';
       if (files.length) res += ' ' + describeFiles(files);
-      return { text: res, images, ...replyIdentity(msg), ...(includeSource ? { source: replySource(msg) } : {}) };
+      return { text: res, images, ...replyIdentity(msg), ...(includeSource ? { source: replySource(msg, Boolean(text.trim())) } : {}) };
     }
   } catch {}
   return { text: '', images: [] };
 }
 
-function replySource(message) {
+function replySource(message, hasReadableText) {
   return { messageId: message.message_id, messageType: message.message_type,
     groupId: message.group_id, userId: message.user_id ?? message.sender?.user_id,
-    senderUserId: message.sender?.user_id, time: message.time };
+    senderUserId: message.sender?.user_id, time: message.time, hasReadableText };
 }
 
 function replyIdentity(message) {

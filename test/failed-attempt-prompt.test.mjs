@@ -49,6 +49,8 @@ test("both real builders distinguish failed attempts and require this attempt's 
     assert.match(prompt, /缺本次决定性报错(?:或|\/)现象只取该项|缺本次决定性报错或现象，只取这一项/);
     assert.match(prompt, /旧错误只确认是否同一|已有旧错误只确认本次是否仍同一错误/);
     assert.match(prompt, /本次报错\/现象足够则给有据步骤|本次报错或现象足够时给有依据的下一步/);
+    assert.match(prompt, /错误标签不证(?:明)?前置步骤或口令(?:已)?成功/);
+    assert.match(prompt, /不预写(?:各错误分支的)?确定诊断/);
     assert.doesNotMatch(prompt, /本次错误才给/);
     assert.match(prompt, /不重复|不重复已试动作/);
     assert.match(prompt, /未试才解释/);

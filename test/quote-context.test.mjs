@@ -87,7 +87,7 @@ test("valid same-group quotes carry stable author, message and time provenance",
   assert.equal(context.replyUserId, "601");
   assert.equal(context.replySpeaker, "同名");
   assert.deepEqual(context.images, ["https://example.com/synthetic.png"]);
-  assert.deepEqual(context.quoteEvidence, { state: "verified", source: "onebot", messageId: "701", groupId: "501", userId: "601", at: data.time * 1000 });
+  assert.deepEqual(context.quoteEvidence, { state: "verified", source: "onebot", messageId: "701", groupId: "501", userId: "601", at: data.time * 1000, hasReadableText: true });
   assert.equal(requests, 1);
 });
 
@@ -163,7 +163,8 @@ test("unavailable quotes are not replaced with nearby people, history or hidden 
       replyText: "rejected private quote", quoteEvidence: { state: "unavailable", reason: "quote_forgotten" }, mode });
     assert.match(JSON.stringify(packet.messages), /被回复消息暂不可用/);
     assert.doesNotMatch(JSON.stringify(packet.messages), /unrelated secret-topic|rejected private quote/);
-    assert.match(packet.currentInput, /若本轮缺少引用正文/);
+    assert.match(packet.currentInput, /存在引用请求；正文是否提供以本轮引用帧为准/);
+    assert.match(JSON.stringify(packet.messages), /quoted_text=missing/);
     assert.equal(packet.metadata.hasQuotedMessage, false);
     assert.equal(packet.thread, null);
   }

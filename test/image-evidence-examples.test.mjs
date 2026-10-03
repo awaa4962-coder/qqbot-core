@@ -42,23 +42,28 @@ test("focused question scope replaces three rules within six lines while plain a
 test("literal evaluation and supplied outcome relate without proving an opposite stance or denying praise", () => {
   assert.match(questionScope, /先完成 \[当前输入\] 的问题，不自行增加新问题/);
   assert.match(questionScope, /问词句含义，就解释相关文字、语气方向及与已给情境的吻合或反差/);
-  assert.match(taskContract, /图中文字不证明当前结果.*结果不改变字面褒贬/);
-  assert.match(taskContract, /相符说明吻合，反差可说明反话或调侃的可能性，不改写结果/);
-  assert.match(taskContract, /缺情境只解释字面并保留语气不确定.*有情境也不认定唯一读法/);
-  assert.match(taskContract, /当前明确事实、用户纠正和本轮原话优先/);
+  assert.match(taskContract, /图字不证结果，结果不改字面褒贬/);
+  assert.match(taskContract, /先说明字面，再与已知事件对照吻合或反差，不改写结果/);
+  assert.match(taskContract, /反差可以有反话读法，不能因此断定实际语气或排除其他读法/);
+  assert.match(taskContract, /问表达含义而无语境时，只说明字面并保留本次语气未知/);
+  assert.match(taskContract, /读字、翻译等客观问题无需讨论语气/);
+  assert.match(taskContract, /当前事实、纠正和本轮原话优先/);
   assert.ok(!focusedRules.includes(plainLines[1]));
 });
 
 test("actual stance and purpose stay unknown or retain only the explicit source's own claim", () => {
-  assert.match(taskContract, /吻合或反差不能推出其行为、态度或目的，归因须有作者直接说明的原话/);
+  assert.match(taskContract, /表达与事件的关系不等于人的行为或目的/);
+  assert.match(taskContract, /作者明确自述才有可归属的意图资料，其他情况不分析心理/);
   assert.match(focusedRules, /说话人明确说明的意图可以复述为其自述.*与问题有关时不要漏掉/);
   assert.match(focusedRules, /必须归属于提供该原话的说话人或已标注的引用来源/);
   assert.match(focusedRules, /不视为已验证的心理事实.*不把他人自述转成发图者或当前用户的意图/);
   assert.match(focusedRules, /没有该原话时，心理意图是未知，不生成备选动机/);
-  assert.match(answerScale, /当前问题答清就结束.*词句字面含义.*不扩写谁在自嘲或道贺/);
-  assert.match(answerScale, /相关的明确意图原话按来源保留，不因意图未验证就否认或遗漏自述/);
-  assert.match(answerScale, /追问目的而缺原话时，简短说明缺依据即可/);
-  assert.match(answerScale, /不固定追加免责声明或画面清单/);
+  assert.match(answerScale, /短问用一两句话答完字面及情境关系就结束/);
+  assert.match(answerScale, /未问心理目的时，不补动机备选、心理免责声明或口气类比/);
+  assert.match(answerScale, /若相关原话明确自述意图，按其来源保留/);
+  assert.match(answerScale, /追问目的而缺原话时才说明无法判断/);
+  assert.match(answerScale, /无语境时只限制语气未知，不把常见用途说成本次真实用意/);
+  assert.match(answerScale, /不列画面清单/);
   assert.ok(!focusedRules.includes(plainLines[5]));
 });
 
@@ -93,8 +98,8 @@ test("closed rollout, private and nonselected group scopes do not acquire questi
 test("only focused system substitutes question scope while plain bytes and every mode's shrink threshold remain", () => {
   const normal = buildChatSystemPrompt(evidence);
   const focused = buildChatSystemPrompt({ ...evidence, imageTask: true });
-  assert.equal(normal.length, 3033);
-  assert.equal(sha256(normal), "4836d3054a62589ec84af0496eef493ae130a8b0447f7db60e6dddf40349e4aa");
+  assert.equal(normal.length, 3068);
+  assert.equal(sha256(normal), "14c940f6d56e7958520c97bbecdfcbb917f87d99c97274a468e6d0e08c596f06");
   assert.ok(!normal.includes(taskContract));
   assert.equal(focused.split(focusedRules).length, 2);
   assert.ok(!focused.includes(plain));
@@ -107,7 +112,7 @@ test("only focused system substitutes question scope while plain bytes and every
   for (const text of [CORE_IDENTITY, CONTEXT_SAFETY, MEMORY_SEMANTIC_BOUNDARY]) {
     assert.equal(focused.split(text).length, 2);
   }
-  assert.equal(focused.length, 2274 + focusedRules.length - plain.length);
+  assert.equal(focused.length, 2294 + focusedRules.length - plain.length);
   assert.ok(focused.length <= 2360);
   for (const replyMode of ["chat", "interjection", "technical", "summary", "admin"]) {
     const profile = buildChatSystemPrompt({ ...evidence, replyMode, imageTask: true });
