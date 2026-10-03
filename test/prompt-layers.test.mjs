@@ -13,7 +13,7 @@ test("all varying expression settings stay outside stable task prefixes", () => 
     const plain = buildModelPrompt({ replyMode, mood: "正常", personaCue: "none" });
     const playful = buildModelPrompt({ replyMode, mood: "活跃", personaCue: "hiss", groupId: 123 });
     assert.equal(plain.system, playful.system);
-    assert.equal(plain.metadata.promptVersion, replyMode === "interjection" ? "interjection-v7" : "chat-v12");
+    assert.equal(plain.metadata.promptVersion, replyMode === "interjection" ? "interjection-v7" : "chat-v13");
     assert.equal(plain.metadata.promptFingerprint, playful.metadata.promptFingerprint);
     assert.notEqual(plain.dynamicMessage.content, playful.dynamicMessage.content);
     assert.match(plain.system, /建议.*(?:不代表|不是完成)/);
@@ -37,6 +37,17 @@ test("self facts follow the stable rules and precede dynamic style and user cont
   assert.match(prepared.request.messages[1].content, /^\[本轮机器人运行事实\]/);
   assert.match(prepared.request.messages[2].content, /^\[本轮表达设置\]/);
   assert.equal(prepared.request.messages.at(-1).content, "synthetic current input");
+});
+
+test("passive constructors ignore focused image flags and preserve their shared policy version", () => {
+  for (const imagePolicy of ["stable-v3", "evidence-v5"]) {
+    const plain = buildModelPrompt({ replyMode: "interjection", imagePolicy });
+    const forced = buildModelPrompt({ replyMode: "interjection", imagePolicy, imageTask: true });
+    assert.equal(forced.system, plain.system);
+    assert.equal(forced.metadata.promptVersion, plain.metadata.promptVersion);
+    assert.equal(forced.metadata.promptFingerprint, plain.metadata.promptFingerprint);
+    assert.doesNotMatch(forced.system, /图片问答范围：|回答结束条件：/);
+  }
 });
 
 test("expression data are bounded and credentials redacted without promoting them to system rules", () => {
@@ -140,7 +151,7 @@ test("prompt diagnostics expose versions and counts, never raw instructions", as
     traceStage("context", { promptVersion: "private arbitrary text", promptFingerprint: "not-a-hash" });
   }, recorder);
   const stages = recorder.list().items[0].stages.filter(item => item.stage === "context");
-  assert.equal(stages[0].promptVersion, "chat-v12");
+  assert.equal(stages[0].promptVersion, "chat-v13");
   assert.match(stages[0].promptFingerprint, /^[a-f0-9]{16}$/);
   assert.equal(stages[0].inputTextChars, 2000);
   assert.equal(stages[1].promptVersion, undefined);

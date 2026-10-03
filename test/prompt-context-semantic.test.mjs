@@ -59,7 +59,7 @@ test("both task modes share stable interpretation rules without moving persona i
     assert.equal(plain.system, styled.system);
     assert.equal(plain.metadata.promptFingerprint, styled.metadata.promptFingerprint);
     assert.equal(plain.metadata.promptFingerprint, createHash("sha256").update(plain.system).digest("hex").slice(0, 16));
-    assert.equal(plain.metadata.promptVersion, replyMode === "chat" ? "chat-v12" : "interjection-v7");
+    assert.equal(plain.metadata.promptVersion, replyMode === "chat" ? "chat-v13" : "interjection-v7");
     assert.notEqual(plain.dynamicMessage.content, styled.dynamicMessage.content);
     assert.match(plain.system, /\u5f53\u524d\u660e\u786e\u4e8b\u5b9e\u548c\u7ea0\u6b63\u4f18\u5148/);
     assert.match(plain.system, /\u65e7\u8bdd\u9898\u3001\u753b\u50cf\u548c\u8868\u8fbe\u8bbe\u7f6e\u4e0d\u80fd\u6539\u5199/);
@@ -70,13 +70,13 @@ test("both task modes share stable interpretation rules without moving persona i
 
 test("chat acknowledges failed advice and asks only one missing decisive parameter", () => {
   const system = buildModelPrompt().system;
-  assert.match(system, /\u52a9\u624b\u5efa\u8bae\u4e0d\u4ee3\u8868\u7528\u6237\u6267\u884c\u8fc7/);
-  assert.match(system, /\u4e0a\u4e00\u5efa\u8bae\u672a\u594f\u6548\u7684\u53cd\u9988.*\u7b80\u77ed\u63a5\u4f4f.*\u4e0d\u518d\u8981\u6c42\u91cd\u590d\u540c\u4e00\u6b65/);
-  assert.match(system, /\u5df2\u77e5\u4e8b\u5b9e\u8db3\u591f\u5c31\u76f4\u63a5\u56de\u7b54\u5f53\u524d\u95ee\u9898/);
-  assert.match(system, /\u5173\u952e\u53c2\u6570\u6216\u8bc1\u636e.*\u53ea\u95ee\u6700\u5f71\u54cd\u5224\u65ad\u7684\u4e00\u9879.*\u4e0d\u518d\u95ee\u5df2\u7ecf\u63d0\u4f9b\u7684\u4fe1\u606f/);
-  assert.match(system, /\u82e5\u7f3a\u62a5\u9519\u5c31\u53ea\u95ee\u62a5\u9519.*\u82e5\u5df2\u6709\u62a5\u9519\u5c31\u7ed9\u53e6\u4e00\u9879\u6709\u4f9d\u636e\u7684\u64cd\u4f5c/);
-  assert.match(system, /\u4e0d\u731c\u66ff\u4ee3\u53e3\u4ee4\u6216\u53c2\u6570/);
-  assert.match(system, /\u4e0d\u673a\u68b0\u590d\u8ff0\u95ee\u9898\u6216\u5957\u7528\u56fa\u5b9a\u5f00\u573a/);
+  assert.match(system, /建议不代表执行/);
+  assert.match(system, /已尝试但失败，不是未尝试.*不重复已试动作/);
+  assert.match(system, /其他问题事实足够直接答/);
+  assert.match(system, /缺本次决定性报错或现象，只取这一项.*不要求重述/);
+  assert.match(system, /本次报错或现象足够时给有依据的下一步/);
+  assert.match(system, /不猜密码、参数、编码或工具原因/);
+  assert.match(system, /不机械复述或套用固定开场/);
 });
 
 test("interjection can stay silent instead of guessing intent or repeating failed advice", () => {

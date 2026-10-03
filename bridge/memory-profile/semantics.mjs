@@ -58,7 +58,7 @@ export function noteSemanticText(item) {
   const definition = types.find(type => type.id === value.recordType);
   const status = definition?.statuses.find(entry => entry.id === value.status)?.label || "未知";
   const event = value.recordType === "event" ? "；发生时间=" + (value.eventAt === null ? "未提供，不以记录时间代替" : new Date(value.eventAt).toISOString()) : "";
-  const validity = item.state === "active" ? "后端核验未过期" : item.state === "expired" ? "已过期" : "未知";
+  const validity = item.state === "active" ? "后端核验未过期（仅此条）" : item.state === "expired" ? "已过期" : "未知";
   return "资料类型=" + (definition?.label || "未知") + "；事项状态=" + status + "；记录有效性=" + validity + event;
 }
 
@@ -69,6 +69,6 @@ export function noteSemanticQueryScore(item, query) {
   return pattern?.test(query) ? 1 : 0;
 }
 
-export const MEMORY_SEMANTIC_BOUNDARY = "事实说明仍是来源的陈述，未作客观验证；历史事件不等于现在仍然如此。待办/进行中不是完成，已完成只是操作者明确声明，不是机器人执行回执。事项已结束与记录过期是两回事，以后端的记录有效性为准；过期信息不能推成相反状态。问外部系统现在如何时，未取得本轮实时结果就只说最新记录写明什么，不把记录中的已结束说成当前确定不在维护或运行正常，也不暗示执行过检查。用正常聊天的说法回答，不向用户念资料类型、记录有效性或回执等内部术语。";
+export const MEMORY_SEMANTIC_BOUNDARY = "事实说明是来源陈述，未客观验证；历史事件不等于现在。待办/进行中不是完成，已完成仅是操作者声明，不是机器人执行回执。事项结束与记录过期不同，以后端有效性为准；过期不推相反状态。当前候选非全范围，也不自动对应‘那条’；未过期仅属该条，不能用剩余条目替代缺失目标。未提供不等于已删除；无查询/删除执行回执不称查过/已删，有明确回执仅按其对象、范围确认。外部现状无本轮实时结果仅述最新记录，不暗示检查或确定停运/正常；未知不当已证。自然回答，不念内部标签。";
 
 function semanticError(message, statusCode = 400) { return Object.assign(new Error(message), { statusCode }); }

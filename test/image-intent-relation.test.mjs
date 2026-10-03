@@ -157,6 +157,9 @@ function assertFocused(body, input) {
 }
 
 test("focused policy separates literal/context relations from attributed acts and preserves source rules", () => {
+  assert.match(focused, /解释词句评价与事件的关系，不是谁在对谁做什么/);
+  assert.match(focused, /词句字面含义，加上与事件的吻合、反差或缺少情境/);
+  assert.match(focused, /不扩写谁在自嘲或道贺/);
   assert.match(focused, /吻合或反差.*不能推出.*行为、态度或目的/);
   assert.match(focused, /褒贬含义不证明作者的赞扬或贬低行为/);
   assert.match(focused, /归因须有作者直接说明的原话/);
@@ -245,7 +248,7 @@ test("ordinary text retains original nonfocused system bytes despite caller esca
   Object.assign(input.options, { imageTask: true, imagePolicy: IMAGE_POLICY_EVIDENCE });
   const { chat } = await execute(t, input);
   for (const body of chat) {
-    assert.equal(hash(body.messages[0].content), "99c0e87a861043ce2ec614019015e125b399e6642dc32be4105a3f18d86cedd3");
+    assert.equal(hash(body.messages[0].content), "4836d3054a62589ec84af0496eef493ae130a8b0447f7db60e6dddf40349e4aa");
     assert.equal(body.messages.at(-1).content, input.options.currentInput);
   }
 });
@@ -257,7 +260,7 @@ test("closed and nonselected image scopes retain original STABLE system bytes", 
     input.groupId = groupId;
     Object.assign(input.options, { imageTask: true, imagePolicy: IMAGE_POLICY_EVIDENCE });
     const { chat } = await execute(t, input, { liveScope: { ...scope, groupId: String(groupId) } });
-    for (const body of chat) assert.equal(hash(body.messages[0].content), "125a70f8c22cb3000b07c68e4f513059ac0edc33702c75714b5e9d4c3bce72ff");
+    for (const body of chat) assert.equal(hash(body.messages[0].content), "900388198c4dae24d0aa0b2eb329789028ead34441d20eaa75e601eb1c75173e");
   }
 });
 
@@ -266,7 +269,7 @@ test("private and passive image scopes retain their original system hashes", asy
   input.groupId = null;
   Object.assign(input.options, { imageTask: true, imagePolicy: IMAGE_POLICY_EVIDENCE, visionContext: objective });
   const { chat } = await execute(t, input, { liveScope: { surface: "private", groupId: null, userId: "62100" } });
-  assert.equal(hash(chat[0].messages[0].content), "125a70f8c22cb3000b07c68e4f513059ac0edc33702c75714b5e9d4c3bce72ff");
+  assert.equal(hash(chat[0].messages[0].content), "900388198c4dae24d0aa0b2eb329789028ead34441d20eaa75e601eb1c75173e");
   for (const [rollout, imagePolicy, originalHash] of [
     ["52100", IMAGE_POLICY_EVIDENCE, "03c56ff80d345260130f35e0ec48b2f7fc7dfc3671af1234ed05f1c74222c87c"],
     ["", IMAGE_POLICY_STABLE, "723ce7abce534607cda82f7acb84e39bf4712e6d7a5d8a6fcb192cdf70032ec3"],

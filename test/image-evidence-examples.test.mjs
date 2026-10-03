@@ -55,7 +55,7 @@ test("actual stance and purpose stay unknown or retain only the explicit source'
   assert.match(focusedRules, /必须归属于提供该原话的说话人或已标注的引用来源/);
   assert.match(focusedRules, /不视为已验证的心理事实.*不把他人自述转成发图者或当前用户的意图/);
   assert.match(focusedRules, /没有该原话时，心理意图是未知，不生成备选动机/);
-  assert.match(answerScale, /当前问题答清就结束，不顺带回答未问的‘为什么发图’，不列备选心理故事/);
+  assert.match(answerScale, /当前问题答清就结束.*词句字面含义.*不扩写谁在自嘲或道贺/);
   assert.match(answerScale, /相关的明确意图原话按来源保留，不因意图未验证就否认或遗漏自述/);
   assert.match(answerScale, /追问目的而缺原话时，简短说明缺依据即可/);
   assert.match(answerScale, /不固定追加免责声明或画面清单/);
@@ -93,21 +93,21 @@ test("closed rollout, private and nonselected group scopes do not acquire questi
 test("only focused system substitutes question scope while plain bytes and every mode's shrink threshold remain", () => {
   const normal = buildChatSystemPrompt(evidence);
   const focused = buildChatSystemPrompt({ ...evidence, imageTask: true });
-  assert.equal(normal.length, 3018);
-  assert.equal(sha256(normal), "99c0e87a861043ce2ec614019015e125b399e6642dc32be4105a3f18d86cedd3");
+  assert.equal(normal.length, 3033);
+  assert.equal(sha256(normal), "4836d3054a62589ec84af0496eef493ae130a8b0447f7db60e6dddf40349e4aa");
   assert.ok(!normal.includes(taskContract));
   assert.equal(focused.split(focusedRules).length, 2);
   assert.ok(!focused.includes(plain));
   const systemLines = focused.split("\n");
-  assert.match(systemLines[0], /^当前任务：先回答 \[当前输入\] 正在问的对象和本轮要求/);
-  assert.match(systemLines[1], /^事实与来源：当前明确事实和纠正优先/);
-  assert.match(systemLines[1], /分清可见证据、原话、建议、反馈和真实工具结果/);
+  assert.match(systemLines[0], /^当前任务：答\[当前输入\]所问/);
+  assert.match(systemLines[1], /^事实与来源：当前事实\/纠正优先/);
+  assert.match(systemLines[1], /分清证据\/原话\/建议\/反馈\/工具结果/);
   assert.ok(focused.indexOf(focusedRules) > focused.indexOf(systemLines[1]));
   assert.ok(focused.indexOf(focusedRules) < focused.indexOf(CORE_IDENTITY));
   for (const text of [CORE_IDENTITY, CONTEXT_SAFETY, MEMORY_SEMANTIC_BOUNDARY]) {
     assert.equal(focused.split(text).length, 2);
   }
-  assert.equal(focused.length, 2278 + focusedRules.length - plain.length);
+  assert.equal(focused.length, 2274 + focusedRules.length - plain.length);
   assert.ok(focused.length <= 2360);
   for (const replyMode of ["chat", "interjection", "technical", "summary", "admin"]) {
     const profile = buildChatSystemPrompt({ ...evidence, replyMode, imageTask: true });

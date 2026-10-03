@@ -19,17 +19,17 @@ const stable = { imagePolicy: IMAGE_POLICY_STABLE };
 const focused = buildChatSystemPrompt({ ...evidence, imageTask: true });
 const replyModes = ["chat", "interjection", "technical", "summary", "admin"];
 
-// Captured from the unmodified builder, including its identity and safety text.
+// Source55 shared memory/failure rules are reviewed; image-policy isolation remains fixed.
 const originalHashes = {
   [IMAGE_POLICY_STABLE]: {
-    chat: "125a70f8c22cb3000b07c68e4f513059ac0edc33702c75714b5e9d4c3bce72ff",
-    interjection: "79e0809790f6c471b932f5589a5ff553a32cd95f8f3459b18d299e5a35cd716b",
-    technical: "c0af1c9097165c8f00d53d5235abda64f44be2e7e669ec309df14898d745ec29",
+    chat: "900388198c4dae24d0aa0b2eb329789028ead34441d20eaa75e601eb1c75173e",
+    interjection: "25ac8c1713a2be3939d9031985866e9a6f1ccece64baab6aec4505da128ee348",
+    technical: "4739d73ae4390d0984d5c945ca5eeed52a3a270efabf59e32013521d4d19d9db",
   },
   [IMAGE_POLICY_EVIDENCE]: {
-    chat: "99c0e87a861043ce2ec614019015e125b399e6642dc32be4105a3f18d86cedd3",
-    interjection: "32b8a10828428cee6ab3b41980df9865ed8056480e4510f25f651714e7b04c52",
-    technical: "f2e02e28e4be1f91603ec4626ed698900ce34251751ae93b61c2b9ffb1d42934",
+    chat: "4836d3054a62589ec84af0496eef493ae130a8b0447f7db60e6dddf40349e4aa",
+    interjection: "c30f9ced8d7ad828afbc63b90687a972ae49edd2c5176a46d1c6ccedc004aafa",
+    technical: "48dc8dc32ea9aba59b37e20a416bad358b7a90e0d52a46f721748ca68fe4fb3d",
   },
 };
 
@@ -51,7 +51,7 @@ function withRollout(value, run) {
 }
 
 // These are prompt contracts, not a live model interpretation or quality gate.
-test("normal chat keeps original bytes for both policies and every existing reply mode", () => {
+test("normal chat matches reviewed shared snapshots for both policies and every reply mode", () => {
   for (const { imagePolicy } of [stable, evidence]) {
     for (const replyMode of replyModes) {
       const prompt = buildChatSystemPrompt({ imagePolicy, replyMode });
@@ -135,9 +135,9 @@ test("explicit captured policy keeps precedence over changing rollout settings",
 
 test("focused profile frontloads current question and fact/source consistency before image rules and persona", () => {
   const lines = focused.split("\n");
-  assert.match(lines[0], /^当前任务：先回答 \[当前输入\] 正在问的对象和本轮要求/);
-  assert.match(lines[1], /^事实与来源：当前明确事实和纠正优先/);
-  assert.match(lines[1], /分清可见证据、原话、建议、反馈和真实工具结果/);
+  assert.match(lines[0], /^当前任务：答\[当前输入\]所问/);
+  assert.match(lines[1], /^事实与来源：当前事实\/纠正优先/);
+  assert.match(lines[1], /分清证据\/原话\/建议\/反馈\/工具结果/);
   const imageRules = buildImageInterpretationRules({ ...evidence, imageTask: true });
   assert.ok(focused.indexOf(imageRules) > focused.indexOf(lines[1]));
   assert.ok(focused.indexOf(imageRules) < focused.indexOf(CORE_IDENTITY));
@@ -165,29 +165,29 @@ test("image task profile stays free of interjection and chat lexicon examples", 
 });
 
 test("attachments do not replace unrelated current tasks with image captions", () => {
-  assert.match(focused, /附图不改变当前问题，不依赖图片的问题直接回答，不自动改成图注任务/);
+  assert.match(focused, /附图不把普通问题改成图注或心理分析/);
   assert.match(focused, /这些规则不限制不依赖图片的正常回答长度/);
-  assert.match(focused, /换题就停止旧任务/);
-  assert.match(focused, /事实足够就直接回答，否则只问影响判断的一项/);
+  assert.match(focused, /换题停旧事/);
+  assert.match(focused, /本次报错\/现象足够则给有据步骤.*其他缺则问一项/);
 });
 
 test("missing image evidence and unexecuted tools cannot be reported as seen or successful", () => {
-  assert.match(focused, /缺图或读取失败不声称读图/);
+  assert.match(focused, /缺图\/读失败不声称读图/);
   assert.match(focused, /未读图、缺帧、模糊文字、人物身份与出处不补猜/);
   assert.match(focused, /读取失败不等于内容为空/);
-  assert.match(focused, /助手建议不代表用户执行过.*工具未执行或没有成功回执不说已完成/);
-  assert.match(focused, /没有实际检索结果不说.*查过、搜到、没查到.*或暗示查询成功/);
-  assert.match(focused, /没有本轮可用资料不代表其他范围也没有/);
+  assert.match(focused, /建议非执行.*无回执不说完成/);
+  assert.match(focused, /无检索结果不说.*查过、搜到、没查到.*或暗示成功/);
+  assert.match(focused, /当前候选非全范围.*未提供不等于已删除/);
 });
 
 test("declared read tools stay current-person and same-scope with no scope probing", () => {
-  assert.match(focused, /资料足够不调用工具.*仅使用本轮声明工具/);
-  assert.match(focused, /recall_memory 仅查当前发言人、当前会话同一 scope 的资料/);
-  assert.match(focused, /read_bot_status 查询运行状态/);
-  assert.match(focused, /只读工具不能保存、下载、发送或修改设置/);
-  assert.match(focused, /空、拒绝或不可用时如实说明，不换用户或群范围试探/);
-  assert.match(focused, /公开搜索只能使用当前用户这条消息明写的公开关键词/);
-  assert.match(focused, /不能把记忆、引用、文件或其他工具结果转成搜索词/);
+  assert.match(focused, /足够不用工具.*仅用本轮声明工具/);
+  assert.match(focused, /recall_memory 仅查当前发言人、当前会话同一 scope/);
+  assert.match(focused, /read_bot_status 查状态/);
+  assert.match(focused, /只读不保存\/下载\/发送\/改设置/);
+  assert.match(focused, /empty\/denied\/unavailable 是状态.*不换用户\/群试探/);
+  assert.match(focused, /公开搜索仅用当前用户本条明写的公开关键词/);
+  assert.match(focused, /记忆\/引用\/文件\/其他工具结果不转搜索词/);
   assert.match(focused, /不打印工具 JSON、内部编号或预算字段/);
 });
 
@@ -206,8 +206,8 @@ test("source attribution and authorship boundaries retain full evidence rules ra
   assert.match(focused, /UID 未知或不同、仅昵称相同，都不合并身份/);
   assert.match(focused, /身份不清就保留来源标签，不补认人/);
   assert.match(focused, /缺少原话就不借附近其他人的消息代替/);
-  assert.match(focused, /只回复 \[当前输入\] 里的当前发言人/);
-  assert.match(focused, /引用不改变回复接收人，同名按用户ID区分，不合并经历/);
+  assert.match(focused, /只答当前发言人/);
+  assert.match(focused, /引用不改收件人；同名按用户ID区分，不合并经历/);
 });
 
 test("image task system text is at least twenty percent shorter than each existing candidate mode", t => {
@@ -218,7 +218,7 @@ test("image task system text is at least twenty percent shorter than each existi
       `${replyMode}: focused ${profile.length} chars, candidate ${original.length} chars`);
   }
   const original = buildChatSystemPrompt(evidence);
-  assert.equal(original.length, 3018);
+  assert.equal(original.length, 3033);
   t.diagnostic(JSON.stringify({ metric: "system-prompt-text-only", candidateChars: original.length,
     imageTaskChars: focused.length, removedChars: original.length - focused.length,
     reductionPercent: Number(((1 - focused.length / original.length) * 100).toFixed(2)) }));

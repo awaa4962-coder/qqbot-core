@@ -4,11 +4,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.54-agent-tool-visibility";
-export const VERSION_NAME = "agent-tool-visibility";
+export const VERSION = "1.4.55-grounded-followups";
+export const VERSION_NAME = "grounded-followups";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
+  "记忆候选不自动等于‘那条’指代目标；条目未过期不代表其他记录也有效，本轮无资料不冒称持久删除或全范围清空。",
+  "失败反馈先接住已尝试的步骤，再按本次报错或现象选择下一步；工具不可用不自动归因为网络或连接故障。",
+  "图文候选用词句含义与已知事件的关系回答，不擅自补谁在自嘲或道贺。模型、权限及JM不改；新回答质量未作付费复测。",
   "工具清单补齐本人资料、提醒和确认查询的权限说明，分别显示本人设置与提醒工具群；只修展示，不开放新权限或代用户确认。",
   "Linux 收尾目标明确为全部55项完成到100%，开发与批末验收并行推进；正式2.0.0仍需完整交付，Windows保持冻结。",
   "图文候选区分文字的评价含义、与已知情境的关系和具体人的意图；相符或反差不自动补作者行为，明确自述仍按来源保留。真实质量待验，普通提示不变。",
@@ -42,6 +45,9 @@ export const VERSION_NOTES_ZH = Object.freeze([
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
+  "Visible memory candidates are not automatically the user's referent; missing context does not prove durable deletion or a complete search.",
+  "Failed attempts require evidence for the next step; an unavailable tool does not prove a network or connection fault.",
+  "Focused image replies separate wording and event context from attributed intent. Models, access and JM are unchanged; paid semantic revalidation is pending.",
   "Tool visibility now covers owned personal changes, reminders and action queries, with separate personal/reminder group lists. This changes presentation only, never permissions or owner confirmation.",
   "Linux completion targets all55 requirements at100%, combining implementation and batch-end acceptance. Version2.0.0 still requires full delivery; Windows remains frozen.",
   "Candidate image replies distinguish evaluative wording, its relation to supplied context and a person's intent. Alignment or contrast does not establish an author's act; explicit statements remain attributed. Real quality is pending; ordinary prompts are unchanged.",
