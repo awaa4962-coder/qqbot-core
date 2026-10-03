@@ -41,24 +41,24 @@ test("focused question scope replaces three rules within six lines while plain a
 
 test("literal evaluation and supplied outcome relate without proving an opposite stance or denying praise", () => {
   assert.match(questionScope, /先完成 \[当前输入\] 的问题，不自行增加新问题/);
-  assert.match(questionScope, /问词句含义，就解释相关文字及其与已给情境的关系/);
-  assert.match(taskContract, /图中文字是一种表达，不是对当前结果的证明.*给定结果也不改变文字的字面褒贬/);
-  assert.match(taskContract, /把二者联系起来，相符就解释吻合，反差可说明反话或调侃的可能性，不能改写结果/);
-  assert.match(taskContract, /缺少情境时解释字面并保留语气的不确定.*已有情境也不把一种读法断言为唯一含义/);
-  assert.match(taskContract, /当前明确事实、用户纠正和本轮提供的原话优先/);
+  assert.match(questionScope, /问词句含义，就解释相关文字、语气方向及与已给情境的吻合或反差/);
+  assert.match(taskContract, /图中文字不证明当前结果.*结果不改变字面褒贬/);
+  assert.match(taskContract, /相符说明吻合，反差可说明反话或调侃的可能性，不改写结果/);
+  assert.match(taskContract, /缺情境只解释字面并保留语气不确定.*有情境也不认定唯一读法/);
+  assert.match(taskContract, /当前明确事实、用户纠正和本轮原话优先/);
   assert.ok(!focusedRules.includes(plainLines[1]));
 });
 
 test("actual stance and purpose stay unknown or retain only the explicit source's own claim", () => {
-  assert.match(taskContract, /态度与目的只复述来源明确的自述，未说明则未知/);
+  assert.match(taskContract, /吻合或反差不能推出其行为、态度或目的，归因须有作者直接说明的原话/);
   assert.match(focusedRules, /说话人明确说明的意图可以复述为其自述.*与问题有关时不要漏掉/);
   assert.match(focusedRules, /必须归属于提供该原话的说话人或已标注的引用来源/);
   assert.match(focusedRules, /不视为已验证的心理事实.*不把他人自述转成发图者或当前用户的意图/);
   assert.match(focusedRules, /没有该原话时，心理意图是未知，不生成备选动机/);
-  assert.match(answerScale, /当前问题答清就结束，不顺带回答未被问及的‘为什么发图’，不列备选心理故事/);
-  assert.match(answerScale, /与问题有关的明确意图原话要按来源保留/);
-  assert.match(answerScale, /用户确实追问目的而没有原话时，说明缺少依据即可/);
-  assert.match(answerScale, /不固定追加动机免责声明或画面清单/);
+  assert.match(answerScale, /当前问题答清就结束，不顺带回答未问的‘为什么发图’，不列备选心理故事/);
+  assert.match(answerScale, /相关的明确意图原话按来源保留，不因意图未验证就否认或遗漏自述/);
+  assert.match(answerScale, /追问目的而缺原话时，简短说明缺依据即可/);
+  assert.match(answerScale, /不固定追加免责声明或画面清单/);
   assert.ok(!focusedRules.includes(plainLines[5]));
 });
 

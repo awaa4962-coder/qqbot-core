@@ -4,11 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.4.52-image-question-scope";
-export const VERSION_NAME = "image-question-scope";
+export const VERSION = "1.4.53-evidence-relation";
+export const VERSION_NAME = "evidence-relation";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
+  "图文候选区分文字的评价含义、与已知情境的关系和具体人的意图；相符或反差不自动补作者行为，明确自述仍按来源保留。真实质量待验，普通提示不变。",
   "群图文候选按当前提问约定解释范围和结束条件，不自动增加发图动机问题，也不把一种读法断言为唯一含义；字面、给定事实和有来源自述仍分开，真实质量另验。",
   "真实图文任务分别处理字面评价、独立已知结果和有来源的语气/意图声明；语境反差不直接否认字面评价，不靠虚构短例猜心理，实际质量另验。普通聊天、模型及凭据处理不变。",
   "模型中止诊断标明实际观测的请求时限、会话或上游来源，只显示固定标签；不打印凭据、原始原因或思考，不据耗时猜原因，不改变超时和重试。",
@@ -39,6 +40,7 @@ export const VERSION_NOTES_ZH = Object.freeze([
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
+  "Candidate image replies distinguish evaluative wording, its relation to supplied context and a person's intent. Alignment or contrast does not establish an author's act; explicit statements remain attributed. Real quality is pending; ordinary prompts are unchanged.",
   "Candidate group image replies follow the current question and an explicit stopping condition, without adding unsolicited motive questions or declaring a single reading exhaustive. Literal words, given facts and sourced statements remain distinct; real quality needs separate acceptance.",
   "Actual image tasks separate literal evaluation, independently known outcomes and attributed stance or purpose claims. Contextual contrast does not negate literal evaluation or supply a motive; real quality remains pending. Ordinary chat, models and credential handling are unchanged.",
   "Cancellation diagnostics show only observed request, chat-run or caller sources as fixed labels, never credentials, raw reasons or reasoning. Deadlines and retries are unchanged; duration does not establish cause.",
