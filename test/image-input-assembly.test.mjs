@@ -145,7 +145,9 @@ function assertAssembly(body, record, input) {
   assert.equal(body.messages.length, input.history.length + 4);
   assert.equal(body.messages[1].role, "system");
   assert.match(body.messages[1].content, /^\[本轮机器人运行事实\]/);
-  assert.deepEqual(body.messages.slice(3, -1), input.history);
+  assert.deepEqual(body.messages.slice(2, -2), input.history);
+  assert.equal(body.messages.at(-2).role, "user");
+  assert.match(body.messages.at(-2).content, /^\[本轮表达设置\]/);
   const evidenceText = Array.isArray(evidence) ? evidence[0].text : evidence;
   assert.match(evidenceText, /图1：当前消息，消息发送人 uid=60100/);
   assert.match(evidenceText, /图2：已核验引用消息，消息发送人 uid=60101/);
@@ -242,8 +244,10 @@ test("stable-v3 preserves the separate evidence message on vision and text fallb
   assert.equal((await executeChatTask(input)).position, "fallback");
   for (const body of bodies.filter(body => body.model !== "objective")) {
     assert.equal(body.messages.length, input.history.length + 5);
-    assert.deepEqual(body.messages.slice(3, -2), input.history);
+    assert.deepEqual(body.messages.slice(2, -3), input.history);
     assert.deepEqual(body.messages.at(-2), records.find(record => record.model === body.model).snapshot.message);
+    assert.equal(body.messages.at(-3).role, "user");
+    assert.match(body.messages.at(-3).content, /^\[本轮表达设置\]/);
     assert.deepEqual(body.messages.at(-1), { role: "user", content: currentInput });
     assert.doesNotMatch(body.messages[0].content, /图片解读任务：|图片问答范围：/);
   }
@@ -265,7 +269,9 @@ test("no-image request assembly stays identical under both policies for primary 
   }
   for (const body of bodies) {
     assert.deepEqual(body.messages.at(-1), { role: "user", content: currentInput });
-    assert.deepEqual(body.messages.slice(3, -1), input.history);
+    assert.deepEqual(body.messages.slice(2, -2), input.history);
+    assert.equal(body.messages.at(-2).role, "user");
+    assert.match(body.messages.at(-2).content, /^\[本轮表达设置\]/);
     assert.equal(body.messages.length, input.history.length + 4);
     assert.doesNotMatch(JSON.stringify(body.messages.slice(1)), /本轮图片证据|视觉识别失败/);
   }
