@@ -4,19 +4,19 @@
 
 **面向 Linux 的模块化 QQ 机器人：对话、记忆、识图、群工具与有限 Agent。**
 
-[![Release](https://img.shields.io/github/v/release/awaa4962-coder/qqbot-core?display_name=tag)](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.0.0)
+[![Release](https://img.shields.io/github/v/release/awaa4962-coder/qqbot-core?display_name=tag)](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.0.1)
 [![CI](https://github.com/awaa4962-coder/qqbot-core/actions/workflows/ci.yml/badge.svg?branch=agent%2Flinux-server-preview)](https://github.com/awaa4962-coder/qqbot-core/actions/workflows/ci.yml?query=branch%3Aagent%2Flinux-server-preview)
 ![Node.js](https://img.shields.io/badge/Node.js-22-339933?logo=nodedotjs&logoColor=white)
 ![OneBot](https://img.shields.io/badge/OneBot-11-4C8BF5)
-[![License](https://img.shields.io/badge/License-ISC-2F855A)](https://github.com/awaa4962-coder/qqbot-core/blob/v2.0.0/LICENSE)
+[![License](https://img.shields.io/badge/License-ISC-2F855A)](https://github.com/awaa4962-coder/qqbot-core/blob/v2.0.1/LICENSE)
 
-[下载 2.0.0](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.0.0) · [Linux 部署](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/deploy/linux/README.md) · [更新日志](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/CHANGELOG.md)
+[下载 2.0.1](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.0.1) · [Linux 部署](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/deploy/linux/README.md) · [更新日志](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/CHANGELOG.md)
 
 </div>
 
 QQFriend 是“夜星”的运行核心。它通过 NapCat / OneBot 11 接收 QQ 消息，把命令、对话上下文、模型与业务模块接成一条可检查的回复链路，并提供中文浏览器控制台。
 
-> 当前主维护版本为 **Linux 2.0.0**。`master` 保留旧版代码；部署请选择 `v2.0.0`，参与开发请选择 `agent/linux-server-preview`。Windows 现有安装暂停更新，不自动迁移账号、密钥或聊天数据。
+> 当前主维护版本为 **Linux 2.0.1**。`master` 保留旧版代码；部署请选择 `v2.0.1`，参与开发请选择 `agent/linux-server-preview`。Windows 现有安装暂停更新，不自动迁移账号、密钥或聊天数据。
 
 ## 能做什么
 
@@ -29,6 +29,7 @@ QQFriend 是“夜星”的运行核心。它通过 NapCat / OneBot 11 接收 QQ
 | 链接预览 | B站、GitHub 和普通网页预览，复用安全读取、重定向检查和去重 |
 | 下载与转发 | JM 编号下载、压缩和临时文件管理；群与私聊分别使用业务白名单，压缩密码保留大写 `FS` |
 | 中文控制台 | 查看服务状态、配置 API 与路由、编辑名单和明确记忆、管理表情、查看后台任务与脱敏诊断 |
+| 缓存与用量 | 稳定提示词前缀、精确同图分类复用与有范围的识图缓存；分开查看供应商 token 命中和本进程分类复用，不缓存最终聊天答案 |
 
 模型协议支持 OpenAI Chat / Responses、Anthropic 和 Gemini 适配。协议能接通不代表任意模型都支持识图、原生工具或全部思考参数，能力以当前接口配置及实际验证为准。
 
@@ -78,7 +79,7 @@ QQFriend 是“夜星”的运行核心。它通过 NapCat / OneBot 11 接收 QQ
 ### 1. 取正式版本并初始化
 
 ```bash
-git clone --branch v2.0.0 --depth 1 https://github.com/awaa4962-coder/qqbot-core.git qqfriend
+git clone --branch v2.0.1 --depth 1 https://github.com/awaa4962-coder/qqbot-core.git qqfriend
 cd qqfriend/deploy/linux
 bash prepare.sh
 ```
@@ -194,7 +195,7 @@ npm run replay:check
 
 `release:check` 已包含依赖、lint、测试与运行检查；同一候选无需为统计重复跑整套测试。真实模型探测可能计费，需要另行明确授权，不由离线检查自动发起。
 
-2.0.0 发布源码的验收快照为 **2995 项 / 2952 通过 / 43 项环境可选 / 0 失败**，ESLint 0 errors / 0 warnings，13 项离线回放通过；环境可选项不算通过。这是该发布的记录，不是未来版本的永久保证。
+2.0.1 发布源码的实际 Linux 验收快照为 **3112 项 / 3069 通过 / 43 项环境可选 / 0 失败**，ESLint 0 errors / 0 warnings，13 项离线回放通过，333 个运行文件与候选源码一致；环境可选项不算通过。这是该发布的记录，不是未来版本的永久保证。缓存收益由正常流量观察，不通过填充提示词或付费预热制造命中率，也不保证节费比例。
 
 | 文档 | 内容 |
 | --- | --- |
@@ -208,4 +209,4 @@ npm run replay:check
 
 ## License
 
-[ISC](https://github.com/awaa4962-coder/qqbot-core/blob/v2.0.0/LICENSE)
+[ISC](https://github.com/awaa4962-coder/qqbot-core/blob/v2.0.1/LICENSE)
