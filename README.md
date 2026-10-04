@@ -2,291 +2,210 @@
 
 # QQFriend
 
-**基于 NapCat / OneBot 11 的模块化 QQ 机器人核心**
+**面向 Linux 的模块化 QQ 机器人：对话、记忆、识图、群工具与有限 Agent。**
 
-让对话、记忆、识图、群工具和本地运维保持可组合、可检查、可替换。
+[![Release](https://img.shields.io/github/v/release/awaa4962-coder/qqbot-core?display_name=tag)](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.0.0)
+[![CI](https://github.com/awaa4962-coder/qqbot-core/actions/workflows/ci.yml/badge.svg?branch=agent%2Flinux-server-preview)](https://github.com/awaa4962-coder/qqbot-core/actions/workflows/ci.yml?query=branch%3Aagent%2Flinux-server-preview)
+![Node.js](https://img.shields.io/badge/Node.js-22-339933?logo=nodedotjs&logoColor=white)
+![OneBot](https://img.shields.io/badge/OneBot-11-4C8BF5)
+[![License](https://img.shields.io/badge/License-ISC-2F855A)](https://github.com/awaa4962-coder/qqbot-core/blob/v2.0.0/LICENSE)
 
-[![CI](https://github.com/awaa4962-coder/qqbot-core/actions/workflows/ci.yml/badge.svg?branch=agent%2Flinux-server-preview)](https://github.com/awaa4962-coder/qqbot-core/actions/workflows/ci.yml)
-![Node.js](https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&logoColor=white)
-![OneBot](https://img.shields.io/badge/OneBot-v11-4C8BF5)
-![License](https://img.shields.io/badge/License-ISC-2F855A)
+[下载 2.0.0](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.0.0) · [Linux 部署](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/deploy/linux/README.md) · [更新日志](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/CHANGELOG.md)
 
 </div>
 
-QQFriend 是“夜星”QQ 机器人的本地运行核心。它接收 NapCat 的 OneBot 事件，把命令、上下文、模型调用和扩展模块编排成一条可观测的回复链路，再经过统一输出清洗后发送回 QQ。
+QQFriend 是“夜星”的运行核心。它通过 NapCat / OneBot 11 接收 QQ 消息，把命令、对话上下文、模型与业务模块接成一条可检查的回复链路，并提供中文浏览器控制台。
 
-项目支持 Windows 本地运行，并提供独立的 Linux 服务器部署。QQ 账号、群白名单、模型密钥和运行记忆均留在各自运行环境，不随源码或发布包上传，也不会在 Windows 与 Linux 之间自动迁移。
+> 当前主维护版本为 **Linux 2.0.0**。`master` 保留旧版代码；部署请选择 `v2.0.0`，参与开发请选择 `agent/linux-server-preview`。Windows 现有安装暂停更新，不自动迁移账号、密钥或聊天数据。
 
-## 能力概览
+## 能做什么
 
-Linux `2.0.0` 汇总模块化、上下文/明确记忆、缓存、中文控制台及有限11工具。新工具仍受单群主动@、阶段白名单和本人独立确认约束，不开放任意系统操作；JM与大写FS保留，关系表导出仍预留。已有9条模型回答质量反例按用户要求延期，识图/语境/记忆指代不承诺绝对正确，失败评审保留。源码版本不证明服务器已切换，实际部署与验收记录见 [发布记录](deploy/linux/FINISH-2.0.0.md) 和健康/就绪接口。
-
-[正式下载 v2.0.0](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.0.0) 已发布，标签绑定已测运行源码41bf9ee，公开源码ZIP与实际Linux2.0.0同源。原43项与Agent12项按最新发布范围完成55/55；单群限制不随发布自动扩大。观察另有两次主备无最终正文导致的不回复，思考被过滤而未外发，保留为可用性限制。后续文档提交与运行镜像分开，不为收口文档覆盖私有状态或重启。
-
-当前开发目标为 Linux 服务器，Windows 安装暂停更新。Linux 控制台的「诊断」页可查看实际消息阶段记录，并使用合成样例生成对照、保存基线和评价答案。更新顺序见 [Linux 推进计划](deploy/linux/ROADMAP.md)。
-
-Linux `1.4.9-security-patch` 更新图片解码与开发工具安全依赖；部署时需重建依赖镜像，不能仅覆盖旧镜像的源码。使用 `npm run check:dependencies` 核对实际版本，详情见 [Linux 部署说明](deploy/linux/README.md)。
-
-上下文选择使用中文分词、同义表达、引用关系和发送人范围；诊断中能查看入选来源，回放包含 11 个合成场景，其中新增场景实际执行记忆召回和群话题选择。相关性选择不额外调用模型，也不增加持久化向量索引。
-
-Linux 网页「日报」支持按群和日期生成草稿、显示进度、编辑正文、比较版本、查看证据及单个讨论重写。预览不会发送到 QQ，发送需要单独操作；已发送的群和日期不会重复发布。详情见 [日报工作台](deploy/linux/SUMMARY-WORKBENCH.md)。
-
-`1.4.12-model-refresh` 同步 DeepSeek V4.1 Flash、MiMo 2.6 Flash / Pro 官方预设。服务器实例原位升级，任务分配、思考档位与 DeepSeek 兜底保持不变；既有自定义配置不会被新默认值偷偷覆盖。Windows 安装继续冻结。
-
-控制台现已按页面模块组织；表情分析与回放等耗时操作显示后台任务状态，刷新后继续查看原任务，不会自动重新执行。代码边界、兼容接口和验证方式见 [模块维护说明](deploy/linux/MODULAR-RUNTIME.md)。
-
-原 [智能化与模块化总路线](deploy/linux/ROADMAP.md) 与 [目标实现清单](deploy/linux/MODULAR-RUNTIME.md#目标实现说明) 覆盖能力自描述、对话与记忆、梗库退役、提示词、缓存及前端；以其中最新验收及部署记录区分已交付、候选和已知问题。下列1.4.x文字保留历史，不能把早期“待实施”视为当前状态，文档更新也不会自动切换服务器。
-
-`1.4.13-capability-state` 是 P1 的首个代码批次：能力页和帮助读取实际聊天/视觉任务配置，分开显示启用、会话许可及依赖状态；配置就绪不代表模型接口已探测在线。JM 下载保留，状态来自既有依赖检查。聊天侧自身能力接入仍在后续计划中。
-
-`1.4.14-meme-retirement` 停用自动梗库的学习、定时联网更新和提示词注入。旧命令返回停用说明，旧写入接口返回退役状态；原数据保留为「维护与外观 → 旧梗库归档」，只读且不自动恢复内置词条。识图、表情采集/发送、JM、链接预览及普通搜索继续保留；这不是新的自动梗库。
-
-`1.4.15-self-context` 为聊天模型加入当前会话权限内的能力事实和本次请求模型标识，主备切换会重新生成，不提供密钥、源码或名单。主动沉默不会再触发备用模型硬接话；两边失败不再随机补短句，直接提问会收到明确失败提示。诊断页区分主动不回复与故障；JM 仍完整保留。此批不代表 P1-P5 全部完成。
-
-`1.4.16-chat-lifecycle` 在聊天生成、备用调用、分段发送和成功记忆回写之间复核隐私与权限；清理记忆或修改称呼/风格后，旧回复不会在后续检查点继续外发或回填。前端显示已停止、部分发送和回执未知，不伪称已送达内容可撤回。JM 命令不进入普通聊天的私聊权限门，原独立白名单不变。
-
-`1.4.17-prompt-layers` 将固定任务规则和每轮表达设置分开，历史按完整轮次保留，长摘录保留首尾。诊断中可查看提示词版本、固定前缀指纹与文本长度；供应商实际用量仍以 API 返回的 token 统计为准，固定前缀不保证一定命中缓存。此为 2.0.0 总路线中的阶段性交付。
-
-`1.4.18-delivery-state` 已在 Linux 部署跨重启的普通聊天发送元数据和诊断页人工核实，未知结果不会自动重发；同名文件在 NapCat 使用独立临时路径，QQ 展示名不变。状态文件不存正文；这不是 JM/业务命令的自动恢复队列，也不是最终 `2.0.0`。
-
-`1.4.19-context-provenance` 已在 Linux 部署：明确当前发言人、引用作者和所问对象，校验同群来源与遗忘边界；原话拿不到时不拿附近聊天来猜。主模型和 DeepSeek 备用使用同一份已脱敏输入，诊断提供来源元数据，不公开引用正文。验收记录见更新日志；来源化长期记忆和受限工具仍需继续完成。
-
-`1.4.20-memory-evidence` 已在 Linux 部署本人的明确记忆命令与前端编辑，区分自述、管理员备注和有来源的话题线索；旧规则画像不再当作聊天事实，关系评分不改。使用与隐私边界见 [明确记忆](deploy/linux/MEMORY.md)。
-
-`1.4.21-scoped-tools` 已在 Linux 部署：模型可按需查询本人当前会话记录和权限内状态，主备共享预算；仅声明只读工具，公开搜索不能拼入记忆或附件。功能范围、协议限制和诊断见 [聊天只读工具](deploy/linux/CHAT-TOOLS.md)。
-
-`1.4.22-vision-context` 已部署到 Linux：支持视觉的聊天插槽直接看图与所选对话，文字插槽沿用视觉主备描述；精确范围缓存不复用语境结论。MiMo 对发图动机仍可能多作推断，识梗质量仍在验收。大小、动态图首帧、隐私和诊断说明见 [图片与对话](deploy/linux/VISION.md)。
-
-`1.4.23-usage-dimensions` 已在 Linux 部署：按物理 HTTP 尝试归一化多协议 usage，管理员在原 API 页按模型、任务、主备、提示词与实际模式只读查看；缺报和历史未知值不会冒充零，不展示价格或节省金额。成员缓存命中命令保留，清除统计需确认落盘。筛选、隐私、故障与回滚限制见 [Linux 用量说明](deploy/linux/USAGE.md)。
-
-`1.4.24-memory-state` 已在Linux部署明确记忆分类与事项状态命令，事件时间和来源分开，控制台可独立修改类型、日期与状态；状态更新不续期，转述回合保留原记忆依赖。用法与回滚限制见 [Linux 明确记忆](deploy/linux/MEMORY.md)。
-
-`1.4.25-context-groups` 按完整来源组选择上下文，私聊文本附件独立提供并说明实际读取范围，工具续问保留调用/结果配对。旧存档不冒充全文，不默认额外调用模型压缩；限制与部署记录见 [Linux 上下文预算](deploy/linux/CONTEXT.md)。
-
-`1.4.26-memory-lifecycle` 补齐遗忘的同步落盘确认，纠正/删除/过期来源及显式关联回复失效；话题线索和后台画像同样排除失效来源，关系算法不变。上线状态与边界见 [Linux 明确记忆](deploy/linux/MEMORY.md)。
-
-`1.4.27-derived-privacy` 将遗忘代次接入表情采集、分析与选择，清理发送者关联，保留共用素材和真实云回执；目录损坏不覆盖、不伪报成功。部署与遗忘边界见 [Linux 明确记忆](deploy/linux/MEMORY.md)。
-
-`1.4.28-memory-read-guards` 在模型、工具和分段发送边界核对记忆到期时间；群内引用和显式回复链保留来源依赖，纠正、删除、到期及重启后重新核验。仅增加内部失效元数据，不扩大他人记忆或私聊读取权限；实际验收与上线见实施记录。
-
-`1.4.29-derived-readers` 将有效期继续接到话题线索、后台画像、关系短评和相关命令的分段发送；群内档案不再展示全局推断。原关系数值算法和缓存节流保留，旧来源不完整的短期转述与短评保守重建；数据及回滚说明见 [Linux 明确记忆](deploy/linux/MEMORY.md)。
-
-`1.4.30-source-profiles` 为自动画像文字重建来源与期限，遗忘后清理共享推测，保留必要撤销编号；日报等只读导入不再自动写回旧快照。关系数值和其他成员的聊天/主动偏好不重算，实际候选及上线状态见 [实施记录](deploy/linux/MODULAR-RUNTIME.md)。
-
-`1.4.31-source-lineage` 补齐关系文字降级来源、群内显式引用继承、图片引用期限与失效回复的记忆排除。新来源元数据影响旧写器回滚兼容性，部署前先读 [记忆与回滚边界](deploy/linux/MEMORY.md)。
-
-`1.4.32-capability-facts` 将命令声明关联到既有能力编号，帮助、管理页和机器人自身信息按同一范围展示权限与状态；多模态聊天、专用视觉路由、日报和成员总结各按实际配置显示。Linux 发布与验收见 [模块化实施记录](deploy/linux/MODULAR-RUNTIME.md)。
-
-`1.4.33-result-contracts` 让链接预览、小程序和词云准确区分已处理与已送达；词云图片失败改为文字热词降级，摘要/识图给出明确状态。移除旧梗库无调用方的自动启动和调度出口，保留归档与测试。已部署 Linux，Windows 冻结；验收见 [模块化实施记录](deploy/linux/MODULAR-RUNTIME.md)。
-
-`1.4.34-prompt-provenance` 为各模型任务补充提示词版本与稳定前缀指纹，诊断展示匿名输入组成和来源原因对照，不保存完整提示词或私有推理。已部署 Linux，Windows 冻结；验收见 [模块化实施记录](deploy/linux/MODULAR-RUNTIME.md)。
-
-`1.4.35-background-commands` 将 JM、资源转发和管理员日报接入有界后台任务，接单后释放聊天队列；重复消息、权限变动和上传回执按原安全边界处理。已部署 Linux，Windows 冻结；普通聊天队列仍在后续治理范围内，阶段进度见 [模块化实施记录](deploy/linux/MODULAR-RUNTIME.md)。
-
-`1.4.36-detached-mentions` 让群聊明确 @ 的模型回复在有界运行槽中完成，下一条同群消息不再等待其模型与发送；原修订、隐私和发送账本保持。已部署 Linux，Windows 冻结；被动插话与链接预览仍在后续队列治理范围，详见 [模块化实施记录](deploy/linux/MODULAR-RUNTIME.md)。
-
-`1.4.37-detached-passive` 候选将群聊被动插话、自动链接/小程序预览、明确链接预览、词云渲染与关系短评接入有界后台槽；已确认的群聊回答还记录 QQ 消息号，以便引用旧回答时准确关联轮次。入站次序和原发送账本保持，容量与隐私边界分别核验。服务器上线以 [模块化实施记录](deploy/linux/MODULAR-RUNTIME.md) 为准，Windows 安装不更新。
-
-`1.4.38-topic-branches` 已上线，同一用户同群保留当前话题及最多两个旧话题，引用和相关问题只选择对应分支；旧记录可读，私聊短期线程仍不落盘。`1.4.39-stable-cache` 已完成 Linux 验收并上线，整理固定任务前缀、本轮检索缓存和同范围客观识图并发共用，不复用普通聊天最终答案，也不合并QQ发送。Linux 实际发布以 [模块化实施记录](deploy/linux/MODULAR-RUNTIME.md) 的门禁与上线记录为准。
-
-`1.4.40-final-integration` 正在整体验收，图片证据解读先在明确选定的一群试运行；前端全状态、固定质量案例与旧接口清理随批次同步。正式2.0.0仅在原43项全部验收后发布，阶段候选不当作完成。API管理写请求须先读取 `/admin/api-providers`，将返回的 `configurationRevision` 带回保存、删除、路由和回滚请求；版本不一致返回409，草稿不覆盖新配置。连接测试不修改配置，不需要写版本。实际模型任务路由和密钥格式未变。
-
-`1.4.41-native-tool-proof` 增加能力页「验证工具」：只有管理员明确确认后才用合成算式核对当前主备原生工具调用及续接，最多4次模型请求，不发QQ、不读聊天。配置可用不等于真实验证通过，模拟QA不能冒充线上证据；证明过期不改变聊天权限或自动付费再测。提交结果未知时保留任务范围并禁止重复，刷新只查询，不重新提交。存档损坏、退出保存失败和发送未知均不报成功。该批仍是Linux候选，部署和整项验收状态以实施记录为准。
-
-群聊可用 `@夜星 总结我`、`@夜星 总结 @某人 昨天`，或 `@夜星 分别总结 @甲 @乙 今天`，把指定成员的聊天用自然的话讲清楚。默认最近两小时、最多五人，仅使用本群已采集文字；普通成员可用，由管理员在「配置 → 聊天总结群」控制。具体用法见 [成员聊天总结](deploy/linux/MEMBER-SUMMARY.md)。
-
-`1.4.45-agent-materials` 正在整合附件引用、按需读取、摘要草稿和长任务状态/取消。新增工具群默认空，私聊与自动插话不开放；正式日报、成员总结命令及 JM 原有边界保持。此为 Linux 开发候选，不代表已经上线或正式发布 `2.0.0`。见 [有限工具与边界](deploy/linux/CHAT-TOOLS.md)。
-
-| 方向 | 当前能力 |
+| 能力 | 具体功能 |
 | --- | --- |
-| 对话与模型 | 按任务配置 MiMo、DeepSeek 或自定义模型的主备与思考强度，兼容 OpenAI Chat / Responses、Anthropic 和 Gemini 协议 |
-| 上下文与记忆 | 群聊短期线程、相关历史召回、用户称呼与回复偏好、关系摘要、跨群隔离和硬预算控制 |
-| 图片与表情 | 图片上下文理解、视觉模型兜底、QQ 收藏表情同步、语境召回、白名单群表情采集与去重 |
-| 群工具 | 每日群报、词云、关系状态、能力查询、版本日志和管理员诊断 |
-| 链接预览 | B站、GitHub 仓库和普通网页的安全预览，支持去重、重定向校验和图片内存代理 |
-| 文件与下载 | 白名单资源转发、JM 代码下载、加密压缩与临时文件生命周期管理 |
-| 本地控制台 | 服务启停、健康状态、API 快拆、配置编辑、日志诊断、模块清单、旧词条只读归档和表情管理 |
+| 对话与模型 | 按任务配置主备模型、接口预设和思考强度；最终正文清洗后再发送 |
+| 上下文与记忆 | 区分当前发言人、引用作者和被 @ 对象；关联相关历史、本人明确记忆与称呼偏好，处理纠正、到期和遗忘 |
+| 图片与表情 | 结合所选对话看图，支持原图入模或视觉描述兜底；同步 QQ 收藏表情、群采集与去重 |
+| 日报与成员总结 | 按群和日期生成日报，编辑和查看证据；总结本人或本轮明确指定成员的聊天 |
+| 链接预览 | B站、GitHub 和普通网页预览，复用安全读取、重定向检查和去重 |
+| 下载与转发 | JM 编号下载、压缩和临时文件管理；群与私聊分别使用业务白名单，压缩密码保留大写 `FS` |
+| 中文控制台 | 查看服务状态、配置 API 与路由、编辑名单和明确记忆、管理表情、查看后台任务与脱敏诊断 |
 
-## 工作链路
+模型协议支持 OpenAI Chat / Responses、Anthropic 和 Gemini 适配。协议能接通不代表任意模型都支持识图、原生工具或全部思考参数，能力以当前接口配置及实际验证为准。
 
-```mermaid
-flowchart LR
-    QQ["QQ 消息"] --> NC["NapCat / OneBot 11"]
-    NC --> IN["事件归一化"]
-    IN --> RT{"路由判断"}
-    RT --> CMD["命令系统"]
-    RT --> CTX["上下文与记忆"]
-    RT --> MOD["日报 / 识图 / 链接 / 表情 / 下载"]
-    CTX --> LLM["任务模型路由"]
-    CMD --> OUT["统一输出管线"]
-    MOD --> OUT
-    LLM --> OUT
-    OUT --> NC
-```
+## 有限 Agent
 
-核心原则是让每个模块只处理自己的职责：入口负责解析，路由负责选择，模型层负责生成，输出层负责清洗与发送。单个扩展失败不会直接拖垮主回复链路。
+在开放功能的群里真正 **@机器人**，可以直接说需求：
 
-## 快速开始
+| 你可以这样问 | 后端允许做的事 |
+| --- | --- |
+| `@夜星 算一下 21 乘 2` | 调用受限计算器，不执行脚本 |
+| `@夜星 搜索 Debian 最新版本` | 使用本条明确授权的公开关键词搜索 |
+| `@夜星 阅读这个链接，说明主要结论：链接` | 读取本轮授权的公开来源，并说明读取范围 |
+| 随文本附件发送 `@夜星 找出超时设置` | 按需读取当前文本附件，不开放本机文件系统 |
+| `@夜星 总结我今天的聊天，先给草稿` | 复用已有总结服务，不自动正式发布日报 |
+| `@夜星 以后叫我小夏` | 准备本人的资料变更草稿，等待本人确认 |
+| `@夜星 十分钟后提醒我喝水` | 准备单次提醒，确认前不生效 |
 
-### 运行环境
+模型生成的资料变更和提醒，需要本人另发机器人给出的 `@夜星 确认 cf_编号`。示例编号不能执行；管理员也不能代他人确认。
 
-- Windows 10 / 11
-- Node.js 22 或更新版本
-- 已安装并登录的 NapCat `v4.18.13`
-- 至少一个可用的模型 API
+新工具默认受群名单及阶段名单限制，不因发布版本自动向全部群开放，也不新增开放私聊或自动插话。每轮主备共享 **4 个模型轮次 / 4 次工具调用 / 90 秒 / 8 次模型 HTTP 尝试**；这不是无限循环或所有网络请求的总数。
 
-Linux 服务器使用 Node.js 22 与 NapCat Docker，完整说明见 [`deploy/linux/README.md`](deploy/linux/README.md)。
+<details>
+<summary>查看 11 个工具及权限边界</summary>
 
-### 安装
+| 工具 | 范围 |
+| --- | --- |
+| `recall_memory` | 本人、当前会话的明确记忆与保留记录 |
+| `read_bot_status` | 当前权限内的功能、版本和状态 |
+| `web_search` | 本条明确授权的公开关键词 |
+| `calculate` | 有限数值表达式 |
+| `read_public_page` | 后端分配的本轮公开来源引用 |
+| `read_current_attachment` | 后端分配的本轮文本附件引用 |
+| `draft_chat_summary` | 当前群、允许对象的总结草稿 |
+| `read_draft_task` | 本人在当前群的草稿状态或取消请求 |
+| `prepare_personal_change` | 本人的具体资料变更草稿，不自动写入 |
+| `prepare_reminder` | 本人当前群的单次提醒草稿 |
+| `read_personal_actions` | 本人当前群的确认与提醒状态 |
 
-```powershell
-git clone https://github.com/awaa4962-coder/qqbot-core.git
-cd qqbot-core
-npm.cmd ci
-```
+没有 shell、任意路径读取、服务器管理、跨用户写入或模型代确认工具。网页和附件是资料，不是取得权限的指令。普通对话有足够材料时可以直接回答，不必每轮调用工具。
 
-按照 [`.env.example`](.env.example) 在本机创建所需的 `.env_*` 文件。真实密钥不要写进源码、测试、日志或提交记录。
+</details>
 
-### 启动
+## Linux 快速开始
 
-完整启动 NapCat 与 Bridge：
+需要 Docker Engine 与 Docker Compose v2；已完成部署验证的是 Linux amd64。Node.js 22 与 Python 依赖由 Bridge 镜像提供，本机开发才需要单独安装。
 
-```powershell
-.\start_bridge.bat
-```
-
-只启动 Bridge：
-
-```powershell
-npm.cmd start
-```
-
-检查健康状态：
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:16789/health
-```
-
-正常响应包含：
-
-```json
-{
-  "status": "ok"
-}
-```
-
-### Linux 服务器预览
-
-Linux 部署与 Windows 状态完全分开。初始化后补齐 Linux 自己的密钥和白名单，再通过 Docker Compose 启动：
+### 1. 取正式版本并初始化
 
 ```bash
-cd deploy/linux
-chmod +x prepare.sh check.sh
-./prepare.sh
+git clone --branch v2.0.0 --depth 1 https://github.com/awaa4962-coder/qqbot-core.git qqfriend
+cd qqfriend/deploy/linux
+bash prepare.sh
+```
+
+初始化只准备独立配置与状态目录，不包含你的账号或密钥。启动前填写：
+
+| 位置 | 用途 |
+| --- | --- |
+| `qqfriend.env` | 机器人 QQ 号、业务名单及运行设置 |
+| `state/qqfriend/config/.env_*` | 实际使用的模型、搜索与 OneBot 认证凭据 |
+| `.env` | Docker 参数、NapCat 账号及镜像设置 |
+
+`prepare.sh` 会生成管理令牌、OneBot 令牌及 NapCat WebUI 配置。凭据保留在自己的服务器上，不要上传到 GitHub 或发送到群里。配置格式、未使用能力的处理和首次登录见 [完整部署说明](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/deploy/linux/README.md)。
+
+### 2. 启动并连接管理界面
+
+在服务器的 `deploy/linux` 目录运行：
+
+```bash
 docker compose --env-file .env up -d --build
-./check.sh --runtime
 ```
 
-管理页面只监听服务器环回地址。使用 SSH 隧道后，在本机打开 `http://127.0.0.1:16789/console/`：
+在自己的电脑建立 SSH 隧道，将示例中的用户与地址换成自己的：
 
 ```bash
-ssh -L 16789:127.0.0.1:16789 -L 6099:127.0.0.1:6099 miku-server
+ssh -N -L 16789:127.0.0.1:16789 -L 6099:127.0.0.1:6099 user@your-server
 ```
+
+- QQFriend 控制台：`http://127.0.0.1:16789/console/`
+- NapCat 登录界面：`http://127.0.0.1:6099/webui`
+
+在 NapCat 完成 QQ 登录及 OneBot 连接设置。Docker 网络内的反向 WebSocket 使用 `ws://bridge:16789`，不能把容器自己的 `127.0.0.1` 当成 Bridge；HTTP/WS 使用初始化生成的同一个 OneBot 令牌。
+
+首次登录后设置自己的 `NAPCAT_ACCOUNT`，后续启动复用持久登录状态。设备验证或登录过期仍可能需要人工处理。
+
+### 3. 检查连接
+
+```bash
+curl -fsS http://127.0.0.1:16789/health
+curl -fsS http://127.0.0.1:16789/ready
+```
+
+`/health` 为 `ok`，且 `/ready` 为 `ready` 才表示对应运行与连接检查通过；进程在线不等于 QQ 已登录。管理端口默认只绑定服务器环回地址，不建议直接暴露公网。
+
+需要每日自动群报时，按部署说明设置 `Asia/Shanghai` 时区并安装唯一日报计划；只执行 `docker compose up` 不会替你安装这项定时任务。已有服务器升级前先备份和检查数据兼容，不用旧备份覆盖新增记忆或发送状态。
 
 ## 常用命令
 
-群聊命令必须先 `@机器人`，私聊命令可以省略：
+群聊请用 QQ 的 @ 功能选择机器人；私聊的普通命令可省略 @，聊天和业务功能仍分别检查准入。
 
 ```text
 @夜星 帮助
 @夜星 状态
+@夜星 版本
 @夜星 更新
-@夜星 关系
 @夜星 我的档案
-@夜星 回复风格 简短 技术 给步骤
-@夜星 JM怎么用
+@夜星 缓存命中率
+@夜星 总结我
+@夜星 我的提醒
+@夜星 jm <编号>
 ```
 
-管理员命令需要配置 `QQBOT_ADMINS` 或 `.env_admins`：
+管理员配置使用 `QQBOT_ADMINS` 或 `.env_admins`，例如 `@夜星 管理帮助`、`@夜星 运行状态`。关系查询保留原功能，`export-relationships` 仍预留，不生成真实关系表。
 
-```text
-@夜星 管理帮助
-@夜星 运行状态
-@夜星 memory status
+## 模块如何配合
+
+```mermaid
+flowchart LR
+    QQ["QQ"] --> NC["NapCat / OneBot 11"]
+    NC --> IN["鉴权、归一化、准入与去重"]
+    IN --> CMD["命令与业务模块"]
+    IN --> CTX["对话、记忆与图文来源"]
+    CTX --> LLM["模型路由与主备"]
+    LLM --> TOOLS["有限工具、权限与共享预算"]
+    TOOLS --> LLM
+    CMD --> OUT["输出清洗与发送账本"]
+    LLM --> OUT
+    OUT --> NC
+    NC --> QQ
 ```
 
-帮助、命令注册和能力中心共用同一份声明，新增模块时不需要维护多套互相漂移的命令列表。
+| 目录 | 主要职责 |
+| --- | --- |
+| `bridge/api-providers/` | 协议、预设、任务路由、用量与凭据边界 |
+| `bridge/commands/`、`capabilities/` | 命令声明、分发、帮助和能力目录 |
+| `bridge/cognition/`、`context/`、`memory-profile/` | 对话生命周期、来源选择、明确记忆与失效保护 |
+| `bridge/chat-tools/`、`agent-reminders/` | 有限工具、本人确认、草稿与持久提醒 |
+| `bridge/group-summary/`、`vision/`、`jm/`、`services/` | 日报、图文、下载与链接业务 |
+| `launcher/QQFriendLauncher/Web/` | Linux 可复用的中文浏览器控制台 |
+| `deploy/linux/`、`scripts/`、`test/` | 部署、发布检查、脚手架与回归测试 |
 
-## 本地控制台
+沿用一个注册表、模型路由与发送边界，不给每个功能再造一套 Agent。详细职责见 [模块文档](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/deploy/linux/MODULAR-RUNTIME.md)。
 
-Windows 控制台把常用维护动作放到可视化界面中：
+## 隐私与已知限制
 
-- 查看 Bridge、NapCat、内存和消息风暴状态
-- 一键启动、停止、重启和健康检查
-- 配置模型供应商、协议、任务路由与思考强度
-- 编辑白名单、机器人名称和功能开关
-- 管理梗库、QQ 收藏表情与群采集策略
-- 查看脱敏日志、运行诊断、模块清单和审计记录
+- 模型输出只允许最终正文；`reasoning_content` 不作为回复，日志不打印完整密钥或私有推理。
+- 群与本人资料有范围检查，确认绑定发起人、会话和参数；未知写入或发送结果不自动重放。
+- 外部读取逐跳检查 URL、DNS 和重定向；网页与附件不能借内容绕过工具权限。
+- QQ 状态、密钥、聊天与记忆留在各自部署目录，不进入公开发布包；必要的聊天和图像会发送给配置的模型提供方，本地遗忘不能撤回供应商已经接收的请求。
+- 自动梗库已停用，旧词条只保留只读归档；关系表导出未启用。
+- 2.0.0 保留 **9 条回答质量评测反例**，涉及图文语气、记忆指代等；上线观察另有 **2 次主备无最终正文导致的不回复**。它们没有被改记为通过，识图、工具选择和模型理解不保证绝对正确。
+- 下载与转发只用于有权限的资源；白名单和压缩密码不能代替资源授权。
 
-控制台只连接本机管理端口；API Key 不会通过管理快照返回给前端。
+## 开发与文档
 
-## 模块结构
+本地开发使用 `agent/linux-server-preview` 分支和 Node.js 22。Linux 整批验收入口：
 
-```text
-bridge/
-  api-providers/       模型协议、预设、任务路由与密钥边界
-  capabilities/        能力目录与用户查询
-  cognition/           短期对话线程和完成回合
-  commands/            命令注册、标准化与分发
-  context/             上下文分层、历史和硬预算
-  features/            表情等独立扩展
-  group-summary/       群日报证据、提示词、模型与格式化
-  services/            链接预览等外部服务
-launcher/              Windows 控制台与 Linux 可复用浏览器界面
-deploy/linux/          Docker Compose、systemd 与 Linux 运维脚本
-scripts/               发布、诊断、脚手架和运行检查
-test/                  模块、集成、安全和回归测试
+```bash
+npm ci
+npm run release:check
+npm run replay:check
 ```
 
-模块能力和健康检查登记在 [`bridge/modules/manifest.mjs`](bridge/modules/manifest.mjs)，命令扩展可通过脚手架生成基础文件：
+`release:check` 已包含依赖、lint、测试与运行检查；同一候选无需为统计重复跑整套测试。真实模型探测可能计费，需要另行明确授权，不由离线检查自动发起。
 
-```powershell
-npm.cmd run command:scaffold -- weather --aliases=weather,天气 --help="天气 <城市>"
-```
+2.0.0 发布源码的验收快照为 **2995 项 / 2952 通过 / 43 项环境可选 / 0 失败**，ESLint 0 errors / 0 warnings，13 项离线回放通过；环境可选项不算通过。这是该发布的记录，不是未来版本的永久保证。
 
-脚手架默认只预览；确认生成内容后追加 `--write` 才会写入文件。
-
-## 安全与隐私
-
-- `reasoning_content`、分析字段和思维过程不能进入最终 QQ 消息。
-- 外部 URL 每次重定向都会重新检查，内网、localhost 和链路本地地址会被拒绝。
-- 链接与识图图片优先在内存中处理，不作为长期图片文件保存。
-- 群上下文按群和用户隔离，私聊短期线程只保留在进程内存中。
-- 日志只记录脱敏摘要，不打印完整密钥或模型私有推理。
-- 发布检查会拦截 `.env*`、运行记忆、日志、备份、个人文档和本机路径。
-- `export-relationships` 仍是预留能力，不会生成真实关系表。
-
-## 开发与验收
-
-```powershell
-npm.cmd ci
-npm.cmd run lint
-npm.cmd test
-npm.cmd run release:check
-npm.cmd run replay:check
-```
-
-测试不连接真实 NapCat，不调用真实模型 API，也不依赖真实密钥。发布检查会额外验证运行配置、JM 依赖、敏感路径、ZIP 路径和发布清单。
-
-## 文档
-
-- [有限 Agent 三阶段计划](deploy/linux/AGENT-PLAN.md)：第一阶段新增计算与公开原文读取，默认关闭。通过配置页「有限工具灰度群」或 `.env_agent_groups` / `QQBOT_AGENT_GROUPS` 选定灰度群后，仅主动 @ 聊天开放；空名单关闭新增工具，私聊与自动插话不新增开放。API 的 `tools` 勾选不是原生工具实测证明。
-
-- [更新日志](CHANGELOG.md)
-- [环境变量示例](.env.example)
-- [协作与发布工作流](WORKFLOW.md)
-- [模块清单](bridge/modules/manifest.mjs)
+| 文档 | 内容 |
+| --- | --- |
+| [部署与运维](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/deploy/linux/README.md) | 登录、连接、定时任务、备份和升级 |
+| [有限工具](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/deploy/linux/CHAT-TOOLS.md) | 工具参数、权限、协议和额度 |
+| [记忆与隐私](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/deploy/linux/MEMORY.md) | 明确记忆、纠正、遗忘和恢复边界 |
+| [日报工作台](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/deploy/linux/SUMMARY-WORKBENCH.md) | 草稿、证据、编辑和正式发送 |
+| [更新日志](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/CHANGELOG.md) | 历代版本，不在首页堆叠交付历史 |
+| [发布记录](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/deploy/linux/FINISH-2.0.0.md) | 2.0.0 验收、实际部署与保留限制 |
+| [协作工作流](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/WORKFLOW.md) | 模块化分工、回归和发布规则 |
 
 ## License
 
-[ISC](LICENSE)
+[ISC](https://github.com/awaa4962-coder/qqbot-core/blob/v2.0.0/LICENSE)
