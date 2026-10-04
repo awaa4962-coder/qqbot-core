@@ -2,6 +2,14 @@
 
 This deployment is isolated from the Windows installation. It creates fresh Linux state and never copies API keys, QQ login data, chat history, or user memory automatically.
 
+The Linux 2.0.0 source integrates the modular runtime, explicit memory, scoped
+cache, browser console and 11 limited tools. New tools require the configured
+group/phase lists and a direct mention; owned changes and reminders need a
+separate owner confirmation. JM and uppercase FS remain; relationship export
+is reserved. Nine known model-answer quality cases are deferred, not fixed or
+reclassified as passes. A source version does not establish deployment or health;
+see [FINISH-2.0.0.md](FINISH-2.0.0.md) for current release and observation status.
+
 As of 2026-09-07, Linux is the primary update target and the installed Windows
 bot is frozen. See [ROADMAP.md](ROADMAP.md) for the staged work.
 

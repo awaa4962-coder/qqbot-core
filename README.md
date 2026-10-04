@@ -6,7 +6,7 @@
 
 让对话、记忆、识图、群工具和本地运维保持可组合、可检查、可替换。
 
-[![CI](https://github.com/awaa4962-coder/qqbot-core/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/awaa4962-coder/qqbot-core/actions/workflows/ci.yml)
+[![CI](https://github.com/awaa4962-coder/qqbot-core/actions/workflows/ci.yml/badge.svg?branch=agent%2Flinux-server-preview)](https://github.com/awaa4962-coder/qqbot-core/actions/workflows/ci.yml)
 ![Node.js](https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&logoColor=white)
 ![OneBot](https://img.shields.io/badge/OneBot-v11-4C8BF5)
 ![License](https://img.shields.io/badge/License-ISC-2F855A)
@@ -18,6 +18,8 @@ QQFriend 是“夜星”QQ 机器人的本地运行核心。它接收 NapCat 的
 项目支持 Windows 本地运行，并提供独立的 Linux 服务器预览部署。QQ 账号、群白名单、模型密钥和运行记忆均留在各自运行环境，不随源码或发布包上传，也不会在 Windows 与 Linux 之间自动迁移。
 
 ## 能力概览
+
+Linux `2.0.0` 汇总模块化、上下文/明确记忆、缓存、中文控制台及有限11工具。新工具仍受单群主动@、阶段白名单和本人独立确认约束，不开放任意系统操作；JM与大写FS保留，关系表导出仍预留。已有9条模型回答质量反例按用户要求延期，识图/语境/记忆指代不承诺绝对正确，失败评审保留。源码版本不证明服务器已切换，实际状态与剩余收尾见 [发布计划](deploy/linux/FINISH-2.0.0.md) 和健康/就绪接口。
 
 当前开发目标为 Linux 服务器，Windows 安装暂停更新。Linux 控制台的「诊断」页可查看实际消息阶段记录，并使用合成样例生成对照、保存基线和评价答案。更新顺序见 [Linux 推进计划](deploy/linux/ROADMAP.md)。
 
@@ -31,7 +33,7 @@ Linux 网页「日报」支持按群和日期生成草稿、显示进度、编�
 
 控制台现已按页面模块组织；表情分析与回放等耗时操作显示后台任务状态，刷新后继续查看原任务，不会自动重新执行。代码边界、兼容接口和验证方式见 [模块维护说明](deploy/linux/MODULAR-RUNTIME.md)。
 
-下一轮改造的 [智能化与模块化总路线](deploy/linux/ROADMAP.md) 与 [目标实现清单](deploy/linux/MODULAR-RUNTIME.md#目标实现说明) 已整理，覆盖能力自描述、对话与记忆、梗库退役、提示词、缓存及前端。它们是待实施规划，不代表这些改造已上线；现有运行版本不因文档更新而改变。
+原 [智能化与模块化总路线](deploy/linux/ROADMAP.md) 与 [目标实现清单](deploy/linux/MODULAR-RUNTIME.md#目标实现说明) 覆盖能力自描述、对话与记忆、梗库退役、提示词、缓存及前端；以其中最新验收及部署记录区分已交付、候选和已知问题。下列1.4.x文字保留历史，不能把早期“待实施”视为当前状态，文档更新也不会自动切换服务器。
 
 `1.4.13-capability-state` 是 P1 的首个代码批次：能力页和帮助读取实际聊天/视觉任务配置，分开显示启用、会话许可及依赖状态；配置就绪不代表模型接口已探测在线。JM 下载保留，状态来自既有依赖检查。聊天侧自身能力接入仍在后续计划中。
 
