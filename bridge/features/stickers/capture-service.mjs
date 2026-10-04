@@ -2,8 +2,11 @@ import crypto from "node:crypto";
 import { CFG } from "../../config.mjs";
 import { log, logE } from "../../logger.mjs";
 import { fetchSafeBuffer } from "../../safe-url.mjs";
+import { perceptualImageHash } from "../../knowledge/memes/image-context.mjs";
 import {
+  findStickerClassificationCandidate,
   getStickerCaptureQuota,
+  getStickerEntry,
   getStickerSettings,
   markCapturedStickerCloudResult,
   markStickerCaptureRejected,
@@ -28,6 +31,7 @@ const recentSenderImages = new Map();
 const status = {
   observed: 0,
   rejected: 0,
+  classificationReused: 0,
   promoted: 0,
   lastError: "",
   lastCaptureAt: null,
@@ -67,8 +71,12 @@ export async function processCandidate(candidate, options = {}) {
   const privacyGuard = options.privacyGuard || createStickerPrivacyGuard(candidate.userId);
   const ensureAllowed = () => {
     privacyGuard();
+    options.signal?.throwIfAborted();
+    options.classifierOptions?.signal?.throwIfAborted();
+    options.assertCurrent?.();
     const reason = generation !== captureGeneration ? "capture_stopped"
-      : captureGate(options.settings || getStickerSettings(), candidate.groupId, candidate.userId);
+      : captureGate(getStickerSettings(), candidate.groupId, candidate.userId) ||
+        (options.settings && captureGate(options.settings, candidate.groupId, candidate.userId));
     if (reason) throw new Error(reason);
   };
   try {
@@ -81,8 +89,7 @@ export async function processCandidate(candidate, options = {}) {
     const prepared = await prepareCandidate(candidate, options, ensureAllowed);
     if (prepared.rejected) return prepared.result;
     ensureAllowed();
-    const settings = options.settings || getStickerSettings();
-    return await promotePreparedCandidate(prepared, candidate, settings, { ...options, privacyGuard }, ensureAllowed);
+    return await promotePreparedCandidate(prepared, candidate, { ...options, privacyGuard }, ensureAllowed);
   } catch (error) {
     status.lastError = error.message;
     logE("group sticker capture failed:", error.message);
@@ -99,8 +106,14 @@ async function prepareCandidate(candidate, options, ensureAllowed) {
     return { rejected: true, result: { ok: false, rejected: true, reason: "catalog_limit" } };
   }
   const classify = options.classify || classifyStickerCandidate;
-  const analysis = await classify(image, { ...options.classifierOptions, ensureAllowed });
+  const identity = await candidateImageIdentity(image, candidate.groupId, ensureAllowed);
   ensureAllowed();
+  // Refresh the projection after hashing; no saved description crosses this await.
+  const current = identity && findStickerClassificationCandidate(identity.md5, { groupId: candidate.groupId });
+  const reused = current?.fingerprint === identity?.fingerprint ? current : null;
+  const analysis = reused || await classify(image, { ...options.classifierOptions, ensureAllowed });
+  ensureAllowed();
+  if (reused) status.classificationReused++;
   if (!["sticker", "unknown"].includes(analysis.classification)) {
     reject("not_sticker");
     return {
@@ -119,21 +132,43 @@ async function prepareCandidate(candidate, options, ensureAllowed) {
   return { rejected: false, image, analysis, observed };
 }
 
-async function promotePreparedCandidate(prepared, candidate, settings, options, ensureAllowed) {
+async function candidateImageIdentity(image, groupId, ensureAllowed) {
+  if (!Buffer.isBuffer(image?.buffer) || !image.buffer.length) return null;
+  const md5 = crypto.createHash("md5").update(image.buffer).digest("hex");
+  const candidate = findStickerClassificationCandidate(md5, { groupId });
+  ensureAllowed();
+  if (!candidate) return null;
+  let fingerprint;
+  try { fingerprint = await perceptualImageHash(image.buffer); }
+  catch {
+    // An undecodable image cannot prove reuse; keep the original classifier's handling.
+    ensureAllowed();
+    return null;
+  }
+  ensureAllowed();
+  return { md5, fingerprint };
+}
+
+async function promotePreparedCandidate(prepared, candidate, options, ensureAllowed) {
   const { image, observed } = prepared;
   const quota = getStickerCaptureQuota({ now: options.now });
   const quotaResult = enforceCaptureQuota(observed, quota);
   if (quotaResult) return quotaResult;
-  const skipReason = promotionSkipReason(observed.entry, settings, quota);
+  const skipReason = promotionPolicySkipReason(observed.entry.id, options);
   if (skipReason) return { ok: true, promoted: false, reason: skipReason, entry: observed.entry };
 
+  const ensurePromotionAllowed = () => {
+    ensureAllowed();
+    const reason = promotionPolicySkipReason(observed.entry.id, options);
+    if (reason) throw new Error(reason);
+  };
   const addCloud = options.addCloud || addBufferToCloudFavorites;
-  ensureAllowed();
+  ensurePromotionAllowed();
   const cloud = await addCloud({
     buffer: image.buffer,
     mimeType: image.mimeType,
     url: candidate.image.url,
-  }, { ...options.cloudOptions, ensureAllowed });
+  }, { ...options.cloudOptions, ensureAllowed: ensurePromotionAllowed });
   // An already committed cloud add still needs its receipt recorded; it cannot be undone by a local cancellation.
   const result = finalizePromotion(observed.entry, cloud, candidate, options);
   options.privacyGuard();
@@ -148,12 +183,21 @@ function enforceCaptureQuota(observed, quota) {
 }
 
 function promotionSkipReason(entry, settings, quota) {
-  if (!entry.enabled || entry.captureState === "retired") return "entry_disabled";
+  if (!entry || !entry.enabled || entry.captureState === "retired") return "entry_disabled";
   if (entry.source !== "group-capture") return "existing_favorite";
   if (!shouldPromote(entry, settings)) return "promotion_threshold";
-  if (quota.dailyLimit <= 0 || quota.todayAdded >= quota.dailyLimit) return "daily_limit";
+  const dailyLimit = Math.min(quota.dailyLimit, settings.captureDailyLimit ?? quota.dailyLimit);
+  if (dailyLimit <= 0 || quota.todayAdded >= dailyLimit) return "daily_limit";
   if (entry.captureState === "active") return "already_active";
   return "";
+}
+
+function promotionPolicySkipReason(id, options) {
+  const entry = getStickerEntry(id);
+  const quota = getStickerCaptureQuota({ now: options.now });
+  const liveReason = promotionSkipReason(entry, getStickerSettings(), quota);
+  if (liveReason || !options.settings) return liveReason;
+  return promotionSkipReason(entry, options.settings, quota);
 }
 
 function finalizePromotion(entry, cloud, candidate, options) {
@@ -183,6 +227,7 @@ export function resetStickerCaptureForTest() {
   queue = createQueue();
   status.observed = 0;
   status.rejected = 0;
+  status.classificationReused = 0;
   status.promoted = 0;
   status.lastError = "";
   status.lastCaptureAt = null;

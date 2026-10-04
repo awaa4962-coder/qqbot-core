@@ -528,6 +528,8 @@ export function renderStickerCaptureStatus(snapshot) {
     `采集：${captureModeLabel(snapshot.settings?.captureMode)} · 队列 ${queue.queued || 0}/${queue.maxSize || 0}${queue.processing ? "，正在处理" : ""}`,
     `今日已收录 ${quota.todayAdded || 0}/${quota.dailyLimit ?? 0} · 采集库 ${quota.capturedTotal || 0}/${quota.catalogLimit ?? 0}`,
     `观察 ${capture.observed || 0} 张 · 已收录 ${capture.promoted || 0} 张 · 已拒绝 ${capture.rejected || 0} 张`,
+    Number.isSafeInteger(capture.classificationReused) && capture.classificationReused >= 0
+      ? `本进程分类复用 ${capture.classificationReused} 次` : "分类复用：未统计",
     capture.lastError ? `最近问题：${capture.lastError === "privacy_changed" ? "资料已更新，旧任务已停止" : capture.lastError}` : "发送者关联使用加盐哈希，忘记我可清除；共用云表情不自动删除",
   ].join("\n");
 }

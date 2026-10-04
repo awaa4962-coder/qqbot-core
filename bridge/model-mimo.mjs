@@ -6,7 +6,7 @@ import { MIMO_TOOLS } from "./search.mjs";
 import { tryMiMoVision } from "./vision.mjs";
 import { buildCurrentInput } from "./context/messages.mjs";
 import { chatError, parseChatOutcome } from "./chat-outcome.mjs";
-import { buildModelPrompt } from "./system-prompts/compose.mjs";
+import { buildModelPrompt, composeModelMessages } from "./system-prompts/compose.mjs";
 import { buildImageContextMessage } from "./system-prompts/image-context.mjs";
 import { buildInterjectionPrompt } from "./interjection-policy.mjs";
 import { selectPersonaCue } from "./persona-style.mjs";
@@ -119,10 +119,9 @@ export async function tryMiMoResult(userMsg, userName, history, imageUrls, group
   try {
     const prompt = buildModelPrompt({ ...mimoOptions, groupId, mood });
     mimoOptions.promptMetadata = prompt.metadata;
-    const msgs = [prompt.dynamicMessage, ...await buildMiMoMessages(history, imageUrls, userMsg, userName, mimoOptions)];
-    const system = prompt.system;
+    const msgs = await buildMiMoMessages(history, imageUrls, userMsg, userName, mimoOptions);
     return await runScopedChat({
-      messages: [{ role: 'system', content: system }, ...msgs],
+      messages: composeModelMessages(prompt, msgs),
       maxTokens: maxTok, temperature: 0.7, timeoutMs: 60000,
       thinking: mimoOptions.thinking, reasoningSignals: mimoOptions.reasoningSignals,
       usageContext: mimoOptions.usageContext, selfContext: mimoOptions.selfContext,

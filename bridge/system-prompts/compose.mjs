@@ -21,8 +21,8 @@ export function buildModelPrompt(options = {}) {
     system,
     dynamicMessage: { role: "user", content },
     metadata: {
-      promptVersion: (passive ? "interjection-v7" :
-        policyOptions.imageTask === true && policyOptions.imagePolicy === IMAGE_POLICY_EVIDENCE ? "chat-image-v3" : "chat-v14") +
+      promptVersion: (passive ? "interjection-v8" :
+        policyOptions.imageTask === true && policyOptions.imagePolicy === IMAGE_POLICY_EVIDENCE ? "chat-image-v4" : "chat-v15") +
         (policyOptions.imagePolicy === IMAGE_POLICY_EVIDENCE
           ? policyOptions.imageTask === true && !passive ? "-image-evidence-v7" : "-image-evidence-v5" : ""),
       promptFingerprint: createHash("sha256").update(system).digest("hex").slice(0, 16),
@@ -30,6 +30,13 @@ export function buildModelPrompt(options = {}) {
       dynamicChars: content.length,
     },
   };
+}
+
+export function composeModelMessages(prompt, messages) {
+  const current = messages.at(-1);
+  if (current?.role !== "user") throw new TypeError("current_input_required");
+  // Keep complete history objects intact; per-turn style changes must not precede their reusable prefix.
+  return [{ role: "system", content: prompt.system }, ...messages.slice(0, -1), prompt.dynamicMessage, current];
 }
 
 export function measurePromptText(messages = []) {

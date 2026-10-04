@@ -1,6 +1,6 @@
 {
   "name": "qqfriend",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "夜星 QQ 机器人桥接器",
   "type": "module",
   "main": "napcat_bridge.mjs",

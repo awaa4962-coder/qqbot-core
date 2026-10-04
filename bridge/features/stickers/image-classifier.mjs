@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import sharp from "sharp";
 import { perceptualImageHash } from "../../knowledge/memes/image-context.mjs";
 import { callVisionText } from "../../vision-provider.mjs";
+import { buildStickerClassificationPrompt } from "../../system-prompts/stickers.mjs";
 import { callTaskApi } from "../../api-providers/gateway.mjs";
 import { inferStickerTags } from "./analyzer.mjs";
 import { normalizeStickerTags } from "./schema.mjs";
@@ -89,22 +90,7 @@ export function normalizeClassification(value) {
 async function classifyWithVision(image, options) {
   const dataUrl = "data:" + image.mimeType + ";base64," + image.buffer.toString("base64");
   const request = {
-    messages: [{
-      role: "user",
-      content: [{
-        type: "text",
-        text: [
-          "判断这张群聊图片是不是适合当聊天表情包。不要替用户回复。",
-          "kind 只能是 sticker、photo、screenshot、other、unknown。",
-          "sticker 指用于表达情绪、态度、反应或梗的表情图；普通照片和普通截图不能算 sticker。",
-          "输出严格 JSON：{\"kind\":\"sticker\",\"confidence\":0.95,\"description\":\"不超过60字的聊天含义\",\"tags\":[\"1到4个标签\"]}。",
-          "无法确认人物身份时不要猜；不要输出分析过程。",
-        ].join("\n"),
-      }, {
-        type: "image_url",
-        image_url: { url: dataUrl },
-      }],
-    }],
+    ...buildStickerClassificationPrompt(dataUrl),
     maxTokens: 240,
     temperature: 0.1,
     timeoutMs: 30000,

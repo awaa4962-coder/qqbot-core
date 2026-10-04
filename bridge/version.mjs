@@ -4,8 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "2.0.0";
-export const VERSION_NAME = "modular-limited-agent";
+export const VERSION = "2.0.1";
+export const VERSION_NAME = "cache-efficiency";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
@@ -13,14 +13,14 @@ export const VERSION_NOTES_ZH = Object.freeze([
   "命令与帮助按当前用户、群和权限展示；能力定义、运行状态与调用权限分别判断，配置存在不代表服务连通或用户获准执行。",
   "自述事实来自模块与命令清单；分层提示词保留本轮问题、图片、引用正文与来源，区分字面、已知情境和来源声明，不把消息来源核验当成作者意图或世界事实核验。",
   "明确记忆保留来源、有效期与生命周期，失效和遗忘须真实落盘；损坏、保存或停止失败如实报错。本轮未命中不代表全库清空，有效候选不自动等于含糊指代的目标。",
-  "稳定提示词、单轮只读缓存和同范围客观识图共用受范围与失效规则约束，不共享最终聊天答案或QQ发送；工程缓存命中不等于模型理解正确。",
+  "固定提示词与完整历史排在动态表达设置之前；表情分析和分类规则提供稳定前缀，同图复用仍受精确内容、目录及权限检查。单轮工具和客观识图缓存不共享最终答案或QQ发送，命中率不等于节费比例或回答正确率。",
   "新增有限Agent阶段默认关闭，须配置群白名单及对应阶段白名单，只接受当前群主动@，私聊不开放；工具注册或前端可见不会自动授予权限。",
   "本人资料、明确记忆与提醒先生成具体草稿，再由本人另发一次性确认命令；模型不能代确认，草稿不代表已保存。未知或执行中结果不自动清理、重做或重播。",
   "有限提醒仅作用于本人当前群，确认后才生效，支持状态查询、取消与恢复；不提供周期提醒、其他收件人或任意定时外发，未知发送结果不冒称成功。",
   "Linux 浏览器控制台与服务流程区分加载、空数据、失败、冲突和任务恢复状态，保留独立草稿与真实发送回执；源码候选不证明线上运行状态。",
   "保留JM及大写FS解压约定；模型主备、思考档位、凭据处理、权限和关系评分不变。只面向Linux，Windows继续冻结，export-relationships及关系表导出仍预留未启用。",
   "已知9项非致命模型回答质量反例暂缓处理，未修复、未通过；识图与语境理解仍有限，原因未确认，不宣称每个模型回答都通过。工程契约验证与真实回答质量验收分开。",
-  "2.0.0统一源码版本与中英文说明；实际部署和健康状态以运行检查为准，版本号本身不证明服务在线、权限已开放或所有模型回答正确。",
+  "2.0.1是缓存效率补丁；实际部署和健康状态以运行检查为准，版本号本身不证明服务在线、权限已开放或所有模型回答正确。未用重复付费请求预热或保证命中率提升。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
@@ -28,14 +28,14 @@ export const VERSION_NOTES_EN = Object.freeze([
   "Commands and help are scoped to the current user, group and permissions. Capability definitions, runtime state and invocation permissions are distinct; configured does not mean connected or authorized.",
   "Self facts come from module and command manifests. Layered prompts retain the current question, image, quoted body and source, separating literal meaning, supplied context and attributed claims. Message origin does not verify authorship, intent or world facts.",
   "Explicit memory retains provenance, expiry and lifecycle; invalidation and forgetting require durable persistence. Corruption, save and drain failures remain failures. A scoped miss does not prove an empty database, and a valid candidate is not automatically an ambiguous referent.",
-  "Stable prompts, per-turn read caches and scoped objective-vision sharing follow scope and invalidation rules. Final chat answers and QQ sends are never shared; an engineering cache hit does not prove correct model understanding.",
+  "Fixed prompts and complete history precede per-turn expression settings. Sticker analysis/classification rules have stable prefixes; same-image reuse still requires exact content, catalog and permission checks. Tool and objective-vision caches never share final answers or QQ sends; hit rate is neither a savings ratio nor answer accuracy.",
   "New limited-agent phases are off by default and require both group and phase whitelists with a direct mention in the current group; private chats are excluded. Registration or console visibility never grants permission.",
   "Personal changes, explicit memory and reminders produce concrete drafts before a separate one-time owner confirmation command. Models cannot confirm, and drafts are not saved changes. Unknown or executing results are not automatically cleared, retried or replayed.",
   "Limited reminders apply only to their owner in the current group and become active after confirmation, with status, cancellation and recovery. Periodic reminders, other recipients and arbitrary scheduled sends are excluded; unknown delivery is not success.",
   "The Linux browser console and service workflow distinguish loading, empty data, failures, conflicts and task recovery, retaining independent drafts and real send receipts. A source candidate does not establish live runtime state.",
   "JM and the uppercase FS archive convention are retained. Model routes, reasoning modes, credential handling, permissions and relationship scoring are unchanged. Linux only; Windows stays frozen. export-relationships and relationship-table export remain reserved and disabled.",
   "9 known nonfatal model-answer quality cases are deferred, not fixed or passed. Image and contextual interpretation remain limited; causes are unconfirmed and not every model answer passes. Engineering contract checks and real answer-quality acceptance are separate.",
-  "2.0.0 aligns source versions and bilingual notes. Deployment and health require runtime checks; a version string alone does not prove service availability, permission or correct model answers.",
+  "2.0.1 is a cache-efficiency patch. Deployment and health require runtime checks; a version string alone does not prove service availability, permission or correct model answers. No repeated paid warm-up or guaranteed hit-rate improvement.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

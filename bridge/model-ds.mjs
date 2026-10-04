@@ -1,7 +1,7 @@
 // Private/file chat and group fallback; task routes select the actual provider.
 import { LONG_GROUPS } from "./config.mjs";
 import { logE } from "./logger.mjs";
-import { buildModelPrompt } from "./system-prompts/compose.mjs";
+import { buildModelPrompt, composeModelMessages } from "./system-prompts/compose.mjs";
 import { runScopedChat } from "./chat-tools/runner.mjs";
 import { buildCurrentInput } from "./context/messages.mjs";
 import { chatError } from "./chat-outcome.mjs";
@@ -42,7 +42,7 @@ export async function tryDeepSeekResult(userMsg, userName, history, groupId, isA
     const privateRequest = isPrivateModelRequest(groupId);
     const task = options.task || (privateRequest ? "private_chat" : "group_chat");
     const request = {
-      messages: [{ role: 'system', content: prompt.system }, prompt.dynamicMessage, ...msgs],
+      messages: composeModelMessages(prompt, msgs),
       maxTokens: maxTok,
       temperature: 0.7,
       timeoutMs: 30000,

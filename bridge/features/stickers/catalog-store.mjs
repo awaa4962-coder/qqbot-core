@@ -289,6 +289,37 @@ export function getStickerEntry(id) {
   return entry ? { ...entry, tags: [...entry.tags], allowedGroups: [...entry.allowedGroups] } : null;
 }
 
+export function findStickerClassificationCandidate(md5, options = {}) {
+  if (!stickerCatalogAvailable()) return null;
+  const groupId = Number(options.groupId);
+  if (!Number.isSafeInteger(groupId) || groupId <= 0) return null;
+  if (!/^[0-9a-f]{32}$/.test(md5)) return null;
+  // Use the same MD5 target as upsert; never borrow a later duplicate's classification.
+  const matches = getStickerCatalog().entries.filter(item => item.md5 === md5);
+  const entry = matches[0];
+  if (!entry || !/^[0-9a-f]{16}$/.test(entry.fingerprint) || !hasReusableClassification(entry)) return null;
+  if (matches.some(item => item.fingerprint !== entry.fingerprint)) return null;
+  if (entry.allowedGroups.length && !entry.allowedGroups.includes(groupId)) return null;
+  return {
+    md5,
+    fingerprint: entry.fingerprint,
+    classification: entry.classification,
+    confidence: entry.confidence,
+    description: entry.description,
+    tags: [...entry.tags],
+  };
+}
+
+function hasReusableClassification(entry) {
+  if (entry.enabled !== true || entry.captureState === "retired" || entry.indexed !== true) return false;
+  if (!["qq-favorite", "group-capture"].includes(entry.source)) return false;
+  if (!["sticker", "photo", "screenshot", "other"].includes(entry.classification)) return false;
+  const description = typeof entry.description === "string" ? entry.description.trim() : "";
+  const tags = Array.isArray(entry.tags) ? entry.tags : [];
+  return Number.isFinite(entry.confidence) && entry.confidence > 0 && entry.confidence <= 1 &&
+    Boolean(description) && tags.length > 0 && tags.every(tag => typeof tag === "string" && tag.trim());
+}
+
 export function findStickerByFingerprint(fingerprint, excludeId = "", options = {}) {
   const value = String(fingerprint || "").trim();
   if (!value) return null;
