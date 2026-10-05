@@ -16,7 +16,7 @@ if (!vm.SourceTextModule) {
     const [actions, stickers, logs, state] = await h.imports(["ui/actions.js", "pages/stickers.js", "pages/logs.js", "ui/state.js"]);
     const data = uiFixtureData();
     data.stickers.entries = [{ id: "fixture-one", description: "Original", tags: ["fixture"], allowedGroups: [2000000001], enabled: true,
-      sendable: true, indexed: true, captureState: "active", source: "group-capture" }];
+      url: "https://example.com/fixture-one.png", sendable: true, indexed: true, captureState: "active", source: "group-capture" }];
     stickers.renderStickers(data.stickers, { force: true });
     return { h, actions, stickers, logs, state, data };
   }
