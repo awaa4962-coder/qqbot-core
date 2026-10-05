@@ -1,20 +1,20 @@
 <div align="center">
 
-# QQFriend
+# 夜星 QQ 机器人（QQFriend）
 
-**面向 Linux 的模块化 QQ 机器人：对话、记忆、识图、群工具与有限 Agent。**
+**能聊天、记事、看图、生成群报和调用受控工具的 QQ 机器人，配套中文网页控制台。**
 
-[![Release](https://img.shields.io/github/v/release/awaa4962-coder/qqbot-core?display_name=tag)](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.0.1)
-[![CI](https://github.com/awaa4962-coder/qqbot-core/actions/workflows/ci.yml/badge.svg?branch=agent%2Flinux-server-preview)](https://github.com/awaa4962-coder/qqbot-core/actions/workflows/ci.yml?query=branch%3Aagent%2Flinux-server-preview)
+[![正式版本](https://img.shields.io/github/v/release/awaa4962-coder/qqbot-core?display_name=tag&label=%E6%AD%A3%E5%BC%8F%E7%89%88%E6%9C%AC)](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.0.1)
+[![自动检查](https://img.shields.io/github/actions/workflow/status/awaa4962-coder/qqbot-core/ci.yml?branch=agent%2Flinux-server-preview&label=%E8%87%AA%E5%8A%A8%E6%A3%80%E6%9F%A5)](https://github.com/awaa4962-coder/qqbot-core/actions/workflows/ci.yml?query=branch%3Aagent%2Flinux-server-preview)
 ![Node.js](https://img.shields.io/badge/Node.js-22-339933?logo=nodedotjs&logoColor=white)
 ![OneBot](https://img.shields.io/badge/OneBot-11-4C8BF5)
-[![License](https://img.shields.io/badge/License-ISC-2F855A)](https://github.com/awaa4962-coder/qqbot-core/blob/v2.0.1/LICENSE)
+[![许可协议](https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E5%8D%8F%E8%AE%AE-ISC-2F855A)](https://github.com/awaa4962-coder/qqbot-core/blob/v2.0.1/LICENSE)
 
 [下载 2.0.1](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.0.1) · [Linux 部署](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/deploy/linux/README.md) · [更新日志](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/CHANGELOG.md)
 
 </div>
 
-QQFriend 是“夜星”的运行核心。它通过 NapCat / OneBot 11 接收 QQ 消息，把命令、对话上下文、模型与业务模块接成一条可检查的回复链路，并提供中文浏览器控制台。
+QQFriend 是“夜星”的运行核心。它通过 NapCat / OneBot 11 接收 QQ 消息，结合当前对话、引用和本人记忆回答问题，也能处理图片、群日报、链接预览和表情。开启受控工具后，可以查公开资料、读本轮附件、做计算和准备本人提醒；涉及保存或提醒的操作仍须本人确认。服务、模型、名单和任务状态都可在中文网页控制台管理。
 
 > 当前主维护版本为 **Linux 2.0.1**。`master` 保留旧版代码；部署请选择 `v2.0.1`，参与开发请选择 `agent/linux-server-preview`。Windows 现有安装暂停更新，不自动迁移账号、密钥或聊天数据。
 
@@ -33,7 +33,7 @@ QQFriend 是“夜星”的运行核心。它通过 NapCat / OneBot 11 接收 QQ
 
 模型协议支持 OpenAI Chat / Responses、Anthropic 和 Gemini 适配。协议能接通不代表任意模型都支持识图、原生工具或全部思考参数，能力以当前接口配置及实际验证为准。
 
-## 有限 Agent
+## 受控工具调用
 
 在开放功能的群里真正 **@机器人**，可以直接说需求：
 
@@ -207,6 +207,6 @@ npm run replay:check
 | [发布记录](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/deploy/linux/FINISH-2.0.0.md) | 2.0.0 验收、实际部署与保留限制 |
 | [协作工作流](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/WORKFLOW.md) | 模块化分工、回归和发布规则 |
 
-## License
+## 许可协议
 
 [ISC](https://github.com/awaa4962-coder/qqbot-core/blob/v2.0.1/LICENSE)
