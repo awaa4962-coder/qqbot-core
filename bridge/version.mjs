@@ -4,8 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "2.0.1";
-export const VERSION_NAME = "cache-efficiency";
+export const VERSION = "2.0.2";
+export const VERSION_NAME = "sticker-reply-resilience";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
@@ -17,10 +17,10 @@ export const VERSION_NOTES_ZH = Object.freeze([
   "新增有限Agent阶段默认关闭，须配置群白名单及对应阶段白名单，只接受当前群主动@，私聊不开放；工具注册或前端可见不会自动授予权限。",
   "本人资料、明确记忆与提醒先生成具体草稿，再由本人另发一次性确认命令；模型不能代确认，草稿不代表已保存。未知或执行中结果不自动清理、重做或重播。",
   "有限提醒仅作用于本人当前群，确认后才生效，支持状态查询、取消与恢复；不提供周期提醒、其他收件人或任意定时外发，未知发送结果不冒称成功。",
-  "Linux 浏览器控制台与服务流程区分加载、空数据、失败、冲突和任务恢复状态，保留独立草稿与真实发送回执；源码候选不证明线上运行状态。",
+  "表情回复默认触发概率为50%，仍检查名单、冷却和语义匹配；目录与发送材料统一校验，前端分开显示跳过、仅观察、失败、未知及已确认发送，不重放未知回执。",
   "保留JM及大写FS解压约定；模型主备、思考档位、凭据处理、权限和关系评分不变。只面向Linux，Windows继续冻结，export-relationships及关系表导出仍预留未启用。",
   "已知9项非致命模型回答质量反例暂缓处理，未修复、未通过；识图与语境理解仍有限，原因未确认，不宣称每个模型回答都通过。工程契约验证与真实回答质量验收分开。",
-  "2.0.1是缓存效率补丁；实际部署和健康状态以运行检查为准，版本号本身不证明服务在线、权限已开放或所有模型回答正确。未用重复付费请求预热或保证命中率提升。",
+  "2.0.2是表情发送可靠性补丁；实际部署和健康状态以运行检查为准，版本号本身不证明服务在线、权限已开放或所有模型回答正确。50%触发不是保证半数回复发图，已有缓存优化及质量限制保留。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
@@ -32,10 +32,10 @@ export const VERSION_NOTES_EN = Object.freeze([
   "New limited-agent phases are off by default and require both group and phase whitelists with a direct mention in the current group; private chats are excluded. Registration or console visibility never grants permission.",
   "Personal changes, explicit memory and reminders produce concrete drafts before a separate one-time owner confirmation command. Models cannot confirm, and drafts are not saved changes. Unknown or executing results are not automatically cleared, retried or replayed.",
   "Limited reminders apply only to their owner in the current group and become active after confirmation, with status, cancellation and recovery. Periodic reminders, other recipients and arbitrary scheduled sends are excluded; unknown delivery is not success.",
-  "The Linux browser console and service workflow distinguish loading, empty data, failures, conflicts and task recovery, retaining independent drafts and real send receipts. A source candidate does not establish live runtime state.",
+  "Sticker replies have a default 50% trigger probability, subject to allowlists, cooldown and semantic matching. Catalog and send materials use aligned checks; the console separates skips, shadow decisions, failures, unknown outcomes and confirmed sends. Unknown receipts are not replayed.",
   "JM and the uppercase FS archive convention are retained. Model routes, reasoning modes, credential handling, permissions and relationship scoring are unchanged. Linux only; Windows stays frozen. export-relationships and relationship-table export remain reserved and disabled.",
   "9 known nonfatal model-answer quality cases are deferred, not fixed or passed. Image and contextual interpretation remain limited; causes are unconfirmed and not every model answer passes. Engineering contract checks and real answer-quality acceptance are separate.",
-  "2.0.1 is a cache-efficiency patch. Deployment and health require runtime checks; a version string alone does not prove service availability, permission or correct model answers. No repeated paid warm-up or guaranteed hit-rate improvement.",
+  "2.0.2 is a sticker-delivery resilience patch. Deployment and health require runtime checks; a version string alone does not prove service availability, permission or correct model answers. A 50% trigger does not guarantee images on half of all replies; existing cache improvements and quality limitations remain.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

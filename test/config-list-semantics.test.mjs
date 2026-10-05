@@ -64,7 +64,22 @@ test("unreadable allowlist files fail closed instead of inheriting broader defau
   }
 });
 
-async function readConfig(configRoot, failure = null) {
+test("sticker trigger defaults are 50 percent and explicit overrides remain configurable", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-sticker-defaults-"));
+  try {
+    const defaults = await readConfig(root);
+    assert.equal(defaults.stickerChance, 0.5);
+    assert.equal(defaults.stickerStrongChance, 0.5);
+    const overridden = await readConfig(root, null, { QQBOT_STICKER_CHANCE: "0.2", QQBOT_STICKER_STRONG_CHANCE: "0.8" });
+    assert.equal(overridden.stickerChance, 0.2);
+    assert.equal(overridden.stickerStrongChance, 0.8);
+  } finally {
+    assert.equal(path.dirname(fs.realpathSync(root)), fs.realpathSync(os.tmpdir()));
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+async function readConfig(configRoot, failure = null, overrides = {}) {
   const source = [
     "import fs from 'node:fs';",
     "import path from 'node:path';",
@@ -81,6 +96,8 @@ async function readConfig(configRoot, failure = null) {
     "feature: CFG.featureGroupWhitelist,",
     "conversation: CFG.conversationSummaryGroupWhitelist,",
     "sticker: CFG.stickerGroupWhitelist,",
+    "stickerChance: CFG.stickerChance,",
+    "stickerStrongChance: CFG.stickerStrongChance,",
     "}));",
   ].join("\n");
   const env = { ...process.env, NODE_ENV: "test", QQBOT_CONFIG_ROOT: configRoot };
@@ -91,9 +108,12 @@ async function readConfig(configRoot, failure = null) {
     "QQBOT_FEATURE_GROUPS",
     "QQBOT_CONVERSATION_SUMMARY_GROUPS",
     "QQBOT_STICKER_GROUPS",
+    "QQBOT_STICKER_CHANCE",
+    "QQBOT_STICKER_STRONG_CHANCE",
     "QQBOT_BLACKLIST",
     "QQBOT_ADMINS",
   ]) delete env[name];
+  Object.assign(env, overrides);
   const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", source], {
     cwd: ROOT,
     env,

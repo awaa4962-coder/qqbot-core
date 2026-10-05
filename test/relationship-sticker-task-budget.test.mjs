@@ -26,7 +26,9 @@ const relation = {
   relationshipTags: ["technical peer"], confidence: 0.64, messageCount: 80, groupMessageCount: 40,
 };
 const context = { userId: "budget-user", groupId: "budget-group", userMessage: "\u5f00\u5fc3", assistantText: "\u5f00\u5fc3" };
-const entries = [{ id: "synthetic-sticker", tags: ["\u5f00\u5fc3"], description: "synthetic happy sticker", sendCount: 0 }];
+const entries = [{ id: "synthetic-sticker", source: "qq-favorite", enabled: true, indexed: true,
+  url: "https://example.com/synthetic-sticker.png", allowedGroups: [],
+  tags: ["\u5f00\u5fc3"], description: "synthetic happy sticker", sendCount: 0 }];
 const selected = '{"selected":"synthetic-sticker"}';
 const noFallback = () => assert.fail("stopped tasks must not start fallback");
 
@@ -403,18 +405,28 @@ test("real chat and command run replacement aborts relationship/sticker HTTP and
   }
 });
 
-test("sticker no-match and candidate validation remain unchanged without any sends", async () => {
-  const noCue = await selectSticker({ ...context, userMessage: "neutral", assistantText: "neutral" }, { entries, model: noFallback });
+test("sticker no-match is respected and invalid candidates use only bounded fallback without any sends", async () => {
+  const positions = [];
+  const noCue = await selectSticker({ ...context, userMessage: "neutral", assistantText: "neutral" }, {
+    entries, model: async (_prompt, position) => { positions.push(position); return '{"selected":null}'; },
+  });
   assert.equal(noCue.action, "no_match");
-  assert.deepEqual(noCue.candidates, []);
+  assert.equal(noCue.reasonCode, "selection_none");
+  assert.equal(noCue.candidates.length, 1);
+  assert.equal(noCue.candidates[0].id, entries[0].id);
+  assert.deepEqual(positions, ["primary"]);
   for (const output of ['{"selected":null}', '{"selected":"outside-candidates"}', "malformed"]) {
     let calls = 0;
     const result = await selectSticker(context, {
-      entries, model: async (_prompt, position) => { calls++; assert.equal(position, "primary"); return output; },
+      entries, model: async (_prompt, position) => {
+        calls++;
+        assert.equal(position, calls === 1 ? "primary" : "fallback");
+        return output;
+      },
     });
     assert.equal(result.action, "no_match");
     assert.equal(result.sticker, null);
     assert.equal(result.stickerId, "");
-    assert.equal(calls, 1);
+    assert.equal(calls, output === '{"selected":null}' ? 1 : 2);
   }
 });

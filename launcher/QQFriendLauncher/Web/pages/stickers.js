@@ -126,6 +126,33 @@ export function disposeStickerPreviews() {
   previewSessions.clear();
 }
 
+const STICKER_REPLY_STAGE_LABELS = Object.freeze({"skipped":"跳过","selected":"已选中","shadow":"影子","cancelled":"取消","knownfailed":"已知失败","unknown":"结果未知","partial":"部分已发","sent":"已确认发送"});
+const STICKER_REPLY_REASON_LABELS = Object.freeze({"unknown_reason":"未知原因","sticker_off":"表情功能已关闭","mode_off":"表情模式已关闭","catalog_unavailable":"表情目录暂不可读","no_text_reply":"没有文字回复","serious_context":"严肃或系统场景","private_disabled":"私聊表情已关闭","group_disabled":"群聊表情已关闭","group_not_allowed":"群不在表情白名单","cooldown":"冷却中","chance_miss":"概率未命中","no_candidates":"没有可靠候选","no_match":"没有可靠匹配","model_no_match":"模型没有可靠匹配","selected":"已选中表情","shadow":"影子模式，仅选择未发送","shadow_mode":"已切换影子模式","sent":"发送已确认","send_failed":"发送明确失败","send_unknown":"发送结果未确认","send_partial":"部分发送已确认","send_cancelled":"发送已取消","invalid_sticker":"表情发送材料无效","sticker_unavailable":"当前表情不可发送","sticker_changed":"表情内容或发送材料已改变","policy_changed":"表情准入已改变","policy_guard_unavailable":"发送准入检查未接好","selection_failed":"选择步骤失败","reply_failed":"后置表情步骤失败","privacy_changed":"资料已更新，旧任务已停止","task_cancelled":"任务已取消","permission_changed":"权限已改变","preferences_changed":"偏好已改变","memory_expired":"资料已过期","memory_unavailable":"资料暂不可用","reply_superseded":"回复已被替换","reply_expired":"回复已过期","reply_capacity":"回复容量限制","bridge_stopping":"桥接服务正在停止","reply_duplicate":"重复回复已拦截","delivery_state_unavailable":"投递状态暂不可确认","recipient_mismatch":"发送目标不匹配","no_reply":"没有文字回复","chance_missed":"概率未命中","chance_disabled":"发送概率已关闭","chance_selected":"概率已命中","eligible":"满足发送条件","entry_group_only":"这张表情仅限群聊","selection_none":"选图未匹配","selection_invalid":"选图结果格式无效","selection_selected":"选图已匹配"});
+
+function stickerReplyCount(value) {
+  return Number.isSafeInteger(value) && value >= 0 ? String(value) : "未统计";
+}
+
+function stickerReplyReasonLabel(value) {
+  return typeof value === "string" && Object.hasOwn(STICKER_REPLY_REASON_LABELS, value)
+    ? STICKER_REPLY_REASON_LABELS[value] : "未知原因";
+}
+
+export function stickerReplyStatusText(snapshot = {}) {
+  const status = snapshot.replyStatus;
+  const last = status?.last;
+  const stage = typeof last?.stage === "string" && Object.hasOwn(STICKER_REPLY_STAGE_LABELS, last.stage)
+    ? STICKER_REPLY_STAGE_LABELS[last.stage] : "未知阶段";
+  const receipts = { sent: "已确认发送", partial: "部分发送已确认", unknown: "投递未确认", none: "未发生发送" };
+  const receipt = typeof last?.physicalReceipt === "string" && Object.hasOwn(receipts, last.physicalReceipt)
+    ? receipts[last.physicalReceipt] : "";
+  return [
+    last ? `最近后置表情：${stage} · ${stickerReplyReasonLabel(last.reasonCode)}${receipt ? " · " + receipt : ""}` : "最近后置表情：未统计",
+    `本进程：跳过 ${stickerReplyCount(status?.counts?.skipped)} · 已选 ${stickerReplyCount(status?.counts?.selected)} · 影子 ${stickerReplyCount(status?.counts?.shadow)} · 取消 ${stickerReplyCount(status?.counts?.cancelled)}`,
+    `投递：已知失败 ${stickerReplyCount(status?.counts?.knownfailed)} · 结果未知 ${stickerReplyCount(status?.counts?.unknown)} · 部分已发 ${stickerReplyCount(status?.counts?.partial)} · 已发 ${stickerReplyCount(status?.counts?.sent)}`,
+  ].join("\n");
+}
+
 export function renderStickers(snapshot, options = {}) {
   const browser = host.mode === "browser";
   const forceReload = options.force === true && !options.section;
@@ -201,8 +228,9 @@ export function renderStickers(snapshot, options = {}) {
   $("stickerStatus").textContent = [
     `模式：${stickerModeLabel(settings.mode)}`,
     `同步：${syncLabel}`,
-    `发送成功 ${uiState.stickerSnapshot.stats?.sent || 0} · 失败 ${uiState.stickerSnapshot.stats?.sendFailures || 0}`,
-    uiState.stickerSnapshot.sync?.lastError ? `最近错误：${uiState.stickerSnapshot.sync.lastError}` : "图片文件不会保存到本地",
+    `发送成功 ${stickerReplyCount(uiState.stickerSnapshot.stats?.sent)} · 失败 ${stickerReplyCount(uiState.stickerSnapshot.stats?.sendFailures)}`,
+    stickerReplyStatusText(uiState.stickerSnapshot),
+    uiState.stickerSnapshot.sync?.lastError ? `最近同步问题：${stickerReplyReasonLabel(uiState.stickerSnapshot.sync.lastError)}` : "图片文件不会保存到本地",
   ].join("\n");
   renderStickerCaptureStatus(uiState.stickerSnapshot);
   uiState.stickersLoaded = !browser || readReady && !blockedReason;

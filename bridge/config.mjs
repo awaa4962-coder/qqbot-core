@@ -300,8 +300,8 @@ export const CFG = {
     20
   ),
   stickerCaptureQueueLimit: readBoundedNumber('QQBOT_STICKER_CAPTURE_QUEUE_LIMIT', 50, 1, 500),
-  stickerChance: readBoundedNumber('QQBOT_STICKER_CHANCE', 0.1, 0, 1),
-  stickerStrongChance: readBoundedNumber('QQBOT_STICKER_STRONG_CHANCE', 0.25, 0, 1),
+  stickerChance: readBoundedNumber('QQBOT_STICKER_CHANCE', 0.5, 0, 1),
+  stickerStrongChance: readBoundedNumber('QQBOT_STICKER_STRONG_CHANCE', 0.5, 0, 1),
   stickerCooldownMs: readBoundedNumber('QQBOT_STICKER_COOLDOWN_MS', 300000, 0, 86400000),
   stickerSyncIntervalMs: readBoundedNumber('QQBOT_STICKER_SYNC_INTERVAL_MS', 3600000, 60000, 86400000),
   stickerFetchCount: readBoundedNumber('QQBOT_STICKER_FETCH_COUNT', 100, 1, 500),

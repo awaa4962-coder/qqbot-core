@@ -176,7 +176,8 @@ test("already completed cloud side effects retain their receipt but cannot react
 test("late sticker selection cannot start fallback or return its old candidate details", async () => {
   let calls = 0;
   await assert.rejects(selectSticker({ userId: 60100, userMessage: "开心", assistantText: "开心" }, {
-    entries: [{ id: "one", tags: ["开心"], description: "旧资料", sendCount: 0 }],
+    entries: [{ id: "one", source: "qq-favorite", enabled: true, indexed: true,
+      url: "https://example.com/one.png", allowedGroups: [], tags: ["开心"], description: "旧资料", sendCount: 0 }],
     model: async () => { calls++; invalidateMemoryPrivacyGeneration(); return ""; },
   }), { code: "STICKER_PRIVACY_CHANGED" });
   assert.equal(calls, 1);

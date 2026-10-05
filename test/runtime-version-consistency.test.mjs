@@ -9,11 +9,11 @@ const readJson = relative => JSON.parse(fs.readFileSync(new globalThis.URL(relat
 test("package, root lock and runtime command versions identify the same candidate", () => {
   const pkg = readJson("../package.json");
   const lock = readJson("../package-lock.json");
-  assert.equal(VERSION, "2.0.1");
+  assert.equal(VERSION, "2.0.2");
   assert.equal(VERSION, pkg.version);
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[""].version, pkg.version);
-  assert.equal(VERSION_NAME, "cache-efficiency");
+  assert.equal(VERSION_NAME, "sticker-reply-resilience");
   for (const language of ["zh", "en"]) assert.ok(buildVersionText(language).includes(VERSION));
 });
 

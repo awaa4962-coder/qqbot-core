@@ -11,6 +11,7 @@ import {
   getStickerEntry,
   getStickerSettings,
   getStickerSyncStatus,
+  getStickerReplyStatus,
   refreshStickerCapabilities,
   removeStickerEntry,
   simulateStickerSelection,
@@ -28,6 +29,7 @@ export function buildStickerManagerSnapshot() {
     sync,
     capture: sync.capture,
     capabilities: sync.capabilities,
+    replyStatus: getStickerReplyStatus(),
     privacy: {
       storesImageFiles: false,
       exposesSendKeys: false,
@@ -139,7 +141,8 @@ const ACTION_HANDLERS = Object.freeze({
       contextMessages: [],
       private: payload.private === true,
     });
-    return { result, snapshot: buildStickerManagerSnapshot() };
+    const safeResult = { ...result, sticker: result.sticker ? publicStickerEntry(result.sticker) : null };
+    return { result: safeResult, snapshot: buildStickerManagerSnapshot() };
   },
 });
 

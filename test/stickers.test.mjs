@@ -157,6 +157,9 @@ describe("收藏表情模块", () => {
       action: "send",
       sticker: {
         id: "plain",
+        source: "qq-favorite",
+        enabled: true,
+        indexed: true,
         url: "https://example.com/plain.gif",
         description: "开心",
       },
@@ -177,6 +180,9 @@ describe("收藏表情模块", () => {
   });
 
   it("后置表情失败不会抛出到文字回复链路", async () => {
+    useTempCatalog();
+    updateStickerSettings({ mode: "steady", groupEnabled: true, privateEnabled: true,
+      chance: 1, strongChance: 1, cooldownMs: 0, allowedGroups: [123] });
     const result = await maybeSendStickerAfterReply({
       groupId: 123,
       userId: 456,

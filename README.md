@@ -4,19 +4,19 @@
 
 **A Linux-first modular QQ bot with chat, memory, vision, group tools, bounded agent capabilities, and a Chinese web console.**
 
-[![Release](https://img.shields.io/github/v/release/awaa4962-coder/qqbot-core?display_name=tag)](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.0.1)
+[![Release](https://img.shields.io/github/v/release/awaa4962-coder/qqbot-core?display_name=tag)](https://github.com/awaa4962-coder/qqbot-core/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/awaa4962-coder/qqbot-core/ci.yml?branch=agent%2Flinux-server-preview&label=CI)](https://github.com/awaa4962-coder/qqbot-core/actions/workflows/ci.yml?query=branch%3Aagent%2Flinux-server-preview)
 ![Node.js](https://img.shields.io/badge/Node.js-22-339933?logo=nodedotjs&logoColor=white)
 ![OneBot](https://img.shields.io/badge/OneBot-11-4C8BF5)
-[![License](https://img.shields.io/badge/License-ISC-2F855A)](https://github.com/awaa4962-coder/qqbot-core/blob/v2.0.1/LICENSE)
+[![License](https://img.shields.io/badge/License-ISC-2F855A)](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/LICENSE)
 
-[Download 2.0.1](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.0.1) | [Linux Deployment](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/deploy/linux/README.md) | [Changelog](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/CHANGELOG.md)
+[Download a Release](https://github.com/awaa4962-coder/qqbot-core/releases/latest) | [Linux Deployment](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/deploy/linux/README.md) | [Changelog](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/CHANGELOG.md)
 
 </div>
 
 QQFriend powers the Yexing QQ bot. It receives messages through NapCat / OneBot 11 and combines the current conversation, quoted sources, and personal memory to answer questions. It also handles images, group reports, link previews, and stickers. When enabled, bounded tools can search public information, read current attachments, calculate results, and prepare personal reminders. Personal changes and reminders require a separate confirmation from their owner. Services, model routes, allowlists, and task status are managed through a Chinese web console.
 
-> The actively maintained release is **Linux 2.0.1**. `master` retains legacy code; use `v2.0.1` for deployment and `agent/linux-server-preview` for development. Existing Windows installations are frozen. Accounts, credentials, and chat data are not migrated automatically.
+> This source tree targets **Linux 2.0.2**. Release availability is determined by [GitHub Releases](https://github.com/awaa4962-coder/qqbot-core/releases), not by the source version alone. `master` retains legacy code; use a validated release tag for deployment and `agent/linux-server-preview` for development. Existing Windows installations are frozen. Accounts, credentials, and chat data are not migrated automatically.
 
 ## Features
 
@@ -30,6 +30,8 @@ QQFriend powers the Yexing QQ bot. It receives messages through NapCat / OneBot 
 | Downloads and transfer | JM code-based downloads, archives, and temporary-file management; group and private-chat access use separate allowlists, with uppercase `FS` preserved as the archive password |
 | Chinese web console | Service status, API providers and routes, allowlists, explicit memory, stickers, background tasks, and redacted diagnostics |
 | Caching and usage | Stable prompt prefixes, exact-image classification reuse, and scoped vision caching; provider token-cache metrics and per-process classification reuse are separate, and final chat answers are not shared |
+
+Sticker replies run after a confirmed text reply. Their default trigger probability is 50% for both ordinary and strong-context replies, without an additional passive-chat discount. Allowlists, switches, cooldown, usable send materials, and semantic matching still apply: this does not guarantee an image on half of all replies. The sticker page separates skipped, shadow, cancelled, failed, unknown, partial, and confirmed-send outcomes. Unknown or partially confirmed deliveries are not replayed as replacement images.
 
 Protocol adapters cover OpenAI Chat / Responses, Anthropic, and Gemini. A working endpoint does not guarantee that every model supports vision, native tools, or all reasoning parameters. Capabilities depend on the configured endpoint and actual verification.
 
@@ -79,12 +81,12 @@ Requires Docker Engine and Docker Compose v2. The verified deployment target is 
 ### 1. Get the Release and Initialize
 
 ```bash
-git clone --branch v2.0.1 --depth 1 https://github.com/awaa4962-coder/qqbot-core.git qqfriend
+git clone --branch v2.0.2 --depth 1 https://github.com/awaa4962-coder/qqbot-core.git qqfriend
 cd qqfriend/deploy/linux
 bash prepare.sh
 ```
 
-Initialization prepares isolated configuration and state directories. It does not include your account or credentials. Before startup, configure:
+Use the example tag only once it appears as a validated release. Initialization prepares isolated configuration and state directories. It does not include your account or credentials. Before startup, configure:
 
 | Location | Purpose |
 | --- | --- |
@@ -211,4 +213,4 @@ The linked operational documents currently remain in Chinese.
 
 ## License
 
-[ISC](https://github.com/awaa4962-coder/qqbot-core/blob/v2.0.1/LICENSE)
+[ISC](https://github.com/awaa4962-coder/qqbot-core/blob/agent/linux-server-preview/LICENSE)

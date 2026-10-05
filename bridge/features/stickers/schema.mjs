@@ -1,3 +1,5 @@
+import { validateSafeUrl } from "../../safe-url.mjs";
+
 const MODES = new Set(["steady", "shadow", "off"]);
 const CAPTURE_MODES = new Set(["auto", "observe", "off"]);
 const DEFAULT_TAG = "其他";
@@ -51,8 +53,8 @@ export function normalizeStickerSettings(value = {}, defaults = {}) {
     mode: normalizeMode(source.mode ?? fallback.mode),
     groupEnabled: normalizeBoolean(source.groupEnabled, fallback.groupEnabled, true),
     privateEnabled: normalizeBoolean(source.privateEnabled, fallback.privateEnabled, true),
-    chance: boundedNumber(source.chance, fallback.chance, 0.1, 0, 1),
-    strongChance: boundedNumber(source.strongChance, fallback.strongChance, 0.25, 0, 1),
+    chance: boundedNumber(source.chance, fallback.chance, 0.5, 0, 1),
+    strongChance: boundedNumber(source.strongChance, fallback.strongChance, 0.5, 0, 1),
     cooldownMs: boundedInteger(source.cooldownMs, fallback.cooldownMs, 300000, 0, 86400000),
     allowedGroups: normalizeNumberList(source.allowedGroups ?? fallback.allowedGroups),
     captureMode: normalizeCaptureMode(source.captureMode ?? fallback.captureMode),
@@ -132,19 +134,47 @@ export function normalizeNumberList(value) {
 }
 
 export function publicStickerEntry(entry) {
+  const sendable = isStickerEntrySendable(entry);
   const normalized = normalizeStickerEntry(entry);
   const { senderHashes: _senderHashes, ...safe } = normalized;
   return {
     ...safe,
     key: normalized.key ? "configured" : "",
-    sendable: isStickerEntrySendable(normalized),
+    sendable,
   };
 }
 
 export function isStickerEntrySendable(entry) {
-  if (!entry || entry.enabled === false || entry.indexed !== true) return false;
-  if (!String(entry.description || "").trim()) return false;
-  return entry.source !== "group-capture" || entry.captureState === "active";
+  return getStickerSendMaterials(entry) !== null;
+}
+
+export function getStickerSendMaterials(entry) {
+  if (!entry || entry.enabled === false || entry.indexed !== true || !cleanText(entry.description, 240)) return null;
+  if (entry.captureState === "retired" || entry.source === "group-capture" && entry.captureState !== "active") return null;
+  const mface = stickerMfaceMaterial(entry);
+  const url = stickerImageUrl(entry.url);
+  if (!mface && !url) return null;
+  return { mface, url, summary: cleanText(entry.summary, 120) || cleanText(entry.description, 240) || "[表情]" };
+}
+
+function stickerMfaceMaterial(entry) {
+  const emojiId = sendMaterialText(entry.emojiId, 120, true);
+  const packageId = sendMaterialText(entry.packageId, 120, true);
+  const key = sendMaterialText(entry.key, 500);
+  return emojiId && packageId && key && key.toLowerCase() !== "configured"
+    ? { emojiId, packageId, key, summary: cleanText(entry.summary, 120) || "[表情]" } : null;
+}
+
+function sendMaterialText(value, maxLength, allowNumber = false) {
+  if (typeof value !== "string" && !(allowNumber && Number.isSafeInteger(value) && value > 0)) return "";
+  return cleanText(value, maxLength);
+}
+
+function stickerImageUrl(value) {
+  if (typeof value !== "string") return "";
+  const text = cleanUrl(value);
+  if (!text) return "";
+  return validateSafeUrl(text).ok ? text : "";
 }
 
 function normalizeMode(value) {
