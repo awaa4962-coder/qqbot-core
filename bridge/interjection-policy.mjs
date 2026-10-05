@@ -3,7 +3,7 @@ import { buildCurrentInput } from "./context/messages.mjs";
 import { monotonicNow } from "./runtime-clock.mjs";
 
 const PROBABILITY = Object.freeze({
-  ordinary: 0.06,
+  ordinary: 0.10,
   image: 0.25,
   emotion: 0.38,
   joke: 0.32,
@@ -91,7 +91,9 @@ export function buildInterjectionDecision(text, ctx = {}, state = defaultState) 
   markSeen(ctx, state);
 
   const kind = classifyInterjectionTrigger(text, ctx);
-  const probability = applyProbabilityFactor(PROBABILITY[kind] || 0, ctx.probabilityFactor);
+  // Keep the operator-set ordinary rate independent of inferred group tolerance.
+  const probability = kind === "ordinary" ? PROBABILITY.ordinary
+    : applyProbabilityFactor(PROBABILITY[kind] || 0, ctx.probabilityFactor);
   if (!probability) return { ok: false, kind, reason: "no_probability", probability };
 
   const now = ctx.now ?? monotonicNow();

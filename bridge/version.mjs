@@ -4,8 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "2.0.2";
-export const VERSION_NAME = "sticker-reply-resilience";
+export const VERSION = "2.0.3";
+export const VERSION_NAME = "ordinary-interjection-rate";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
@@ -20,7 +20,7 @@ export const VERSION_NOTES_ZH = Object.freeze([
   "表情回复默认触发概率为50%，仍检查名单、冷却和语义匹配；目录与发送材料统一校验，前端分开显示跳过、仅观察、失败、未知及已确认发送，不重放未知回执。",
   "保留JM及大写FS解压约定；模型主备、思考档位、凭据处理、权限和关系评分不变。只面向Linux，Windows继续冻结，export-relationships及关系表导出仍预留未启用。",
   "已知9项非致命模型回答质量反例暂缓处理，未修复、未通过；识图与语境理解仍有限，原因未确认，不宣称每个模型回答都通过。工程契约验证与真实回答质量验收分开。",
-  "2.0.2是表情发送可靠性补丁；实际部署和健康状态以运行检查为准，版本号本身不证明服务在线、权限已开放或所有模型回答正确。50%触发不是保证半数回复发图，已有缓存优化及质量限制保留。",
+  "2.0.3将普通聊天插话概率固定为10%，不再被群少插话偏好折半；其他触发类型及冷却保持，表情附发仍为50%。实际部署和健康状态以运行检查为准，版本号本身不证明服务在线、权限已开放或所有模型回答正确，概率不保证最终回复或发图。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
@@ -35,7 +35,7 @@ export const VERSION_NOTES_EN = Object.freeze([
   "Sticker replies have a default 50% trigger probability, subject to allowlists, cooldown and semantic matching. Catalog and send materials use aligned checks; the console separates skips, shadow decisions, failures, unknown outcomes and confirmed sends. Unknown receipts are not replayed.",
   "JM and the uppercase FS archive convention are retained. Model routes, reasoning modes, credential handling, permissions and relationship scoring are unchanged. Linux only; Windows stays frozen. export-relationships and relationship-table export remain reserved and disabled.",
   "9 known nonfatal model-answer quality cases are deferred, not fixed or passed. Image and contextual interpretation remain limited; causes are unconfirmed and not every model answer passes. Engineering contract checks and real answer-quality acceptance are separate.",
-  "2.0.2 is a sticker-delivery resilience patch. Deployment and health require runtime checks; a version string alone does not prove service availability, permission or correct model answers. A 50% trigger does not guarantee images on half of all replies; existing cache improvements and quality limitations remain.",
+  "2.0.3 fixes ordinary-chat interjection probability at 10%, without reduction by low group tolerance. Other trigger categories and cooldowns are unchanged; sticker attachment remains at 50%. Deployment and health require runtime checks; a version string alone does not prove service availability, permission or correct model answers. Probabilities do not guarantee replies or images.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

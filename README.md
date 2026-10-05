@@ -31,6 +31,8 @@ QQFriend powers the Yexing QQ bot. It receives messages through NapCat / OneBot 
 | Chinese web console | Service status, API providers and routes, allowlists, explicit memory, stickers, background tasks, and redacted diagnostics |
 | Caching and usage | Stable prompt prefixes, exact-image classification reuse, and scoped vision caching; provider token-cache metrics and per-process classification reuse are separate, and final chat answers are not shared |
 
+Ordinary-chat interjections use a fixed 10% trigger probability, independent of low/normal/high inferred group tolerance. Other trigger categories retain their existing rates and tolerance factors. Short/empty inputs, mentions, previews, cooldowns, and message-spacing gates still apply, and a selected turn may remain silent if the model has no suitable reply. This is distinct from the probability of attaching a sticker after text delivery.
+
 Sticker replies run after a confirmed text reply. Their default trigger probability is 50% for both ordinary and strong-context replies, without an additional passive-chat discount. Allowlists, switches, cooldown, usable send materials, and semantic matching still apply: this does not guarantee an image on half of all replies. The sticker page separates skipped, shadow, cancelled, failed, unknown, partial, and confirmed-send outcomes. Unknown or partially confirmed deliveries are not replayed as replacement images.
 
 Protocol adapters cover OpenAI Chat / Responses, Anthropic, and Gemini. A working endpoint does not guarantee that every model supports vision, native tools, or all reasoning parameters. Capabilities depend on the configured endpoint and actual verification.

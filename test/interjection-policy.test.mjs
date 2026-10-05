@@ -23,6 +23,35 @@ describe("interjection policy", () => {
     assert.equal(shouldInterject("ordinary apple message", { random: () => 0.01 }, state()), true);
   });
 
+  it("keeps ordinary probability at exactly ten percent for all group tolerances", () => {
+    for (const probabilityFactor of [undefined, 0.5, 1, 1.3]) {
+      const ctx = { groupId: 1, userId: 2, now: 1000000, probabilityFactor };
+      const below = buildInterjectionDecision("ordinary apple message", { ...ctx, random: () => 0.099 }, state());
+      const at = buildInterjectionDecision("ordinary apple message", { ...ctx, random: () => 0.10 }, state());
+      assert.equal(below.probability, 0.10);
+      assert.equal(below.ok, true);
+      assert.equal(at.probability, 0.10);
+      assert.equal(at.ok, false);
+      assert.equal(at.reason, "random");
+    }
+  });
+
+  it("retains ordinary cooldown, message spacing and early blocks at the higher rate", () => {
+    const s = state();
+    const ctx = { groupId: 1, userId: 2, now: 1000000, probabilityFactor: 0.5, random: () => 0.09 };
+    const message = "ordinary apple message";
+    assert.equal(buildInterjectionDecision(message, ctx, s).ok, true);
+    assert.equal(buildInterjectionDecision(message, { ...ctx, now: 1001000 }, s).reason, "cooldown");
+    assert.equal(buildInterjectionDecision(message, { ...ctx, now: 1130000 }, s).reason, "cooldown");
+    assert.equal(buildInterjectionDecision(message, { ...ctx, now: 1130001 }, s).ok, true);
+    for (const [text, extra, reason] of [
+      [message, { isAtMe: true }, "mentioned"],
+      [message, { previewSent: true }, "preview_sent"],
+      ["hi", {}, "short"],
+      ["", {}, "empty"],
+    ]) assert.equal(buildInterjectionDecision(text, { ...ctx, ...extra }, state()).reason, reason);
+  });
+
   it("allows direct-but-not-at messages with higher probability", () => {
     assert.equal(classifyInterjectionTrigger("QQFriend are you there?"), "direct_but_not_at");
     assert.equal(shouldInterject("QQFriend are you there?", { random: () => 0.20 }, state()), true);
