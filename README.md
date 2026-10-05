@@ -16,7 +16,7 @@
 
 QQFriend powers the Yexing QQ bot. It receives messages through NapCat / OneBot 11 and combines the current conversation, quoted sources, and personal memory to answer questions. It also handles images, group reports, link previews, and stickers. When enabled, bounded tools can search public information, read current attachments, calculate results, and prepare personal reminders. Personal changes and reminders require a separate confirmation from their owner. Services, model routes, allowlists, and task status are managed through a Chinese web console.
 
-> This source tree targets **Linux 2.0.2**. Release availability is determined by [GitHub Releases](https://github.com/awaa4962-coder/qqbot-core/releases), not by the source version alone. `master` retains legacy code; use a validated release tag for deployment and `agent/linux-server-preview` for development. Existing Windows installations are frozen. Accounts, credentials, and chat data are not migrated automatically.
+> **Linux 2.0.2 is released and deployed.** Use the [validated release](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.0.2) for deployment and `agent/linux-server-preview` for development. `master` retains legacy code; its README is an overview, not a deployment source. Existing Windows installations are frozen. Accounts, credentials, and chat data are not migrated automatically.
 
 ## Features
 
@@ -86,7 +86,7 @@ cd qqfriend/deploy/linux
 bash prepare.sh
 ```
 
-Use the example tag only once it appears as a validated release. Initialization prepares isolated configuration and state directories. It does not include your account or credentials. Before startup, configure:
+Initialization prepares isolated configuration and state directories. It does not include your account or credentials. Before startup, configure:
 
 | Location | Purpose |
 | --- | --- |
@@ -197,7 +197,7 @@ npm run replay:check
 
 `release:check` already includes dependency, lint, test, and runtime checks. Do not rerun the full suite just to collect counts for the same candidate. Real model probes may incur charges, require separate explicit authorization, and are not triggered by offline checks.
 
-The actual Linux validation snapshot for the 2.0.1 release is **3112 tests / 3069 passed / 43 optional-environment skips / 0 failures**, with ESLint 0 errors / 0 warnings, 13 offline replay checks passed, and 333 runtime files matching the candidate source. Skips are not passes. These are release-specific results, not a permanent guarantee for future versions. Cache benefits must be observed under normal traffic; prompts are not padded and paid warm-up requests are not used to manufacture hit rates or savings claims.
+The actual Linux validation snapshot for the [2.0.2 release](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.0.2) is **3253 tests / 3210 passed / 43 optional-environment skips / 0 failures**, with ESLint 0 errors / 0 warnings, 13 offline replay checks passed, and 334 runtime files matching the frozen candidate source. A fresh restricted backup parsed 188 JSON files and passed isolated restore checks before the tested image was deployed. Skips are not passes, and offline checks do not prove natural sticker delivery or semantic quality. These are release-specific results, not a permanent guarantee for future versions. Cache benefits must be observed under normal traffic; prompts are not padded and paid warm-up requests are not used to manufacture hit rates or savings claims.
 
 | Document | Contents |
 | --- | --- |
