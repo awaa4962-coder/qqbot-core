@@ -16,7 +16,7 @@
 
 QQFriend powers the Yexing QQ bot. It receives messages through NapCat / OneBot 11 and combines the current conversation, quoted sources, and personal memory to answer questions. It also handles images, group reports, link previews, and stickers. When enabled, bounded tools can search public information, read current attachments, calculate results, and prepare personal reminders. Personal changes and reminders require a separate confirmation from their owner. Services, model routes, allowlists, and task status are managed through a Chinese web console.
 
-> **Linux 2.1.0 is the autonomous-tool development candidate; 2.0.3 remains the last deployed release until rollout is recorded.** Use the [validated release](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.0.3) for deployment and `agent/linux-server-preview` for development. `master` retains legacy code; its README is an overview, not a deployment source. Existing Windows installations are frozen. Accounts, credentials, and chat data are not migrated automatically.
+> **Linux 2.1.0 is the latest validated and deployed release.** Use [v2.1.0](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.1.0) for deployment and `agent/linux-server-preview` for development. The tag and source ZIP match the tested running source; later documentation commits do not rebuild that image. `master` retains legacy code; its README is an overview, not a deployment source. Existing Windows installations are frozen. Accounts, credentials, and chat data are not migrated automatically.
 
 ## Features
 
@@ -92,7 +92,7 @@ Requires Docker Engine and Docker Compose v2. The verified deployment target is 
 ### 1. Get the Release and Initialize
 
 ```bash
-git clone --branch v2.0.3 --depth 1 https://github.com/awaa4962-coder/qqbot-core.git qqfriend
+git clone --branch v2.1.0 --depth 1 https://github.com/awaa4962-coder/qqbot-core.git qqfriend
 cd qqfriend/deploy/linux
 bash prepare.sh
 ```
@@ -180,6 +180,7 @@ flowchart LR
 | `bridge/commands/`, `capabilities/` | Command declarations, dispatch, help, and capability catalog |
 | `bridge/cognition/`, `context/`, `memory-profile/` | Conversation lifecycle, source selection, explicit memory, and invalidation guards |
 | `bridge/chat-tools/`, `agent-reminders/` | Bounded tools, owner confirmation, drafts, and persistent reminders |
+| `bridge/mcp/` | Optional readonly Streamable HTTP services using the same tool registry, permissions, and budgets |
 | `bridge/group-summary/`, `vision/`, `jm/`, `services/` | Reports, image/text handling, downloads, and link services |
 | `launcher/QQFriendLauncher/Web/` | The Chinese browser console reused on Linux |
 | `deploy/linux/`, `scripts/`, `test/` | Deployment, release checks, scaffolding, and regression tests |
@@ -208,7 +209,7 @@ npm run replay:check
 
 `release:check` already includes dependency, lint, test, and runtime checks. Do not rerun the full suite just to collect counts for the same candidate. Real model probes may incur charges, require separate explicit authorization, and are not triggered by offline checks.
 
-The actual Linux validation snapshot for the [2.0.3 release](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.0.3) is **3255 tests / 3212 passed / 43 optional-environment skips / 0 failures**, with ESLint 0 errors / 0 warnings, 13 offline replay checks passed, and 334 runtime files matching the frozen candidate source. A fresh restricted backup parsed 194 JSON files and passed isolated restore checks before the tested image was deployed. Skips are not passes, and offline checks do not prove natural reply frequency, sticker delivery, or semantic quality. These are release-specific results, not a permanent guarantee for future versions. Cache benefits must be observed under normal traffic; prompts are not padded and paid warm-up requests are not used to manufacture hit rates or savings claims.
+The actual Linux validation snapshot for [2.1.0](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.1.0) is **3457 tests / 3413 passed / 44 optional-environment skips / 0 failures**, with ESLint 0 errors / 0 warnings, 13 offline replay checks passed, and 350 runtime files matching frozen source `04dfeaf`. Same-source GitHub CI passed. A fresh restricted backup parsed 211 JSON files and passed isolated restore checks before the tested image was deployed. Live health/readiness, NapCat, JM dependencies/FS, effective tool settings, empty default MCP, and console assets passed readonly postchecks. Skips are not passes; engineering checks do not prove natural reply frequency, sticker delivery, model understanding, or third-party MCP safety. These are release-specific results, not a permanent guarantee. Cache benefits must be observed under normal traffic; prompts are not padded and paid warm-up requests are not used to manufacture hit rates or savings claims.
 
 | Document | Contents |
 | --- | --- |

@@ -2,13 +2,18 @@
 
 This deployment is isolated from the Windows installation. It creates fresh Linux state and never copies API keys, QQ login data, chat history, or user memory automatically.
 
-The Linux 2.0.0 source integrates the modular runtime, explicit memory, scoped
-cache, browser console and 11 limited tools. New tools require the configured
-group/phase lists and a direct mention; owned changes and reminders need a
-separate owner confirmation. JM and uppercase FS remain; relationship export
-is reserved. Nine known model-answer quality cases are deferred, not fixed or
-reclassified as passes. A source version does not establish deployment or health;
-see [FINISH-2.0.0.md](FINISH-2.0.0.md) for current release and observation status.
+Linux 2.1.0 extends the modular runtime with autonomous selection of the 11
+builtin tools and optional approved readonly Streamable HTTP MCP services.
+The console manages bounded profiles and service/schema approvals. Group
+materials and draft/write phases still require the existing lists and a real
+mention; owned changes and reminders need separate owner confirmation. Passive
+interjections get local readonly tools only. No external MCP service is enabled
+by default. JM and uppercase FS remain; relationship export is reserved.
+Nine known model-answer quality cases remain deferred, not reclassified as
+passes. The formal v2.1.0 tag matches tested running source 04dfeaf; live
+health/readiness and connection checks passed after activation. See
+[AUTONOMY-PLAN.md](AUTONOMY-PLAN.md) for this batch's evidence and
+[FINISH-2.0.0.md](FINISH-2.0.0.md) for the historical 2.0.0 observation record.
 
 As of 2026-09-07, Linux is the primary update target and the installed Windows
 bot is frozen. See [ROADMAP.md](ROADMAP.md) for the staged work.
