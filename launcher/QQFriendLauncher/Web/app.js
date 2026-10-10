@@ -1,5 +1,7 @@
 import { apiHasDrafts, applyApiPreset, applyGlobalReasoningPreset, canDiscardApiDrafts, renderApiProviders, selectApiProvider, syncApiControls, syncGlobalReasoningState, updateApiRouteReasoningAvailability } from "./pages/api.js";
 import { applyCapabilityFilter } from "./pages/capabilities.js";
+import { mcpHasDrafts, canDiscardMcpDrafts } from "./pages/mcp.js";
+import { toolSettingsHasDrafts, canDiscardToolSettingsDrafts } from "./pages/tool-settings.js";
 import { commitListEditor, removeListEditorValue, renderConfigEditor, renderListEditors, setConfigDirty, syncConfigControls, updateConfigDirty } from "./pages/configuration.js";
 import { applyLogFilter } from "./pages/logs.js";
 import { filterMemeArchive, showMemeArchiveEntry } from "./pages/memes.js";
@@ -36,6 +38,7 @@ async function openMemory() {
 export function canLeaveCurrentView(nextView) {
   if (nextView === uiState.currentView) return true;
   if (uiState.currentView === "memory" && memoryController && !memoryController.canLeave()) return false;
+  if (uiState.currentView === "capabilities" && (!canDiscardMcpDrafts() || !canDiscardToolSettingsDrafts())) return false;
   if (host.mode === "browser" && uiState.currentView === "stickers" && stickerHasDrafts() &&
       !window.confirm("表情有未保存修改。仍然离开吗？草稿会留在本页，尚未保存。")) return false;
   if (["configuration", "api-center"].includes(uiState.currentView) && groupIsBusy(uiState.currentView === "configuration" ? "saveConfig" : "saveApiProvider")) {
@@ -270,7 +273,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 window.addEventListener("beforeunload", event => {
-  if (!uiState.configDirty && !apiHasDrafts() && !stickerHasDrafts() && !groupIsBusy("saveConfig") && !groupIsBusy("saveApiProvider") && !groupIsBusy("saveSticker")) return;
+  if (!uiState.configDirty && !apiHasDrafts() && !stickerHasDrafts() && !mcpHasDrafts() && !toolSettingsHasDrafts() && !groupIsBusy("saveConfig") && !groupIsBusy("saveApiProvider") && !groupIsBusy("saveSticker")) return;
   event.preventDefault(); event.returnValue = "";
 });
 

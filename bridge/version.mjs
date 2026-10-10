@@ -4,8 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "2.0.3";
-export const VERSION_NAME = "ordinary-interjection-rate";
+export const VERSION = "2.1.0";
+export const VERSION_NAME = "autonomous-tool-runtime";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
@@ -21,6 +21,8 @@ export const VERSION_NOTES_ZH = Object.freeze([
   "保留JM及大写FS解压约定；模型主备、思考档位、凭据处理、权限和关系评分不变。只面向Linux，Windows继续冻结，export-relationships及关系表导出仍预留未启用。",
   "已知9项非致命模型回答质量反例暂缓处理，未修复、未通过；识图与语境理解仍有限，原因未确认，不宣称每个模型回答都通过。工程契约验证与真实回答质量验收分开。",
   "2.0.3将普通聊天插话概率固定为10%，不再被群少插话偏好折半；其他触发类型及冷却保持，表情附发仍为50%。实际部署和健康状态以运行检查为准，版本号本身不证明服务在线、权限已开放或所有模型回答正确，概率不保证最终回复或发图。",
+  "2.1.0由模型按需选择有权限的工具，不再靠固定问句决定公开查询或草稿准备；普通插话开放本地记忆、状态和计算，后台网络与写入仍关闭。已接触私有资料的公开查询按来源约束，不向外部工具发送聊天记录或凭据。",
+  "新增Linux MCP只读HTTP适配与前端服务/工具审批，默认无外部服务；远端只读标记不是安全证明。前端可选工具预算档位，主备与嵌套调用共享轮数、调用数和时间上限；保存、撤销、失效及连接失败均有真实状态反馈。",
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
@@ -36,6 +38,8 @@ export const VERSION_NOTES_EN = Object.freeze([
   "JM and the uppercase FS archive convention are retained. Model routes, reasoning modes, credential handling, permissions and relationship scoring are unchanged. Linux only; Windows stays frozen. export-relationships and relationship-table export remain reserved and disabled.",
   "9 known nonfatal model-answer quality cases are deferred, not fixed or passed. Image and contextual interpretation remain limited; causes are unconfirmed and not every model answer passes. Engineering contract checks and real answer-quality acceptance are separate.",
   "2.0.3 fixes ordinary-chat interjection probability at 10%, without reduction by low group tolerance. Other trigger categories and cooldowns are unchanged; sticker attachment remains at 50%. Deployment and health require runtime checks; a version string alone does not prove service availability, permission or correct model answers. Probabilities do not guarantee replies or images.",
+  "2.1.0 lets the model choose permitted tools without fixed question phrases for public queries or draft preparation. Passive interjections may read local memory/status and calculate, but cannot use background networking or writes. Public queries follow provenance restrictions after private evidence is exposed; chat records and credentials are not forwarded to external tools.",
+  "Linux adds a readonly HTTP MCP adapter and console service/tool approvals, with no default external services. Remote readonly annotations are not a safety proof. Configurable bounded tool profiles share model rounds, calls and deadlines across primary, fallback and nested requests; saves, revocation, invalidation and connection failures expose actual states.",
 ]);
 
 export const RESERVED_FEATURES_ZH = Object.freeze([

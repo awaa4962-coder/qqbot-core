@@ -46,6 +46,7 @@ export function buildArchitectureDescription(root = ROOT, options = {}) {
       { id: "commands", name: "command registry and manifest", files: ["bridge/commands/"] },
       { id: "context", name: "context, memory, image and relationship signals", files: ["bridge/context/", "bridge/context-retriever.mjs", "bridge/system-prompts/", "bridge/knowledge/memes/image-context.mjs", "bridge/memory-profile.mjs", "bridge/relationship.mjs"] },
       { id: "models", name: "model routing with fallback", files: ["bridge/model-router.mjs", "bridge/model-mimo.mjs", "bridge/model-ds.mjs"] },
+      { id: "tools", name: "autonomous scoped tool loop and readonly HTTP MCP adapter", files: ["bridge/chat-tools/", "bridge/mcp/"] },
       { id: "ops", name: "admin api, launcher, diagnostics and release", files: ["bridge/admin-api/", "launcher/QQFriendLauncher/", "scripts/release.mjs"] },
       { id: "plugin-center", name: "readonly plugin and workflow inventory", files: ["bridge/admin-api/plugin-catalog.mjs", "bridge/admin-api/backup-manager.mjs"] },
     ],
@@ -56,6 +57,7 @@ export function buildArchitectureDescription(root = ROOT, options = {}) {
       "Reply diagnosis and offline replay checks do not call models; explicit bounded replay generation can call configured model APIs, but never sends to QQ.",
       "Image meme cache may store perceptual fingerprints and objective descriptions, never image files or raw group chat.",
       "Keep release packages free of logs, memory files, private docs and .env_* files.",
+      "Models choose permitted tools; owner confirmation, provenance, shared budgets and cancellation remain executor boundaries. MCP defaults empty and remote readonly claims are not security proofs.",
     ],
   };
 }

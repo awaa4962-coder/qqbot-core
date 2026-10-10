@@ -50,7 +50,7 @@ export async function tryDeepSeekResult(userMsg, userName, history, groupId, isA
       selfContext: { surface: privateRequest ? "private" : "group", groupId, userId: options.currentUserId },
       promptMetadata: prompt.metadata,
     };
-    return await runScopedChat(request, { ...options, task, userMessage: userMsg,
+    return await runScopedChat(request, { ...options, task, userMessage: userMsg, userName,
       position: options.position || (privateRequest ? "primary" : "fallback") });
   } catch (e) {
     logE('tryDeepSeek error:', e.message);

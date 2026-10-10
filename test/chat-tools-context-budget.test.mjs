@@ -47,8 +47,9 @@ saveApiProvider({ id: "budget-dynamic-token", protocol: "openai-chat", presetId:
 function boundedHistory(protectedLength = 160) {
   const layers = [];
   for (let group = 0; group < 4; group++) {
-    layers.push({ role: "user", content: `OLD_GROUP_${group}_USER ` + "u".repeat(2500), contextGroup: `old-${group}`, contextPriority: 20 });
-    layers.push({ role: "assistant", content: `OLD_GROUP_${group}_ASSISTANT ` + "a".repeat(2500), contextGroup: `old-${group}`, contextPriority: 20 });
+    // Keep the first request below the same cap with updated tool declarations; opaque replay must cross it.
+    layers.push({ role: "user", content: `OLD_GROUP_${group}_USER ` + "u".repeat(2400), contextGroup: `old-${group}`, contextPriority: 20 });
+    layers.push({ role: "assistant", content: `OLD_GROUP_${group}_ASSISTANT ` + "a".repeat(2400), contextGroup: `old-${group}`, contextPriority: 20 });
   }
   layers.push({ role: "user", content: quote + " q".repeat(protectedLength), contextGroup: "quote", contextPriority: 90 });
   layers.push({ role: "user", content: preference, contextGroup: "preference", contextPriority: 90 });

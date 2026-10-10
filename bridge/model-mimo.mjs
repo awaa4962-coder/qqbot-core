@@ -126,7 +126,7 @@ export async function tryMiMoResult(userMsg, userName, history, imageUrls, group
       thinking: mimoOptions.thinking, reasoningSignals: mimoOptions.reasoningSignals,
       usageContext: mimoOptions.usageContext, selfContext: mimoOptions.selfContext,
       promptMetadata: prompt.metadata,
-    }, { ...mimoOptions, userMessage: userMsg });
+    }, { ...mimoOptions, userMessage: userMsg, userName });
   } catch (e) {
     logE('tryMiMo error:', e.message);
     return chatError("request_failed");

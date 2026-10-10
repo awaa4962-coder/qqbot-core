@@ -6,7 +6,7 @@ import { fetchSafeResponse, readBoundedResponseBuffer, validateSafeUrl } from ".
 import { containsSensitiveText, redactSensitiveText } from "../privacy.mjs";
 import { monotonicNow } from "../runtime-clock.mjs";
 import { webSearchResults } from "../search.mjs";
-import { authorizedSearchQuery, permitsPublicSearch, publicNetworkCancelled } from "./policy.mjs";
+import { authorizePublicQuery, publicToolsAllowed, publicTextSafe } from "./public-query-policy.mjs";
 import { registeredTool } from "./registry.mjs";
 
 const TTL_MS = 90000;
@@ -22,26 +22,31 @@ const SECRET_PARAMETER = /(?:token|secret|password|passwd|credential|authorizati
 const CONTENT_TYPES = new Set(["text/plain", "text/html", "text/markdown", "text/x-markdown", "application/json"]);
 
 // read is fetchSafeResponse(url, options), including its per-hop pinned DNS contract.
-export function createPublicSourceSession({ userMessage, task, signal, now = monotonicNow, search = webSearchResults, read = fetchSafeResponse } = {}) {
+// Privacy inputs are backend-owned: values may be a synchronous supplier; the query guard must return true synchronously.
+export function createPublicSourceSession({ userMessage, task, autonomous = false, scope = {}, protectedValues = [], isPublicQueryAllowed,
+  signal, now = monotonicNow, search = webSearchResults, searchTextAdapter, read = fetchSafeResponse } = {}) {
+  const boundScope = Object.freeze({ ...scope });
+  const policy = Object.freeze({ autonomous: autonomous === true, scope: boundScope });
+  const currentMessageAllowed = () => publicToolsAllowed(userMessage, task, { ...policy, autonomous: true });
   const startedAt = Number(now());
   const deadline = startedAt + TTL_MS;
   const turnSignal = signal || globalThis.AbortSignal.timeout(TTL_MS);
   const references = new Map();
   const urls = new Map();
-  const allowed = publicMessageAllowed(userMessage, task);
+  const allowed = currentMessageAllowed();
   const initial = [];
   for (const url of allowed ? requestedLinks(userMessage).slice(0, 3) : []) {
     const source = register(url, new URL(url).hostname);
     if (source && JSON.stringify([...initial, source]).length <= MAX_RESULT) initial.push(source);
     else if (source) { references.delete(source.source_ref); urls.delete(source.url); }
   }
-  const available = allowed && (initial.length > 0 || permitsPublicSearch(userMessage, task));
+  const available = initial.length > 0 || publicToolsAllowed(userMessage, task, policy);
   let pageFetches = 0;
   let invalid = "";
 
   function rejection() {
     const time = Number(now());
-    if (!available) return "not_allowed";
+    if (!available || !currentMessageAllowed()) return "not_allowed";
     if (invalid) return invalid;
     if (turnSignal.aborted) return invalid = "cancelled";
     if (!Number.isFinite(time) || time < startedAt || time >= deadline) return invalid = "expired";
@@ -50,7 +55,7 @@ export function createPublicSourceSession({ userMessage, task, signal, now = mon
 
   function register(value, title) {
     const url = publicUrl(value);
-    if (!url) return null;
+    if (!url || !protectedTextAllowed(url)) return null;
     if (urls.has(url)) return references.get(urls.get(url));
     if (references.size >= MAX_REFS) return null;
     const source = Object.freeze({ source_ref: "src_" + randomBytes(16).toString("hex"), title: cleanText(title, 80) || new URL(url).hostname, url });
@@ -59,55 +64,110 @@ export function createPublicSourceSession({ userMessage, task, signal, now = mon
     return source;
   }
 
-  async function searchPublic(query) {
+  function protectedTextAllowed(value) {
+    try {
+      const values = typeof protectedValues === "function" ? protectedValues() : protectedValues;
+      if (values && typeof values.then === "function") Promise.resolve(values).catch(() => {});
+      return Array.isArray(values) && publicTextSafe(value, boundScope, values);
+    } catch { return false; }
+  }
+
+  function authorizedQuery(query) {
+    const authorized = authorizePublicQuery(query, userMessage, task, policy);
+    if (!authorized || !protectedTextAllowed(authorized)) return "";
+    try {
+      if (isPublicQueryAllowed !== undefined) {
+        if (typeof isPublicQueryAllowed !== "function") return "";
+        const permitted = isPublicQueryAllowed(authorized, Object.freeze({ userMessage, task, ...policy }));
+        if (permitted !== true) {
+          if (permitted && typeof permitted.then === "function") Promise.resolve(permitted).catch(() => {});
+          return "";
+        }
+      }
+    } catch { return ""; }
+    return authorized;
+  }
+
+  async function searchPublic(query, options = {}) {
     const denied = rejection();
     if (denied) return failure("denied", denied);
     if (typeof query !== "string" || query.trim().length < 2 || query.length > 160) return failure("invalid_arguments", "query");
-    // Require the current-message substring even when this session is called outside the parent handler.
-    if (sensitive(query) || unsafeQueryUrl(query)) return failure("denied", "sensitive_query");
-    const authorized = authorizedSearchQuery(query, userMessage, task);
-    if (!authorized) return failure("denied", "query_not_in_current_message");
+    // Recheck here even when the parent already authorized the tool arguments.
+    if (unsafeQueryUrl(query)) return failure("denied", "sensitive_query");
+    const authorized = authorizedQuery(query);
+    if (!authorized) return failure("denied", policy.autonomous ? "query_not_allowed" : "query_not_in_current_message");
+    let dispatchDenied = false;
     try {
-      const operation = operationSignal(SEARCH_MS);
-      const result = await abortable(() => search(authorized, { signal: operation }), operation);
+      const operation = operationSignal(SEARCH_MS, options.signal);
+      const result = await abortable(() => {
+        if (rejection() || !authorizedQuery(authorized)) {
+          dispatchDenied = true;
+          throw new Error("query_not_allowed");
+        }
+        return (searchTextAdapter || search)(authorized, { signal: operation });
+      }, operation);
       const stale = rejection();
       if (stale) return failure("denied", stale);
-      return searchEvidence(result, register);
-    } catch { return failure(rejection() ? "denied" : "unavailable", rejection() || "search_failed"); }
+      if (!authorizedQuery(authorized)) return failure("denied", "query_not_allowed");
+      return searchTextAdapter ? textSearchEvidence(result) : searchEvidence(result, register);
+    } catch { return searchFailure(rejection(), dispatchDenied); }
   }
 
-  async function readPublic(sourceRef) {
+  async function readPublic(sourceRef, callerOptions = {}) {
     const denied = rejection();
     if (denied) return failure("denied", denied);
     if (typeof sourceRef !== "string" || !REF.test(sourceRef)) return failure("invalid_arguments", "source_ref");
     const source = references.get(sourceRef);
     if (!source) return failure("denied", "unknown_source");
+    if (!protectedTextAllowed(source.url)) return failure("denied", "sensitive_source");
     if (pageFetches >= 2) return failure("denied", "page_budget");
     pageFetches++;
-    const operation = operationSignal();
+    const operation = operationSignal(READ_MS, callerOptions.signal);
     try {
       const result = await pageContent(source.url, read, {
         method: "GET", signal: operation, timeoutMs: Math.min(READ_MS, Math.max(1, deadline - Number(now()))),
         maxBytes: MAX_BYTES, maxRedirects: 3,
-        requestImpl: publicPinnedRequest,
+        requestImpl: (url, options, callback) => {
+          if (!protectedTextAllowed(url.href)) throw new Error("unsafe_public_url");
+          return publicPinnedRequest(url, options, callback);
+        },
         headers: { Accept: "text/html, text/plain, text/markdown, application/json" },
-      }, rejection);
+      }, rejection, protectedTextAllowed);
       const stale = rejection();
       if (stale) return failure("denied", stale);
+      if (!protectedTextAllowed(source.url)) return failure("denied", "sensitive_source");
       return result.status ? result : boundedResult("ok", result.text, [source], "excerpt");
     } catch { return failure(rejection() ? "denied" : "unavailable", rejection() || "read_failed"); }
   }
 
-  function operationSignal(maxMs = READ_MS) {
-    return globalThis.AbortSignal.any([turnSignal, globalThis.AbortSignal.timeout(Math.min(maxMs, Math.max(1, Math.floor(deadline - Number(now())))))]);
+  function operationSignal(maxMs = READ_MS, callerSignal) {
+    return globalThis.AbortSignal.any([turnSignal, callerSignal,
+      globalThis.AbortSignal.timeout(Math.min(maxMs, Math.max(1, Math.floor(deadline - Number(now())))))].filter(Boolean));
   }
 
-  return { available, initialSources: () => rejection() ? [] : initial.map(source => ({ ...source })), search: searchPublic, read: readPublic };
+  const canReuse = (name, args) => publicCacheAllowed(name, args, { rejection, authorizedQuery, references, protectedTextAllowed });
+
+  return { available, canReuse, initialSources: () => rejection() ? [] : initial.filter(source => protectedTextAllowed(source.url)).map(source => ({ ...source })), search: searchPublic, read: readPublic };
 }
 
-function publicMessageAllowed(message, task) {
-  return ["group_chat", "private_chat"].includes(task) && typeof message === "string" && message.length <= 1000 &&
-    !sensitive(message) && !publicNetworkCancelled(message);
+function searchFailure(reason, dispatchDenied) {
+  const denied = reason || (dispatchDenied ? "query_not_allowed" : "");
+  return failure(denied ? "denied" : "unavailable", denied || "search_failed");
+}
+
+function publicCacheAllowed(name, args, { rejection, authorizedQuery, references, protectedTextAllowed }) {
+  if (rejection()) return false;
+  if (name === "web_search") return typeof args?.query === "string" && !unsafeQueryUrl(args.query) && Boolean(authorizedQuery(args.query));
+  const source = name === "read_public_page" && references.get(args?.source_ref);
+  return Boolean(source && protectedTextAllowed(source.url));
+}
+
+function textSearchEvidence(value) {
+  if (typeof value !== "string" || !value.trim()) return failure("unavailable", "search_failed");
+  if (/^搜索暂时不可用|^搜索功能未配置/.test(value)) return failure("unavailable", "search_failed");
+  if (value === "未找到相关结果") return { status: "empty", sources: [] };
+  return { status: "ok", source: "public_web", text: cleanText(value, MAX_TEXT), untrusted: true,
+    ...(value.length > MAX_TEXT ? { truncated: true } : {}) };
 }
 
 function searchEvidence(result, register) {
@@ -122,14 +182,14 @@ function searchEvidence(result, register) {
   return boundedResult("ok", text || sources.map(source => source.title).join("\n"), sources);
 }
 
-async function pageContent(url, read, options, rejection) {
+async function pageContent(url, read, options, rejection, protectedTextAllowed) {
   let response;
   try {
     const result = await abortable(() => read(url, options), options.signal);
     response = result?.response;
     const stale = rejection();
     if (stale) return failure("denied", stale);
-    if (!publicResponse(result)) return failure("unavailable", "unsafe_response");
+    if (!publicResponse(result) || !protectedTextAllowed(result.url?.href || result.url)) return failure("unavailable", "unsafe_response");
     const type = (response.headers.get("content-type") || "").split(";", 1)[0].trim().toLowerCase();
     if (!CONTENT_TYPES.has(type)) return failure("unavailable", "content_type");
     const buffer = await abortable(() => readBoundedResponseBuffer(response, MAX_BYTES), options.signal);

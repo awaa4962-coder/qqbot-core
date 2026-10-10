@@ -8,6 +8,7 @@ import { stopChatRuns } from "./cognition/chat-run.mjs";
 import { chatWorkScheduler } from "./cognition/chat-work.mjs";
 import { agentDraftTasks } from "./chat-tools/draft-tasks.mjs";
 import { agentWriteCoordinator } from "./chat-tools/write-coordinator.mjs";
+import { initializeMcpServices, closeMcpServices } from "./mcp/index.mjs";
 import { classifyOutboundDelivery } from "./cognition/outcome.mjs";
 import { users, groupChats, flushSavesSync, persistLoadedStorageRepairs } from "./storage.mjs";
 import { persistLoadedProfileRepairs } from "./memory-profile/store.mjs";
@@ -283,6 +284,7 @@ async function shutdown(signal) {
       Promise.resolve().then(() => chatWorkScheduler.stop({ drainMs: 10000 })),
       Promise.resolve().then(() => agentDraftTasks.stop({ drainMs: 10000 })),
       Promise.resolve().then(() => agentWriteCoordinator.stop({ drainMs: 10000 })),
+      Promise.resolve().then(() => closeMcpServices()),
     ]);
     await new Promise(resolve => server.close(resolve));
     drained = drainResults.every(result => result.status === 'fulfilled' && result.value !== false);
@@ -321,6 +323,9 @@ server.listen(CFG.listenPort, CFG.listenHost, function() {
   log('sticker system ready:', JSON.stringify(stickerStatus));
   dailySummaryCatchUp.start();
   agentWriteCoordinator.start();
+  initializeMcpServices({ cfg: CFG }).then(status => {
+    log('MCP initialization:', status.status || 'ready', 'services:', status.servers?.length || 0);
+  }).catch(() => logE('MCP initialization failed'));
 
   // 每小时更新所有用户画像
   async function refreshAllProfiles() {

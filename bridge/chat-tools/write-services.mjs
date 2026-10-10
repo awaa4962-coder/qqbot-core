@@ -1,8 +1,10 @@
 import { agentWriteCoordinator } from "./write-coordinator.mjs";
+import { autonomousPreparationAllowed } from "./preparation-policy.mjs";
 import { agentPersonalAllowed, agentRemindersAllowed, permitsReminderPreparation, authorizedReminderArguments, PERSONAL_CHANGE_TOOL, REMINDER_TOOL, PERSONAL_ACTIONS_TOOL } from "./policy.mjs";
 
 export function createWriteServices(options, context) {
   const { scope, cfg, signal, assertCurrent } = context;
+  const autonomous = context.autonomous === true;
   const coordinator = options.writeCoordinator || agentWriteCoordinator;
   const personal = () => agentPersonalAllowed(scope, cfg, options);
   const reminders = () => agentRemindersAllowed(scope, cfg, options);
@@ -11,15 +13,17 @@ export function createWriteServices(options, context) {
     throw Object.assign(new Error("reply_superseded"), { code: "CHAT_TOOL_STOPPED" });
   }
   const runtime = { scope, cfg, signal, assertCurrent, messageId, userMessage: options.userMessage,
-    task: options.task, mentioned: options.mentioned };
+    task: options.task, mentioned: options.mentioned, autonomous };
   return { definitions: () => [
-    ...(personal() && permitsPersonalPreparation(options.userMessage) ? [PERSONAL_CHANGE_TOOL] : []),
-    ...(reminders() && permitsReminderPreparation(options.userMessage) ? [REMINDER_TOOL] : []),
+    ...(personal() && (autonomous || permitsPersonalPreparation(options.userMessage)) ? [PERSONAL_CHANGE_TOOL] : []),
+    ...(reminders() && (autonomous || permitsReminderPreparation(options.userMessage)) ? [REMINDER_TOOL] : []),
     ...(personal() || reminders() ? [PERSONAL_ACTIONS_TOOL] : []),
   ],
   writes: {
-    preparePersonal: args => permitsPersonalPreparation(options.userMessage) ? coordinator.preparePersonal(args, runtime) : { status: "denied" },
-    prepareReminder: args => authorizedReminderArguments(args, options.userMessage) ? coordinator.prepareReminder(args, runtime) : { status: "denied" },
+    preparePersonal: args => personal() && (autonomous ? autonomousPreparationAllowed(options.userMessage, "personal")
+      : permitsPersonalPreparation(options.userMessage)) ? coordinator.preparePersonal(args, runtime) : { status: "denied" },
+    prepareReminder: args => reminders() && (autonomous ? autonomousPreparationAllowed(options.userMessage, "reminder", args)
+      : authorizedReminderArguments(args, options.userMessage)) ? coordinator.prepareReminder(args, runtime) : { status: "denied" },
     read: args => coordinator.read(args, runtime),
   } };
 }

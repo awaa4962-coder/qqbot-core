@@ -10,6 +10,7 @@ import { createConfirmationStore } from "./confirmations.mjs";
 import { createReminderService } from "../agent-reminders/service.mjs";
 import { agentPersonalAllowed, agentRemindersAllowed, authorizedReminderArguments } from "./policy.mjs";
 import { registerAgentOwnedStateCleaner } from "./owned-state.mjs";
+import { autonomousPreparationAllowed, autonomousPreparationArgumentsSafe } from "./preparation-policy.mjs";
 
 const activeOptions = { task: "group_chat", mentioned: true };
 const denied = () => ({ status: "denied", reason: "not_allowed" });
@@ -41,16 +42,33 @@ export function createAgentWriteCoordinator(options = {}) {
     deliver: options.deliver || ((job, settings) => deliverReminder(job, settings, allowed, privacyCutoff)) });
 
   async function prepare(domain, args, runtime) {
-    runtime = normalizeRuntime(runtime);
-    if (!runtime || !allowed(runtime.scope, domain)) return denied();
-    if (domain === "reminder" && !authorizedReminderArguments(args, runtime.userMessage)) return denied();
-    runtime.assertCurrent();
+    const admission = admitPreparation(domain, args, runtime);
+    if (admission.error) return admission.error;
+    runtime = admission.runtime;
+    if (!preparationIsCurrent(runtime) || !ownedReminderProposal(domain, args, runtime)) return denied();
     const prepared = domain === "personal" ? await personal.prepare(args, personalRuntime(runtime)) : await reminders.prepare(runtime.scope, args);
-    runtime.assertCurrent();
+    if (!preparationIsCurrent(runtime) || !allowed(runtime.scope, domain)) return denied();
     if (prepared?.status !== "ready" || !prepared.operation) return prepared || { status: "unavailable" };
     const result = confirmations.create(runtime.scope, prepared.operation, { messageId: runtime.messageId, binding: agentWriteBinding(runtime.scope, cfg) });
-    runtime.assertCurrent();
+    if (!preparationIsCurrent(runtime)) return denied();
     return pendingToolResult(result);
+  }
+
+  function admitPreparation(domain, args, runtime) {
+    if (runtime?.scope?.currentMessageId !== undefined && String(runtime.scope.currentMessageId) !== runtime.messageId) return { error: denied() };
+    runtime = normalizeRuntime(runtime);
+    if (!runtime || !allowed(runtime.scope, domain)) return { error: denied() };
+    const permitted = runtime.autonomous === true ? autonomousPreparationAllowed(runtime.userMessage, domain, args)
+      : domain !== "reminder" || authorizedReminderArguments(args, runtime.userMessage);
+    if (!permitted) return { error: denied() };
+    if (runtime.autonomous === true && !autonomousPreparationArgumentsSafe(args)) return { error: { status: "invalid_arguments" } };
+    return { runtime };
+  }
+
+  function ownedReminderProposal(domain, args, runtime) {
+    if (runtime.autonomous !== true || domain !== "reminder" || args.action !== "cancel") return true;
+    const view = reminders.list(runtime.scope);
+    return view?.status === "ready" && view.items.some(item => item.ref === args.ref);
   }
 
   function personalRuntime(runtime) {
@@ -136,6 +154,11 @@ function normalizeRuntime(runtime) {
   return { ...runtime, scope: Object.freeze({ surface: "group", groupId, userId }) };
 }
 
+function preparationIsCurrent(runtime) {
+  if (runtime.autonomous === true && (!(runtime.signal instanceof AbortSignal) || runtime.signal.aborted)) return false;
+  return runtime.assertCurrent() !== false;
+}
+
 function safeList(service) {
   try { return service.list(); } catch { return { status: "unavailable", items: [] }; }
 }
@@ -147,7 +170,7 @@ function revokeUser(service, uid, settings) {
 function pendingToolResult(result) {
   if (result?.status !== "pending" || typeof result.ref !== "string" || typeof result.preview !== "string") return { status: "unavailable" };
   return { status: "ok", phase: "pending", confirmation_ref: result.ref, expiresAt: result.expiresAt,
-    text: result.preview + "\n尚未执行。由本人另发：@机器人 确认 " + result.ref, applied: false };
+    text: result.preview + "\n待确认，尚未保存或执行。由本人另发：@机器人 确认 " + result.ref, applied: false };
 }
 
 function boundedRead(snapshot) {

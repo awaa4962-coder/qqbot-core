@@ -247,7 +247,7 @@ test("ordinary text retains original nonfocused system bytes despite caller esca
   Object.assign(input.options, { imageTask: true, imagePolicy: IMAGE_POLICY_EVIDENCE });
   const { chat } = await execute(t, input);
   for (const body of chat) {
-    assert.equal(hash(body.messages[0].content), "14c940f6d56e7958520c97bbecdfcbb917f87d99c97274a468e6d0e08c596f06");
+    assert.equal(hash(body.messages[0].content), "11697c52bd67660d1556ede8295cbaab96d54b1023f631eab47d0f656341428a");
     assert.equal(body.messages.at(-1).content, input.options.currentInput);
   }
 });
@@ -259,7 +259,7 @@ test("closed and nonselected image scopes retain original STABLE system bytes", 
     input.groupId = groupId;
     Object.assign(input.options, { imageTask: true, imagePolicy: IMAGE_POLICY_EVIDENCE });
     const { chat } = await execute(t, input, { liveScope: { ...scope, groupId: String(groupId) } });
-    for (const body of chat) assert.equal(hash(body.messages[0].content), "fa6901afa3ccf1faea19e0b99912b16d239e1210b8d7fab44ddae20f9ab67c8f");
+    for (const body of chat) assert.equal(hash(body.messages[0].content), "29984aa6cae5573c542f5adcba55b8e6b3960d50d552b494d26ae8d76b20355e");
   }
 });
 
@@ -268,10 +268,10 @@ test("private and passive image scopes retain their original system hashes", asy
   input.groupId = null;
   Object.assign(input.options, { imageTask: true, imagePolicy: IMAGE_POLICY_EVIDENCE, visionContext: objective });
   const { chat } = await execute(t, input, { liveScope: { surface: "private", groupId: null, userId: "62100" } });
-  assert.equal(hash(chat[0].messages[0].content), "fa6901afa3ccf1faea19e0b99912b16d239e1210b8d7fab44ddae20f9ab67c8f");
+  assert.equal(hash(chat[0].messages[0].content), "29984aa6cae5573c542f5adcba55b8e6b3960d50d552b494d26ae8d76b20355e");
   for (const [rollout, imagePolicy, originalHash] of [
-    ["52100", IMAGE_POLICY_EVIDENCE, "03c56ff80d345260130f35e0ec48b2f7fc7dfc3671af1234ed05f1c74222c87c"],
-    ["", IMAGE_POLICY_STABLE, "723ce7abce534607cda82f7acb84e39bf4712e6d7a5d8a6fcb192cdf70032ec3"],
+    ["52100", IMAGE_POLICY_EVIDENCE, "51e425638387529a96b18c283c938a0186aba89466b16009a0cd245d0cf761d6"],
+    ["", IMAGE_POLICY_STABLE, "ec45bc77c9c1eadf22b0963432257c5542a668569c8c8334158e668057fbcc25"],
   ]) {
     process.env.QQBOT_IMAGE_CONTEXT_ROLLOUT = rollout;
     const passive = request("旁观消息。", "passive");

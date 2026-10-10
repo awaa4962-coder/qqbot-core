@@ -119,7 +119,9 @@ function observeEvidence(t, input, imagePolicy = IMAGE_POLICY_EVIDENCE) {
   const sources = registeredContextSources(input.history);
   t.mock.method(toolSession, "prepareModel", modelRequest => {
     for (const message of input.history) assert.ok(modelRequest.messages.includes(message), "history object identity lost");
-    assert.deepEqual(registeredContextSources(modelRequest.messages), sources);
+    const selected = registeredContextSources(modelRequest.messages);
+    assert.deepEqual(selected.filter(source => source.reason !== "vision_evidence"), sources);
+    assert.deepEqual(selected.filter(source => source.reason === "vision_evidence"), [{ kind: "image", reason: "vision_evidence" }]);
     return original(modelRequest);
   });
   input.options.toolSession = toolSession;
@@ -288,7 +290,9 @@ async function guardedLast(t, last, { registered = false, sources = [] } = {}) {
     prepared = true;
     assert.equal(modelRequest.messages.at(-1), last, "last-message identity must survive the safeguard");
     assert.equal(modelRequest.messages.at(-2), syntheticEvidence);
-    assert.deepEqual(registeredContextSources(modelRequest.messages), sources);
+    const selected = registeredContextSources(modelRequest.messages);
+    assert.deepEqual(selected.filter(source => source.reason !== "vision_evidence"), sources);
+    assert.deepEqual(selected.filter(source => source.reason === "vision_evidence"), [{ kind: "image", reason: "vision_evidence" }]);
     if (registered) assert.equal(hasRegisteredContextGroup(modelRequest.messages.at(-1)), true);
     return original(modelRequest);
   });

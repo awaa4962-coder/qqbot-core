@@ -1,5 +1,5 @@
 import { apiProviderPayload, apiRoutesPayload, apiReadFailed, canDiscardApiDrafts, renderApiProviders, setApiNotice, startNewApiProvider, syncApiControls } from "../pages/api.js";
-import { capabilityReadFailed, renderCapabilities, setCapabilityNotice } from "../pages/capabilities.js";
+import { capabilityReadFailed, capabilityReadTicket, capabilityTicketCurrent, renderCapabilities, setCapabilityNotice } from "../pages/capabilities.js";
 import { configPayload, configReadFailed, renderConfig, renderConfigEditor, syncConfigControls } from "../pages/configuration.js";
 import { diagnosePayload, formatDiagnoseResult, renderDiagnoseSummary } from "../pages/diagnose-message.js";
 import { logsReadFailed, renderLogs, setLogsLoading } from "../pages/logs.js";
@@ -15,6 +15,8 @@ import { callManagedAction, managedTaskIsBlocked, resumeManagedTasks, taskPhaseL
 import { hasVerifiedNativeTools } from "../agent-tools.js";
 import { isAgentDraftAction, runAgentDraftAction } from "./agent-draft-actions.js";
 import { isAgentWriteAction, runAgentWriteAction } from "./agent-write-actions.js";
+import { isMcpAction, runMcpAction } from "./mcp-actions.js";
+import { isToolSettingsAction, runToolSettingsAction } from "./tool-settings-actions.js";
 
 async function runAgentToolsProbe(silent) {
   let terminalError;
@@ -185,6 +187,8 @@ export function configureRuntimeUi() {
 export async function runAction(action, button = null, options = {}) {
   if (isAgentDraftAction(action)) return await runAgentDraftAction(action, button, options);
   if (isAgentWriteAction(action)) return await runAgentWriteAction(action, button, options);
+  if (isMcpAction(action)) return await runMcpAction(action, button, options);
+  if (isToolSettingsAction(action)) return await runToolSettingsAction(action, button, options);
   const silent = options.silent === true;
   if (action === "refreshStickers" && !silent && !canDiscardStickerDrafts()) return;
   if (action === "newApiProvider") {
@@ -198,6 +202,8 @@ export async function runAction(action, button = null, options = {}) {
   if (!validateAction(action) || !beginAction(action, button, silent)) return;
   let failure = null;
   let cancelled = false;
+  let capabilityTicket = null;
+  let staleRead = false;
   if (actionGroup(action) === "stickers") syncStickerControls();
 
   if (action === "refreshCapabilities") setCapabilityNotice("正在读取能力目录…", "loading");
@@ -237,7 +243,12 @@ export async function runAction(action, button = null, options = {}) {
       return;
     }
     if (action === "refreshCapabilities") {
-      renderCapabilities(await host.call("getCapabilities"));
+      capabilityTicket = capabilityReadTicket();
+      const snapshot = await host.call("getCapabilities");
+      if (!capabilityTicketCurrent(capabilityTicket)) { staleRead = true; return; }
+      const ticket = capabilityTicket;
+      capabilityTicket = null;
+      if (!renderCapabilities(snapshot, ticket)) { staleRead = true; return; }
       if (!silent) toast("能力状态已刷新", "success");
       return;
     }
@@ -409,6 +420,7 @@ export async function runAction(action, button = null, options = {}) {
 
     if (!silent) toast(ACTION_DONE[action] || "操作完成", "success");
   } catch (error) {
+    if (error.staleRead || capabilityTicket && !capabilityTicketCurrent(capabilityTicket)) { staleRead = true; return; }
     failure = error;
     showActionError(action, error);
     if (!silent) toast(error.message || "操作失败", "error");
@@ -417,7 +429,7 @@ export async function runAction(action, button = null, options = {}) {
     if (actionGroup(action) === "config") syncConfigControls();
     if (actionGroup(action) === "api-providers") syncApiControls();
     if (actionGroup(action) === "stickers") syncStickerControls();
-    if (!silent) finishActivity(
+    if (!silent && !staleRead) finishActivity(
       cancelled ? "已取消，未更改背景" : failure?.taskStateUnknown ? "任务结果尚未确认" : failure?.partialRefresh ? "部分刷新未完成" : failure ? `${ACTION_LABELS[action] || "操作"}失败` : ACTION_DONE[action] || "操作完成",
       failure || cancelled ? "error" : "success", failure?.taskStateUnknown || failure?.partialRefresh ? failure.message : undefined,
     );

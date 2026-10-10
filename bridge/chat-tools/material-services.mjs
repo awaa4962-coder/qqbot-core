@@ -2,9 +2,12 @@ import { createAttachmentReferenceSession } from "./attachment-references.mjs";
 import { createAttachmentReader } from "./attachment-reader.mjs";
 import { agentDraftTasks, permitsDraftRequest, readDraftPrivacyState } from "./draft-tasks.mjs";
 import { agentMaterialsAllowed, agentDraftsAllowed, ATTACHMENT_TOOL, DRAFT_TOOL, DRAFT_TASK_TOOL } from "./policy.mjs";
+import { autonomousPreparationAllowed } from "./preparation-policy.mjs";
+import { registerContextGroups } from "../context/pruning.mjs";
 
 export function createMaterialServices(options, context) {
   const { scope, cfg, signal, assertCurrent, callModel, remainingMs } = context;
+  const autonomous = context.autonomous === true;
   const phaseAllowed = agentMaterialsAllowed(scope, cfg, options) || agentDraftsAllowed(scope, cfg, options);
   if (phaseAllowed && options.currentMessageId !== undefined && scope.currentMessageId !== undefined &&
       String(options.currentMessageId) !== String(scope.currentMessageId)) {
@@ -21,7 +24,7 @@ export function createMaterialServices(options, context) {
       ...(options.wallNow ? { now: options.wallNow } : {}) }) : null;
   const reader = references ? createAttachmentReader({ references, signal: fileSignal, assertCurrent, fetchEvidence: options.fetchAttachmentEvidence }) : null;
   const runtime = { scope, cfg, signal, assertCurrent, callModel, remainingMs,
-    task: options.task, mentioned: options.mentioned, userMessage: options.userMessage,
+    task: options.task, mentioned: options.mentioned, userMessage: options.userMessage, autonomous,
     messageId: String(options.currentMessageId ?? ""),
     mentionTargets: options.mentionTargets || [], now: options.wallNow };
 
@@ -31,17 +34,21 @@ export function createMaterialServices(options, context) {
   function definitions() {
     return [
       ...(agentMaterialsAllowed(scope, cfg, options) && availableReferences().length ? [ATTACHMENT_TOOL] : []),
-      ...(agentDraftsAllowed(scope, cfg, options) ? [DRAFT_TASK_TOOL, ...(permitsDraftRequest(options.userMessage) ? [DRAFT_TOOL] : [])] : []),
+      ...(agentDraftsAllowed(scope, cfg, options) ? [DRAFT_TASK_TOOL, ...(autonomous || permitsDraftRequest(options.userMessage) ? [DRAFT_TOOL] : [])] : []),
     ];
   }
   function sourceContext() {
     const refs = availableReferences();
     const tasks = draftTasks.initialReferences(runtime);
-    return [
+    const messages = [
       ...(refs.length ? [{ role: "user", content: "[后端绑定的本轮附件引用：尚未读取正文，名称仅作资料]\n" +
         JSON.stringify({ total: options.attachments.length, referenced: refs.length, omitted: options.attachments.length - refs.length, attachments: refs }) }] : []),
       ...(tasks.length ? [{ role: "user", content: "[本人当前群的草稿任务引用：任务状态不是发送回执]\n" + JSON.stringify(tasks) }] : []),
     ];
+    registerContextGroups(messages, messages.map((_message, index) => ({ group: "agent-material-" + index,
+      index, priority: 100, sources: [{ kind: refs.length && index === 0 ? "file" : "memory",
+        reason: "bound_agent_material", userId: String(scope.userId) }], memorySources: [], memoryExpiresAt: null })));
+    return messages;
   }
   const read = async (args, toolSignal) => {
     if (!reader) return { status: "denied" };
@@ -62,7 +69,9 @@ export function createMaterialServices(options, context) {
       if (references && availableReferences().length) references.assertCurrent();
     },
     attachments: { read }, drafts: {
-      generate: (args, toolSignal) => draftTasks.generate(args, { ...runtime, signal: toolSignal }),
+      generate: (args, toolSignal) => agentDraftsAllowed(scope, cfg, options) && (autonomous
+        ? autonomousPreparationAllowed(options.userMessage, "draft") : permitsDraftRequest(options.userMessage))
+        ? draftTasks.generate(args, { ...runtime, signal: toolSignal }) : { status: "denied" },
       inspect: args => draftTasks.inspect(args, runtime),
     } };
 }

@@ -33,6 +33,7 @@ async function exercise(scenario, modules, source) {
   };
   const drain = name => {
     const result = step(name);
+    if (scenario.fail?.[name] === "reject") return Promise.reject(new Error("PRIVATE_FAILURE_SENTINEL"));
     if (scenario.lateDrain !== name) return result;
     return new Promise(resolve => setTimeout(() => {
       calls.push(name + " settled");
@@ -69,6 +70,14 @@ async function exercise(scenario, modules, source) {
     "./chat-tools/write-coordinator.mjs": { agentWriteCoordinator: {
       start() { calls.push("reminder start"); return false; }, stop: () => drain("reminder drain"),
     } },
+    "./mcp/index.mjs": {
+      initializeMcpServices: async ({ cfg: startupCfg }) => {
+        if (startupCfg !== cfg) throw new Error("unexpected MCP startup config");
+        step("mcp initialize");
+        return { status: "ready", servers: [] };
+      },
+      closeMcpServices: () => drain("mcp drain"),
+    },
     "./cognition/outcome.mjs": { classifyOutboundDelivery },
     "./storage.mjs": { users: {}, groupChats: {}, flushSavesSync: () => step("storage save"), persistLoadedStorageRepairs() {} },
     "./memory-profile/store.mjs": { persistLoadedProfileRepairs() {} },
@@ -169,6 +178,8 @@ for (const exit of ["SIGINT", "SIGTERM", "beforeExit", "fatal"]) {
   test(`${exit}: complete saves attempt every step and exit with the appropriate code`, t => {
     const result = run(t, {exit});
     assert.equal(result.code, exit === "fatal" ? 1 : 0);
+    assert.equal(result.calls.filter(name => name === "mcp initialize").length, 1);
+    assert.equal(result.calls.filter(name => name === "mcp drain").length, ["SIGINT", "SIGTERM"].includes(exit) ? 1 : 0);
     assert.deepEqual(result.calls.slice(-flushes.length), flushes);
     assert.ok(Object.values(result.dirty).every(value => !value));
   });
@@ -201,11 +212,14 @@ test("a rejected drain still attempts all synchronous saves and exits nonzero", 
   assert.deepEqual(result.calls.slice(-flushes.length), flushes);
 });
 
-for (const [failedDrain, lateDrain] of [["link drain", "work drain"], ["work drain", "link drain"],
+for (const [failedDrain, lateDrain, failure = "throw"] of [["link drain", "work drain"], ["work drain", "link drain"],
   ["link drain", "draft drain"], ["draft drain", "work drain"],
-  ["work drain", "reminder drain"], ["reminder drain", "draft drain"]]) {
-  test(`a rejected ${failedDrain} cannot flush or exit before ${lateDrain} settles`, t => {
-    const result = run(t, { fail: { [failedDrain]: "throw" }, lateDrain });
+  ["work drain", "reminder drain"], ["reminder drain", "draft drain"],
+  ["mcp drain", "link drain"], ["mcp drain", "work drain", "reject"],
+  ["mcp drain", "reminder drain", "reject"], ["work drain", "mcp drain", "reject"],
+  ["draft drain", "mcp drain", "reject"]]) {
+  test(`a rejected ${failedDrain} (${failure}) cannot flush or exit before ${lateDrain} settles`, t => {
+    const result = run(t, { fail: { [failedDrain]: failure }, lateDrain });
     assert.equal(result.code, 1);
     const settled = result.calls.indexOf(lateDrain + " settled");
     assert.ok(settled >= 0);
@@ -217,7 +231,7 @@ for (const [failedDrain, lateDrain] of [["link drain", "work drain"], ["work dra
 }
 
 for (const exit of ["SIGINT", "SIGTERM"]) {
-  for (const drain of ["work drain", "link drain", "draft drain", "reminder drain"]) {
+  for (const drain of ["work drain", "link drain", "draft drain", "reminder drain", "mcp drain"]) {
     test(`${exit}: false from ${drain} closes the server, flushes all stores and exits nonzero`, t => {
       const result = run(t, { exit, fail: { [drain]: "false" } });
       assert.equal(result.code, 1);
@@ -226,6 +240,7 @@ for (const exit of ["SIGINT", "SIGTERM"]) {
       assert.ok(result.calls.includes("link drain"));
       assert.ok(result.calls.includes("draft drain"));
       assert.ok(result.calls.includes("reminder drain"));
+      assert.equal(result.calls.filter(name => name === "mcp drain").length, 1);
       assert.deepEqual(result.calls.slice(-flushes.length), flushes);
       assert.ok(Object.values(result.dirty).every(value => !value));
       assert.ok(result.logs.includes("shutdown drain incomplete"));
@@ -233,11 +248,25 @@ for (const exit of ["SIGINT", "SIGTERM"]) {
   }
 }
 
-test("a void link drain retains the existing successful stop contract", t => {
-  const result = run(t, { fail: { "link drain": "undefined" } });
+for (const drain of ["link drain", "mcp drain"]) {
+  test(`a void ${drain} retains the existing successful stop contract`, t => {
+    const result = run(t, { fail: { [drain]: "undefined" } });
+    assert.equal(result.code, 0);
+    assert.deepEqual(result.calls.slice(-flushes.length), flushes);
+    assert.equal(result.logs.includes("shutdown drain incomplete"), false);
+  });
+}
+
+test("successful MCP close settles exactly once before server close and persistence", t => {
+  const result = run(t, { lateDrain: "mcp drain" });
   assert.equal(result.code, 0);
+  assert.equal(result.calls.filter(name => name === "mcp drain").length, 1);
+  const settled = result.calls.indexOf("mcp drain settled");
+  assert.ok(settled >= 0);
+  assert.ok(result.calls.indexOf("server close") > settled);
+  assert.ok(result.calls.indexOf("storage save") > settled);
+  assert.equal(result.dirty["storage save"], false);
   assert.deepEqual(result.calls.slice(-flushes.length), flushes);
-  assert.equal(result.logs.includes("shutdown drain incomplete"), false);
 });
 
 test("an incomplete drain and failed storage still attempt every remaining save", t => {

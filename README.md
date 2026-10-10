@@ -16,7 +16,7 @@
 
 QQFriend powers the Yexing QQ bot. It receives messages through NapCat / OneBot 11 and combines the current conversation, quoted sources, and personal memory to answer questions. It also handles images, group reports, link previews, and stickers. When enabled, bounded tools can search public information, read current attachments, calculate results, and prepare personal reminders. Personal changes and reminders require a separate confirmation from their owner. Services, model routes, allowlists, and task status are managed through a Chinese web console.
 
-> **Linux 2.0.3 is released and deployed.** Use the [validated release](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.0.3) for deployment and `agent/linux-server-preview` for development. `master` retains legacy code; its README is an overview, not a deployment source. Existing Windows installations are frozen. Accounts, credentials, and chat data are not migrated automatically.
+> **Linux 2.1.0 is the autonomous-tool development candidate; 2.0.3 remains the last deployed release until rollout is recorded.** Use the [validated release](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.0.3) for deployment and `agent/linux-server-preview` for development. `master` retains legacy code; its README is an overview, not a deployment source. Existing Windows installations are frozen. Accounts, credentials, and chat data are not migrated automatically.
 
 ## Features
 
@@ -30,6 +30,7 @@ QQFriend powers the Yexing QQ bot. It receives messages through NapCat / OneBot 
 | Downloads and transfer | JM code-based downloads, archives, and temporary-file management; group and private-chat access use separate allowlists, with uppercase `FS` preserved as the archive password |
 | Chinese web console | Service status, API providers and routes, allowlists, explicit memory, stickers, background tasks, and redacted diagnostics |
 | Caching and usage | Stable prompt prefixes, exact-image classification reuse, and scoped vision caching; provider token-cache metrics and per-process classification reuse are separate, and final chat answers are not shared |
+| Autonomous tools and MCP | Models choose available internal or approved readonly MCP tools; the console manages services, approvals and bounded profiles, with no default external service |
 
 Ordinary-chat interjections use a fixed 10% trigger probability, independent of low/normal/high inferred group tolerance. Other trigger categories retain their existing rates and tolerance factors. Short/empty inputs, mentions, previews, cooldowns, and message-spacing gates still apply, and a selected turn may remain silent if the model has no suitable reply. This is distinct from the probability of attaching a sticker after text delivery.
 
@@ -39,12 +40,12 @@ Protocol adapters cover OpenAI Chat / Responses, Anthropic, and Gemini. A workin
 
 ## Bounded Agent Tools
 
-In an enabled group, use a **real QQ mention of the bot** and state your request. Examples below preserve the existing Chinese bot name and command text; the English documentation does not introduce new command aliases.
+Models can answer directly or choose tools in their permitted scope. No fixed search or preparation phrase is required. Group drafts, attachments, personal changes and reminders still require a **real QQ mention** and the existing group/phase allowlists. Basic readonly tools also work in permitted private chats; passive interjections may only recall local memory, read status or calculate. Examples preserve the existing Chinese bot name and command text; the English documentation does not introduce aliases.
 
 | Example request | Permitted operation |
 | --- | --- |
 | `@夜星 算一下 21 乘 2` | Calculate 21 times 2 with a bounded calculator, without executing scripts |
-| `@夜星 搜索 Debian 最新版本` | Search the public keywords explicitly authorized by this message |
+| `@夜星 Debian 最新版本有什么变化？` | The model may search public information about the current question |
 | `@夜星 阅读这个链接，说明主要结论：链接` | Read an authorized public source for this turn and disclose the reading scope |
 | Send a text attachment with `@夜星 找出超时设置` | Read relevant parts of the current text attachment, without opening the local filesystem |
 | `@夜星 总结我今天的聊天，先给草稿` | Draft a summary using the existing service, without automatically publishing a report |
@@ -53,7 +54,15 @@ In an enabled group, use a **real QQ mention of the bot** and state your request
 
 Personal changes and reminders proposed by the model require the owner to send the separate confirmation command supplied by the bot: `@夜星 确认 cf_<confirmation_id>`. Placeholder IDs cannot execute anything; administrators cannot confirm on another person's behalf.
 
-New tools are controlled by group and phase allowlists. A release does not automatically enable them for every group, private chat, or automatic interjection. Primary and fallback share **4 model rounds / 4 tool calls / 90 seconds / 8 model HTTP attempts** per turn. These are bounded limits, not an unlimited loop or a count of all network requests.
+Autonomy does not bypass group/friend permissions or unlock write phases. The standard profile shares **4 model rounds / 4 tool calls / 90 seconds / 8 model HTTP attempts** across primary, fallback and nested models. The console also offers extended and light profiles with bounded overrides; passive interjections use **3 model rounds / 2 tool calls / 30 seconds / 6 model HTTP attempts**, retaining capacity for a fallback after the primary tool loop. These are limits, not an unlimited loop or a count of all network requests. A policy/catalog change cancels an old session rather than extending its budget.
+
+Public search may reformulate the current public question. Once private history, memory, quoted messages, images or attachments have been exposed in the turn, outbound queries are restricted to words already present in the current user input. Credentials, private identifiers and internal references are blocked regardless. This is an information-flow restriction, not a claim that a keyword filter understands every secret.
+
+### Optional Readonly MCP Services
+
+The Linux console's capabilities page manages **Streamable HTTP** MCP services, tokens and explicit tool approvals. No service or tool is enabled by default. Connect an operator-trusted service, inspect its discovered schema, then approve a readonly tool with its current schema hash. A schema change revokes the previous approval. Public-query inputs share the chat provenance guard; current-scope identity fields are injected by the backend, not selected by the model. Unsupported complex schemas are left unavailable instead of guessed.
+
+Configured Docker/private endpoints can use HTTP; public endpoints require HTTPS. Redirects and endpoint changes are rejected. Tokens stay in a separate private file and are never returned in snapshots. A remote server's readonly annotation is **not an audit of its implementation**. Do not approve a tool that can mutate QQ state, send messages, expose arbitrary records or execute commands. This release is a client adapter, not a blanket OneBot MCP server, and does not run stdio commands.
 
 <details>
 <summary>All 11 tools and their permission boundaries</summary>
@@ -62,7 +71,7 @@ New tools are controlled by group and phase allowlists. A release does not autom
 | --- | --- |
 | `recall_memory` | The requester's explicit memory and retained records within the current conversation |
 | `read_bot_status` | Features, version, and status within current permissions |
-| `web_search` | Public keywords explicitly authorized by the current message |
+| `web_search` | Public current-question queries, narrowed after private evidence is supplied |
 | `calculate` | Bounded numeric expressions |
 | `read_public_page` | Public-source references assigned by the backend for this turn |
 | `read_current_attachment` | Current text-attachment references assigned by the backend |

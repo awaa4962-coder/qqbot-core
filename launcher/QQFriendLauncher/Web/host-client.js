@@ -8,6 +8,8 @@
   const TOKEN_KEY = "qqfriend-admin-token";
   const BACKGROUND_MODE_KEY = "qqfriend-background-mode";
   let activeBackgroundUrl = "";
+  let capabilityReadEpoch = 0;
+  const freshCapabilityReads = new WeakMap();
 
   function timeoutFor(action) {
     if (action === "startAll") return 12 * 60 * 1000;
@@ -19,6 +21,9 @@
   }
 
   function call(action, payload = {}) {
+    if (mode !== "browser" && ["getToolSettings", "saveToolSettings", "getMcpServices", "applyMcpAction"].includes(action)) {
+      return Promise.reject(new Error("自主工具与 MCP 管理仅在 Linux 网页控制台开放。"));
+    }
     if (mode !== "browser" && action === "getAgentActions") return Promise.reject(new Error("Windows 桌面版暂不支持读取 Agent 写入状态。"));
     return mode === "desktop" ? callDesktop(action, payload) : callBrowser(action, payload);
   }
@@ -46,8 +51,12 @@
     if (action === "ready") return browserRuntimeInfo();
     if (action === "refresh") return buildBrowserSnapshot();
     if (action === "refreshStatus") return apiRequest("/admin/status");
-    if (action === "getCapabilities") return apiRequest("/admin/capabilities");
+    if (action === "getCapabilities") return readCapabilities();
     if (action === "getAgentActions") return apiRequest("/admin/agent-actions", {}, false);
+    if (action === "getToolSettings") return apiRequest("/admin/agent-tools/settings", {}, false);
+    if (action === "saveToolSettings") return apiRequest("/admin/agent-tools/settings", { method: "POST", body: payload }, false);
+    if (action === "getMcpServices") return apiRequest("/admin/mcp", {}, false);
+    if (action === "applyMcpAction") return apiRequest("/admin/mcp", { method: "POST", body: payload }, false);
     if (action === "getAgentDrafts") return apiRequest("/admin/agent-drafts" + (payload.id ? "?id=" + encodeURIComponent(payload.id) : ""));
     if (action === "cancelAgentDraft") return apiPost("/admin/agent-drafts", { action: "cancel", id: payload.id });
     if (action === "getLogs" || action === "refreshLogs") return apiRequest("/admin/logs?tail=120");
@@ -164,6 +173,26 @@
     return apiRequest(path, { method: "POST", body: payload });
   }
 
+  async function readCapabilities() {
+    const epoch = ++capabilityReadEpoch;
+    try {
+      const snapshot = await apiRequest("/admin/capabilities");
+      if (epoch !== capabilityReadEpoch) throw Object.assign(new Error("能力读取已失效。"), { staleRead: true });
+      freshCapabilityReads.set(snapshot, epoch);
+      return snapshot;
+    } catch (error) {
+      if (epoch === capabilityReadEpoch) capabilityReadEpoch++;
+      throw error;
+    }
+  }
+
+  function takeFreshCapabilityRead(snapshot) {
+    if (!snapshot || typeof snapshot !== "object") return false;
+    const current = freshCapabilityReads.get(snapshot) === capabilityReadEpoch;
+    freshCapabilityReads.delete(snapshot);
+    return current;
+  }
+
   async function apiRequest(path, options = {}, allowPrompt = true) {
     const headers = { Accept: options.responseType === "blob" ? "image/*" : "application/json" };
     const token = readAdminToken();
@@ -196,7 +225,7 @@
       if (timer !== null) global.clearTimeout(timer);
       options.signal?.removeEventListener("abort", abort);
     }
-    if (response.status === 403 && allowPrompt) {
+    if ([401, 403].includes(response.status) && allowPrompt) {
       const entered = global.prompt("请输入 Linux 控制台管理令牌。令牌只保存在当前标签页。", "");
       if (entered && entered.trim()) {
         try { global.sessionStorage.setItem(TOKEN_KEY, entered.trim()); }
@@ -208,11 +237,14 @@
       }
     }
     if (!response.ok) {
-      if (response.status === 403 && readAdminToken() === token) {
+      if ([401, 403].includes(response.status) && readAdminToken() === token) {
         try { global.sessionStorage.removeItem(TOKEN_KEY); } catch { /* Session storage may be disabled. */ }
       }
       const error = new Error(payload.error || `管理接口返回 ${response.status}`);
       error.status = response.status;
+      if (path === "/admin/mcp" && payload.ok === false) {
+        error.mcpFailure = { ok: false, reason: payload.reason, snapshot: payload.snapshot };
+      }
       throw error;
     }
     if (options.responseType !== "blob" && payload?.error && payload.ok !== false) {
@@ -349,5 +381,5 @@
 
   if (mode === "desktop") desktopBridge.addEventListener("message", handleMessage);
 
-  global.QQFriendHost = Object.freeze({ call, onEvent, timeoutFor, mode });
+  global.QQFriendHost = Object.freeze({ call, onEvent, timeoutFor, mode, takeFreshCapabilityRead });
 })(window);

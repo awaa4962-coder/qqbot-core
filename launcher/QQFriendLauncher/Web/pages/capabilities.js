@@ -1,18 +1,41 @@
 import { $, escapeHtml, fmt } from "../ui/dom.js";
-import { uiState } from "../ui/state.js";
+import { host, uiState } from "../ui/state.js";
 import { mountAgentTools } from "../agent-tools.js";
 import { invalidateAgentDraftView, renderAgentDraftSnapshot } from "../ui/agent-draft-actions.js";
 import { invalidateAgentWriteView, renderAgentWriteSnapshot } from "../ui/agent-write-actions.js";
+import { renderMcp, invalidateMcpView, mcpActionTicket, mcpReadSucceeded } from "./mcp.js";
+import { renderToolSettings, toolSettingsReadFailed, toolSettingsActionTicket, toolSettingsReadSucceeded } from "./tool-settings.js";
 
-export function renderCapabilities(snapshot) {
+let readEpoch = 0;
+export function capabilityReadTicket() { return { epoch: readEpoch, mcp: mcpActionTicket(), settings: toolSettingsActionTicket() }; }
+export function capabilityTicketCurrent(ticket) { return ticket?.epoch === readEpoch; }
+function invalidateToolPanels(reason) {
+  invalidateMcpView(reason);
+  if (document.getElementById("toolSettingsPanel")?.children.length) toolSettingsReadFailed(reason);
+}
+
+export function renderCapabilities(snapshot, ticket) {
+  if (ticket && !capabilityTicketCurrent(ticket)) return false;
   if (!snapshot || !Array.isArray(snapshot.categories) || !Array.isArray(snapshot.capabilities) ||
       snapshot.capabilities.some(item => !item || typeof item !== "object")) {
     invalidateAgentDraftView();
     invalidateAgentWriteView();
+    invalidateToolPanels({});
+    readEpoch++;
     throw new Error("能力目录响应不完整，请重新读取。");
   }
   renderAgentDraftSnapshot(snapshot.agentDrafts);
   renderAgentWriteSnapshot(snapshot.agentWrites);
+  const fresh = host.takeFreshCapabilityRead?.(snapshot) === true;
+  if (fresh || ticket) {
+    if (!mcpReadSucceeded(snapshot.mcpServices, ticket?.mcp || mcpActionTicket())) invalidateMcpView();
+    if (!toolSettingsReadSucceeded(snapshot.agentTools?.settings, ticket?.settings || toolSettingsActionTicket())) toolSettingsReadFailed({});
+  } else {
+    if (snapshot.mcpServices) renderMcp(snapshot.mcpServices);
+    else invalidateMcpView();
+    if (snapshot.agentTools?.settings) renderToolSettings(snapshot.agentTools.settings);
+    else if (document.getElementById("toolSettingsPanel")?.children.length) toolSettingsReadFailed({});
+  }
   uiState.capabilitySnapshot = snapshot;
   uiState.capabilitiesLoaded = true;
   const categories = Array.isArray(snapshot.categories) ? snapshot.categories : [];
@@ -39,6 +62,8 @@ export function renderCapabilities(snapshot) {
   applyCapabilityFilter();
   const agentPanel = $("agentToolsPanel");
   if (agentPanel) mountAgentTools(agentPanel, snapshot.agentTools);
+  readEpoch++;
+  return true;
 }
 
 export function setCapabilityNotice(message, state = "error") {
@@ -52,8 +77,10 @@ export function setCapabilityNotice(message, state = "error") {
 }
 
 export function capabilityReadFailed(error) {
+  readEpoch++;
   invalidateAgentDraftView();
   invalidateAgentWriteView();
+  invalidateToolPanels(error);
   uiState.capabilitiesLoaded = false;
   const denied = [401, 403].includes(error?.status);
   const message = denied ? "无权读取能力目录，请重新认证后刷新。"

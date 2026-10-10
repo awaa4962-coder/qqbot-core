@@ -4,9 +4,8 @@ import { messageRouteRejection } from "../event-admission.mjs";
 import { containsSensitiveText, redactSensitiveText } from "../privacy.mjs";
 import { toolDefinition } from "./registry.mjs";
 
-export const CHAT_TOOL_LIMITS = Object.freeze({ modelRounds: 4, transportAttempts: 8, toolCalls: 4,
-  slotRounds: 3, durationMs: 90000, requestChars: 24000, resultChars: 2000, totalResultChars: 6000, maxTokens: 1536,
-  responseBytes: 262144, replyChars: 6000 });
+import { CHAT_TOOL_LIMITS } from "./limits.mjs";
+export { CHAT_TOOL_LIMITS } from "./limits.mjs";
 
 export const READ_TOOLS = Object.freeze([toolDefinition("recall_memory"), toolDefinition("read_bot_status")]);
 export const WEB_TOOL = toolDefinition("web_search");
@@ -141,9 +140,9 @@ export function parseToolArguments(call) {
   } catch { return null; }
 }
 
-export function safeToolBatch(message) {
+export function safeToolBatch(message, maxCalls = CHAT_TOOL_LIMITS.toolCalls) {
   const calls = message?.tool_calls;
-  if (!Array.isArray(calls) || !calls.length || calls.length > CHAT_TOOL_LIMITS.toolCalls) return null;
+  if (!Number.isSafeInteger(maxCalls) || maxCalls < 1 || maxCalls > 24 || !Array.isArray(calls) || !calls.length || calls.length > maxCalls) return null;
   const ids = new Set();
   for (const call of calls) {
     if (!validToolCallEnvelope(call) || ids.has(call.id)) return null;

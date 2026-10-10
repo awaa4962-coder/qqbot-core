@@ -1,0 +1,28 @@
+#toolSettingsPanel { min-width: 0; max-width: 100%; }
+.tool-settings-workspace { display: grid; gap: 14px; border-top: 1px solid var(--line, #ddd); padding-top: 18px; }
+.tool-settings-workspace h3, .tool-settings-workspace h4, .tool-settings-workspace p { margin: 0; }
+.tool-settings-workspace h3 { font-size: 16px; }
+.tool-settings-workspace h4 { font-size: 14px; }
+.tool-settings-head, .tool-settings-commands, .tool-settings-save { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; min-width: 0; }
+.tool-settings-commands { justify-content: flex-start; }
+.tool-settings-command { min-height: 34px; padding: 6px 10px; font-size: 12px; border-radius: 6px; white-space: normal; overflow-wrap: anywhere; }
+.tool-settings-workspace .icon-button { width: 34px; height: 34px; padding: 0; flex: 0 0 34px; font-size: 18px; }
+.tool-settings-notice { min-height: 36px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.tool-settings-notice[data-state="unknown"], .tool-settings-notice[data-state="conflict"], .tool-settings-notice[data-state="authfailed"] { color: var(--red, #b52940); }
+.tool-settings-editor { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.tool-settings-field { display: grid; gap: 5px; min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
+.tool-settings-field:has(input[type="checkbox"]) { display: flex; align-items: center; justify-content: flex-start; gap: 8px; min-height: 36px; }
+.tool-settings-field:has(input[type="checkbox"]) span { order: 1; }
+.tool-settings-field input[type="checkbox"] { width: 18px; height: 18px; flex: 0 0 18px; }
+.tool-settings-field select, .tool-settings-field input[type="number"] { width: 100%; min-width: 0; height: 36px; box-sizing: border-box; font-size: 12px; }
+.tool-settings-overrides { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; border-top: 1px solid var(--line, #ddd); padding-top: 14px; }
+.tool-settings-limit { display: grid; align-content: start; gap: 6px; min-width: 0; }
+.tool-settings-save { grid-column: 1 / -1; border-top: 1px solid var(--line, #ddd); padding-top: 12px; }
+.tool-settings-passive { border-top: 1px solid var(--line, #ddd); padding-top: 14px; }
+.tool-settings-readonly { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 14px; margin: 10px 0 0; font-size: 12px; }
+.tool-settings-readonly dt, .tool-settings-readonly dd { margin: 0; overflow-wrap: anywhere; }
+.tool-settings-readonly dd { font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) {
+  .tool-settings-editor, .tool-settings-overrides { grid-template-columns: minmax(0, 1fr); }
+  .tool-settings-head { align-items: flex-start; }
+}

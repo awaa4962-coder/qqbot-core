@@ -16,6 +16,9 @@ napcat_inbox.json
 ddg_search.json
 .qqfriend/
 api-providers.json
+**/mcp-services.json
+**/.mcp-secrets.json
+**/tool-settings.json
 chat-delivery.json
 openclaw-workspace-state.json
 

@@ -30,3 +30,16 @@ test("renewed authentication never silently repeats a write or paid probe", asyn
   assert.equal(calls[1].options.headers["X-QQFriend-Admin-Token"], "synthetic-renewed");
   assert.deepEqual(JSON.parse(calls[1].options.body), payload);
 });
+
+for (const status of [401, 403]) {
+  test("readonly MCP auth rejection " + status + " clears only the rejected token without a retry", async () => {
+    let token = "synthetic-expired", count = 0;
+    const window = {
+      sessionStorage: { getItem: () => token, removeItem() { token = ""; } },
+      async fetch() { count++; return { ok: false, status, text: async () => JSON.stringify({ error: "unauthorized" }) }; },
+    };
+    vm.runInNewContext(source, { window });
+    await assert.rejects(window.QQFriendHost.call("getMcpServices"), error => error.status === status);
+    assert.equal(count, 1); assert.equal(token, "");
+  });
+}

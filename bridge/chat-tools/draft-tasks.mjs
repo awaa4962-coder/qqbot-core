@@ -6,8 +6,10 @@ import { getMemoryPrivacyGeneration } from "../memory-profile/generation.mjs";
 import { createBusinessDraftAdapter } from "./business-drafts.mjs";
 import { agentDraftsAllowed } from "./policy.mjs";
 import { summaryPrivacy } from "../group-summary/state.mjs";
+import { autonomousPreparationAllowed } from "./preparation-policy.mjs";
 
 const TASK_ID = /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
+const QQ_ID = /^[1-9]\d{4,19}$/;
 const hash = value => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const ownerKey = scope => hash(["agent-draft", scope.surface, String(scope.groupId), String(scope.userId)]);
 const activePhases = new Set(["queued", "collecting", "analyzing", "fallback", "overdue", "cancelling"]);
@@ -34,13 +36,18 @@ export function createDraftTaskService(options = {}) {
 
   async function generate(args, runtime) {
     if (stopping) return { status: "unavailable", reason: "task_stopping" };
-    if (!authorized(runtime, cfg) || !permitsDraftRequest(runtime.userMessage)) return denied();
+    if (!permittedPreparation(runtime, cfg)) return denied();
+    const targetBinding = runtime.autonomous === true ? { authority: preparationTargetAuthority(runtime, cfg),
+      scope: { ...runtime.scope }, messageId: runtime.messageId, userMessage: runtime.userMessage } : null;
     runtime.assertCurrent();
-    runtime = Object.freeze({ ...runtime, scope: Object.freeze({ ...runtime.scope }) });
     args = snapshotDraftArguments(args);
+    if (!args) return { status: "invalid_arguments" };
+    runtime = bindPreparationTargets(args, runtime, cfg, targetBinding);
+    if (!runtime) return denied();
+    runtime = Object.freeze({ ...runtime, scope: Object.freeze({ ...runtime.scope }) });
     const owner = ownerKey(runtime.scope);
     const event = taskEventKey("group", runtime.scope.groupId, runtime.messageId);
-    if (!event || !args) return { status: "invalid_arguments" };
+    if (!event) return { status: "invalid_arguments" };
     const eventKey = hash([owner, event, args]);
     try {
       const previous = tasks.list(owner).find(job => job.eventKey === eventKey);
@@ -58,7 +65,8 @@ export function createDraftTaskService(options = {}) {
         runtime.assertCurrent();
         return taskToolView(completed, runtime, cfg, revokedResults);
       } finally { runtime.signal.removeEventListener("abort", stopUnfinished); }
-    } catch {
+    } catch (error) {
+      if (error?.code === "DRAFT_TARGET_REVOKED") return denied();
       runtime.assertCurrent();
       return { status: "unavailable", reason: "draft_not_completed", text: "草稿尚未完成，没有发送或保存正文。" };
     }
@@ -123,6 +131,9 @@ function snapshotDraftArguments(args) {
   if (keys.some(key => typeof key !== "string" || !Object.hasOwn(fields, key) ||
       !Object.hasOwn(Object.getOwnPropertyDescriptor(args, key), "value") || typeof args[key] !== fields[key])) return null;
   if (!Object.hasOwn(args, "kind") || !["daily", "conversation"].includes(args.kind)) return null;
+  if (args.kind === "daily" && keys.some(key => !["kind", "day"].includes(key))) return null;
+  if (Object.hasOwn(args, "day") && !/^(today|yesterday|\d{4}-\d{2}-\d{2})$/.test(args.day)) return null;
+  if (Object.hasOwn(args, "targets") && args.targets.length > 100) return null;
   return Object.freeze(Object.fromEntries(keys.sort().map(key => [key, args[key]])));
 }
 
@@ -164,6 +175,51 @@ async function runDraftWorker(args, runtime, { progress, signal }, createAdapter
 function authorized(runtime, cfg) {
   return runtime && typeof runtime.assertCurrent === "function" && runtime.signal &&
     agentDraftsAllowed(runtime.scope, cfg, runtime);
+}
+
+function permittedPreparation(runtime, cfg) {
+  if (!authorized(runtime, cfg)) return false;
+  if (runtime.autonomous !== true) return permitsDraftRequest(runtime.userMessage);
+  return autonomousPreparationAllowed(runtime.userMessage, "draft") && typeof runtime.messageId === "string" &&
+    /^(?:0|-?[1-9]\d{0,19})$/.test(runtime.messageId) &&
+    (runtime.scope.currentMessageId === undefined || String(runtime.scope.currentMessageId) === runtime.messageId);
+}
+
+function preparationTargetAuthority(runtime, cfg) {
+  const allowed = new Set([String(runtime.scope.userId)]);
+  for (const item of Array.isArray(runtime.mentionTargets) ? runtime.mentionTargets : []) {
+    const uid = typeof item === "string" ? item : String(item?.uid ?? item?.qq ?? "");
+    if (QQ_ID.test(uid) && !item?.isAll && !item?.isBot) allowed.add(uid);
+  }
+  allowed.delete(String(cfg.selfUin));
+  return allowed;
+}
+
+function bindPreparationTargets(args, runtime, cfg, binding) {
+  if (!binding || args.kind !== "conversation") return runtime;
+  const { authority: initialAuthority, scope, messageId, userMessage } = binding;
+  if (runtime.autonomous !== true || !samePreparationScope(runtime, scope, messageId, userMessage)) return null;
+  const targets = Object.hasOwn(args, "targets") ? args.targets.trim().split(/[\s,]+/) : [String(runtime.scope.userId)];
+  if (!targets.length || targets.length > 4 || new Set(targets).size !== targets.length ||
+      targets.some(uid => !QQ_ID.test(uid) || !initialAuthority.has(uid))) return null;
+  const current = preparationTargetAuthority(runtime, cfg);
+  if (targets.some(uid => !current.has(uid))) return null;
+  const parentCheck = runtime.assertCurrent;
+  let revoked = false;
+  const assertCurrent = () => {
+    if (parentCheck() === false) revoked = true;
+    const live = preparationTargetAuthority(runtime, cfg);
+    revoked ||= !samePreparationScope(runtime, scope, messageId, userMessage) || !permittedPreparation(runtime, cfg) ||
+      targets.some(uid => !live.has(uid));
+    if (revoked) throw Object.assign(new Error("draft_target_not_allowed"), { code: "DRAFT_TARGET_REVOKED" });
+  };
+  // The adapter gets the admitted upper bound, while this guard still observes backend withdrawals.
+  return { ...runtime, mentionTargets: Object.freeze([...initialAuthority]), assertCurrent };
+}
+
+function samePreparationScope(runtime, scope, messageId, userMessage) {
+  return runtime.scope?.surface === scope.surface && String(runtime.scope?.userId) === String(scope.userId) &&
+    String(runtime.scope?.groupId) === String(scope.groupId) && runtime.messageId === messageId && runtime.userMessage === userMessage;
 }
 
 function authorizedSnapshotScope(scope, cfg) {

@@ -128,8 +128,10 @@ function appendImageAnchorLayer(layers, options) {
 
 function appendMentionLayer(layers, options) {
   const evidence = buildMentionContextEvidence(options);
+  const identities = (options.mentions || []).filter(item => !item.isBot && !item.isAll).slice(0, 4)
+    .map(item => ({ kind: "memory", reason: "mentioned_identity", userId: String(item.qq) }));
   if (evidence.content) layers.push({ content: evidence.content, role: "user", contextPriority: 95, contextAtomic: true,
-    contextSources: evidence.sources, contextExpiresAt: evidence.expiresAt });
+    contextSources: [...evidence.sources, ...identities], contextExpiresAt: evidence.expiresAt });
 }
 
 function appendQuotedLayer(layers, options) {
@@ -160,12 +162,12 @@ function appendThreadLayer(layers, options) {
 
 function appendPreferenceLayer(layers, uid) {
   const preferenceBlock = buildPreferenceContextBlock(uid);
-  if (preferenceBlock) pushLayer(layers, preferenceBlock, 96, "user", [], true);
+  if (preferenceBlock) pushLayer(layers, preferenceBlock, 96, "user", [{ kind: "memory", reason: "personal_preferences", userId: uid }], true);
 }
 
 function appendMinimalPreferenceLayer(layers, uid) {
   const preferenceBlock = buildMinimalPreferenceContextBlock(uid);
-  if (preferenceBlock) pushLayer(layers, preferenceBlock, 90);
+  if (preferenceBlock) pushLayer(layers, preferenceBlock, 90, "user", [{ kind: "memory", reason: "personal_preferences", userId: uid }], true);
 }
 
 function appendMemoryLayer(layers, options) {

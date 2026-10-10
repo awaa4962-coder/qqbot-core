@@ -57,6 +57,8 @@ async function environment({ allowStickerPagehide = false } = {}) {
   const nodes = new Map(); const calls = []; const pagehideListeners = [];
   let document; let reply = () => assert.fail("unexpected host request");
   const element = id => {
+    // This draft-only fixture has no MCP or tool-settings workspace.
+    if (["mcpToolsPanel", "toolSettingsPanel"].includes(id)) return null;
     if (!nodes.has(id)) nodes.set(id, node(document, "div", id));
     return nodes.get(id);
   };
@@ -113,6 +115,7 @@ if (!vm.SourceTextModule) {
 } else {
   test("controller imports and shared validators remain passive and use the actual renderer", async () => {
     const h = await environment();
+    assert.equal(h.element("mcpToolsPanel"), null); assert.equal(h.element("toolSettingsPanel"), null);
     assert.equal(h.calls.length, 0); assert.equal(h.panel().children.length, 0);
     for (const name of ["validateAgentDraftSnapshot", "isAgentDraftTaskId", "isAgentDraftTerminalPhase"]) assert.equal(typeof h.renderer[name], "function");
     assert.equal(typeof h.actions.renderAgentDraftSnapshot, "function"); assert.equal(typeof h.actions.invalidateAgentDraftView, "function");

@@ -171,7 +171,7 @@ sharp/libheif versions. An overlay does not install dependencies: for the
 1.4.9 security update, rebuild with `Dockerfile`, not an old 1.4.8 base overlay.
 After switching releases, run `docker compose exec -T bridge npm run check:dependencies`
 to verify the running container, not just the source package version.
-The patched baseline is sharp 0.35.4 with libheif 1.23.2; development-only
+The patched baseline is sharp 0.35.5 with libheif 1.23.5; development-only
 js-yaml is locked to 4.3.2 and remains omitted from the production image.
 CI also runs `npm audit --audit-level=high`; the local version floor is not a
 substitute for checking newly published advisories.

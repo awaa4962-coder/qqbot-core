@@ -68,6 +68,20 @@ test("empty or failed business output cannot become a completed readable draft",
   assert.equal(Object.hasOwn(snapshot.task, "result"), false);
 });
 
+test("autonomous draft admission removes request keywords but not negatives, owner targets or message binding", async t => {
+  let calls = 0;
+  const f = fixture(t, { createAdapter: () => ({ generate: async () => { calls++; return draft(); } }) });
+  f.runtime.userMessage = "今天大家交流得很热闹。";
+  assert.equal((await f.service.generate({ kind: "daily" }, f.runtime)).status, "denied");
+  f.runtime.autonomous = true;
+  assert.equal((await f.service.generate({ kind: "daily" }, f.runtime)).status, "ok");
+  for (const override of [{ userMessage: "不要整理今天的聊天" }, { userMessage: "仅分析资料" }, { messageId: "70151" }]) {
+    assert.equal((await f.service.generate({ kind: "daily" }, { ...f.runtime, ...override })).status, "denied");
+  }
+  assert.equal((await f.service.generate({ kind: "conversation", targets: "60151" }, f.runtime)).status, "denied");
+  assert.equal(calls, 1);
+});
+
 test("equivalent argument key order reuses the same admitted task instead of generating twice", async t => {
   let calls = 0;
   const f = fixture(t, { createAdapter: () => ({ generate: async () => { calls++; return draft(); } }) });

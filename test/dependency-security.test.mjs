@@ -5,7 +5,7 @@ import { URL } from "node:url";
 import { assertPatchedDependencies, checkDependencySecurity } from "../scripts/check-dependency-security.mjs";
 
 const patched = {
-  sharpVersion: "0.35.4", lockedSharpVersion: "0.35.4", heifVersion: "1.23.2",
+  sharpVersion: "0.35.5", lockedSharpVersion: "0.35.5", heifVersion: "1.23.2",
   heifEnabled: true, lockedYamlVersion: "4.3.2", yamlVersion: "4.3.2",
 };
 
@@ -27,7 +27,7 @@ test("dependency guard rejects an old native decoder behind patched sharp", () =
 });
 
 test("dependency guard rejects stale overlays and outdated YAML locks", () => {
-  assert.throws(() => assertPatchedDependencies({ ...patched, lockedSharpVersion: "0.35.5" }), /rebuild dependencies/);
+  assert.throws(() => assertPatchedDependencies({ ...patched, lockedSharpVersion: "0.35.4" }), /rebuild dependencies/);
   assert.throws(() => assertPatchedDependencies({ ...patched, lockedYamlVersion: "4.3.1" }), /js-yaml lock.*security minimum/);
   assert.throws(() => assertPatchedDependencies({ ...patched, yamlVersion: "4.3.1" }), /js-yaml.*security minimum/);
 });

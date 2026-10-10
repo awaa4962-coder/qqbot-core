@@ -281,6 +281,9 @@ export const CFG = {
   imageMemeCacheFile: path.join(DATA_ROOT, '.qqfriend', 'image-memes.json'),
   apiUsageDir: path.join(DATA_ROOT, '.qqfriend', 'api-usage'),
   toolCompatibilityFile: path.join(DATA_ROOT, '.qqfriend', 'native-tools.json'),
+  toolSettingsFile: path.join(CONFIG_ROOT, 'tool-settings.json'),
+  toolAutonomyEnabled: readBooleanEnv('QQBOT_TOOL_AUTONOMY', true),
+  mcpConfigFile: path.join(CONFIG_ROOT, 'mcp-services.json'),
   stickerCatalogFile: path.join(DATA_ROOT, '.qqfriend', 'stickers', 'catalog.json'),
   stickerTempDir: path.join(
     process.env.QQBOT_TEMP_DIR || process.env.TEMP || process.env.TMP || path.join(DATA_ROOT, '.qqfriend'),

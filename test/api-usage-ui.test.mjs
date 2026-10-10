@@ -329,7 +329,8 @@ test("headless browser checks real DOM, auth GET, long labels and desktop/mobile
       return route.fulfill({ json: sample });
     }
     const name = url.pathname === "/console/" ? "index.html" : url.pathname.slice("/console/".length);
-    if (["index.html", "app.css", "api-usage.css", "host-client.js", "api-usage.js", "diagnostics.css", "summaries.css"].includes(name)) {
+    if (["index.html", "app.css", "api-usage.css", "host-client.js", "api-usage.js", "diagnostics.css", "summaries.css",
+      "mcp.css", "tool-settings.css"].includes(name)) {
       return route.fulfill({ body: read(name), contentType: name.endsWith("css") ? "text/css" : name.endsWith("js") ? "text/javascript" : "text/html" });
     }
     if (url.pathname.startsWith("/console/") && name.endsWith(".js")) return route.fulfill({ body: "", contentType: "text/javascript" });

@@ -29,5 +29,8 @@ user_memory.json
 napcat_inbox.json
 launcher-config.json
 launcher-background.json
+**/mcp-services.json
+**/.mcp-secrets.json
+**/tool-settings.json
 **/.user-salt
 **/usage-????-??-??.jsonl

@@ -30,6 +30,7 @@ const accessLabels = {
   agent_personal: "本人当前群资料草稿（需要本人另发确认，非管理员权限）",
   agent_reminder: "本人当前群提醒草稿（需要本人另发确认，非管理员权限）",
   agent_actions: "本人当前群确认与提醒状态（只读，非管理员权限）",
+  mcp_read: "管理员批准的只读服务（身份由后端绑定）",
 };
 
 function groupWhitelist(groups) {
@@ -158,6 +159,10 @@ export function mountAgentTools(container, snapshot) {
     rows.append(term, detail);
   };
   row("新增工具范围", data.rollout?.mentionedOnly === true ? "主动@ · 灰度群" : "未知");
+  if (data.autonomy) {
+    row("自主工具", data.autonomy.enabled === true ? "模型按需选择 · 执行时复核权限" : "关闭 · 兼容模式");
+    row("普通插话工具", data.autonomy.interjectionLocalOnly === true ? "本地记忆 / 状态 / 计算 · 禁止后台联网与写入" : "未开放");
+  }
   row("灰度群白名单", groupWhitelist(data.rollout?.groups));
   if (Object.hasOwn(data.rollout || {}, "materialGroups")) row("附件工具群", groupWhitelist(data.rollout.materialGroups));
   if (Object.hasOwn(data.rollout || {}, "draftGroups")) row("草稿工具群", groupWhitelist(data.rollout.draftGroups));
@@ -179,9 +184,9 @@ export function mountAgentTools(container, snapshot) {
       const label = text(tool.label) || tool.name;
       const mode = ["read", "readonly", "read_only"].includes(tool.mode) ? "只读" : tool.mode === "draft" ? "草稿" : tool.mode === "task" ? "状态/取消" : "模式未知";
       const availability = tool.available === true ? "服务端标记可用" : tool.available === false ? "不可用" : "未知";
-      const access = typeof tool.access === "string" && Object.hasOwn(accessLabels, tool.access)
-        ? accessLabels[tool.access] : "权限范围未知";
-      row(label, `${mode} · ${availability} · ${access}`, `${label}（${tool.name}）`);
+      const access = toolAccessLabel(tool, data);
+      const source = tool.source ? tool.source === "builtin" ? "内置" : "MCP" : "";
+      row(label, `${mode} · ${availability} · ${access}${source ? " · " + source : ""}`, `${label}（${tool.name}）`);
     }
   }
 
@@ -195,4 +200,11 @@ export function mountAgentTools(container, snapshot) {
   panel.append(rows);
   container.replaceChildren(panel);
   return panel;
+}
+
+function toolAccessLabel(tool, data) {
+  if (data.autonomy?.enabled && tool.phase === "core" && ["agent_group", "agent_public_source", "public_query"].includes(tool.access)) {
+    return tool.name === "calculate" ? "当前获准会话" : "本轮公开来源 · 来源权限复核";
+  }
+  return typeof tool.access === "string" && Object.hasOwn(accessLabels, tool.access) ? accessLabels[tool.access] : "权限范围未知";
 }

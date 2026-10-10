@@ -1,6 +1,14 @@
 // bridge/modules/manifest.mjs - declarative module metadata for console and agents.
 
 export const MODULE_DEFINITIONS = Object.freeze([
+  { id: "mcp", name: "MCP 只读工具", category: "core", enabled: false,
+    entrypoints: ["bridge/mcp/index.mjs", "bridge/chat-tools/registry.mjs", "bridge/chat-tools/session.mjs"],
+    commands: [], configFields: [], editableConfigFields: [],
+    healthChecks: ["explicit schema approval", "scope-bound inputs", "revocation and cancellation"],
+    diagnostics: ["admin/mcp", "admin/status.modules.mcp", "admin/agent-tools/settings"],
+    tests: ["test/mcp-http.test.mjs", "test/mcp-services.test.mjs", "test/tool-admin-integration.test.mjs"],
+    riskLevel: "high", privacy: "no default service; public-query provenance and backend-only identity bindings; tokens excluded from snapshots",
+  },
   { id: "agent-actions", name: "本人确认与有限提醒", category: "core", enabled: true,
     entrypoints: ["bridge/chat-tools/write-coordinator.mjs", "bridge/chat-tools/confirmations.mjs", "bridge/agent-reminders/service.mjs"],
     commands: ["待确认", "确认 <cf_编号>", "取消确认 <cf_编号>", "我的提醒", "取消提醒 <rem_编号>"],

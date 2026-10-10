@@ -9,6 +9,7 @@ import { getMemoryPrivacyGeneration, getUserMemoryGeneration } from "../memory-p
 import { summaryPrivacy } from "../group-summary/state.mjs";
 import { containsSensitiveText } from "../privacy.mjs";
 import { readJsonFile } from "../persistence/json-file.mjs";
+import { autonomousPreparationAllowed } from "./preparation-policy.mjs";
 
 const ACTION_KEYS = Object.freeze({ set_name: ["value"], set_style: ["value"],
   memory_create: ["title", "text", "ttlDays"], memory_update: ["noteId", "text"], memory_remove: ["noteId"] });
@@ -40,7 +41,8 @@ export function createPersonalChangeAdapter(options = {}) {
       const state = readState(input.action, guard);
       const parameters = normalizeParameters(input.action, input.parameters);
       validateNoteTarget(input.action, parameters, state.snapshot);
-      if (!explicitIntent(input.action, parameters, guard.userMessage, state.snapshot)) reject("explicit_intent_required");
+      if (guard.autonomous ? !autonomousPreparationAllowed(guard.userMessage, "personal")
+        : !explicitIntent(input.action, parameters, guard.userMessage, state.snapshot)) reject("explicit_intent_required");
       const operation = { domain: "personal", action: input.action, parameters, baseline: state.baseline,
         preview: preview(input.action, parameters) };
       guard.check();
@@ -136,6 +138,7 @@ function runtimeGuard(runtime) {
   const scope = Object.freeze({ surface: "group", userId: decimal(runtime.scope.userId, ID), groupId: decimal(runtime.scope.groupId, ID) });
   const messageId = decimal(runtime.messageId, MESSAGE_ID);
   const userMessage = runtime.userMessage;
+  const autonomous = runtime.autonomous === true;
   if (typeof userMessage !== "string" || !userMessage.trim() || userMessage.length > 8192) reject("invalid_arguments");
   const cfg = runtime.cfg;
   const configuration = hash(cfg);
@@ -147,7 +150,7 @@ function runtimeGuard(runtime) {
         runtime.assertCurrent !== assertCurrent || runtime.isPermitted !== isPermitted ||
         runtime.scope?.surface !== scope.surface || String(runtime.scope?.userId) !== scope.userId ||
         String(runtime.scope?.groupId) !== scope.groupId || runtime.userMessage !== userMessage ||
-        decimal(runtime.messageId, MESSAGE_ID) !== messageId) reject("stale_request");
+        decimal(runtime.messageId, MESSAGE_ID) !== messageId || (runtime.autonomous === true) !== autonomous) reject("stale_request");
   }
   function check() {
     if (signal.aborted) reject("cancelled");
@@ -159,7 +162,7 @@ function runtimeGuard(runtime) {
     if (signal.aborted) reject("cancelled");
     checkBinding();
   }
-  return { scope, cfg, userMessage, messageId, check };
+  return { scope, cfg, userMessage, messageId, autonomous, check };
 }
 
 function parseArguments(value) {

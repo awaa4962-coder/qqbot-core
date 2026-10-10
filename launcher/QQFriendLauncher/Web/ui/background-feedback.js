@@ -4,7 +4,7 @@ import { beginAction, endAction, finishActivity, showActivity } from "./activity
 import { ACTION_LABELS } from "./metadata.js";
 import { taskPhaseLabel, taskResultError } from "./tasks.js";
 import { renderStickers, setStickerCatalogAvailability } from "../pages/stickers.js";
-import { capabilityReadFailed, renderCapabilities, setCapabilityNotice } from "../pages/capabilities.js";
+import { capabilityReadFailed, capabilityReadTicket, capabilityTicketCurrent, renderCapabilities, setCapabilityNotice } from "../pages/capabilities.js";
 import { hasVerifiedNativeTools } from "../agent-tools.js";
 
 const ACTIONS = { sync: "syncStickers", analyze: "analyzeStickers", capabilities: "refreshStickerCapabilities", cleanup: "cleanupStickerTemp" };
@@ -67,6 +67,7 @@ async function handleAgentTools(type, task) {
     return;
   }
   let refreshed = false;
+  let ticket;
   try {
     if (task.taskStateUnknown || task.phase === "unknown") {
       const message = task.error || "验证任务结果尚未确认，请刷新任务状态，勿重复提交。";
@@ -75,14 +76,16 @@ async function handleAgentTools(type, task) {
       return;
     }
     const problem = taskResultError(task) || (task.result?.ok === true ? "" : "验证任务结果尚未完整确认，请核对任务记录。");
+    ticket = capabilityReadTicket();
     const snapshot = await host.call("getCapabilities");
-    renderCapabilities(snapshot);
+    if (!capabilityTicketCurrent(ticket) || !renderCapabilities(snapshot, ticket)) return;
     refreshed = true;
     if (problem) throw new Error(problem);
     if (!hasVerifiedNativeTools(snapshot.agentTools?.compatibility)) throw new Error("验证任务已结束，主备模型证据尚未完整确认，请查看能力状态。");
     setCapabilityNotice("后台工具验证已确认完成，能力状态已刷新。", "ready");
     finishActivity("后台工具验证已确认完成，能力状态已刷新");
   } catch (error) {
+    if (error.staleRead || !refreshed && ticket && !capabilityTicketCurrent(ticket)) return;
     if (refreshed) setCapabilityNotice(error.message, "error");
     else capabilityReadFailed(error);
     finishActivity(error.message, "error");

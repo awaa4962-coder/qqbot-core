@@ -22,6 +22,8 @@ const ASSETS = new Map([
   ["/console/host-client.js", ["host-client.js", "text/javascript; charset=utf-8"]],
   ["/console/api-usage.js", ["api-usage.js", "text/javascript; charset=utf-8"]],
   ["/console/api-usage.css", ["api-usage.css", "text/css; charset=utf-8"]],
+  ["/console/mcp.css", ["mcp.css", "text/css; charset=utf-8"]],
+  ["/console/tool-settings.css", ["tool-settings.css", "text/css; charset=utf-8"]],
   ["/console/diagnostics.js", ["diagnostics.js", "text/javascript; charset=utf-8"]],
   ["/console/agent-tools.js", ["agent-tools.js", "text/javascript; charset=utf-8"]],
   ["/console/agent-drafts.js", ["agent-drafts.js", "text/javascript; charset=utf-8"]],
@@ -39,6 +41,7 @@ const MODULE_ASSETS = [
   "ui/tasks.js", "ui/background-feedback.js", "ui/agent-draft-actions.js", "ui/agent-write-actions.js",
   "pages/overview.js", "pages/configuration.js", "pages/capabilities.js", "pages/api.js",
   "pages/logs.js", "pages/stickers.js", "pages/memes.js", "pages/diagnose-message.js",
+  "pages/mcp.js", "pages/tool-settings.js", "ui/mcp-actions.js", "ui/tool-settings-actions.js",
 ];
 for (const filename of MODULE_ASSETS) ASSETS.set("/console/" + filename, [filename, "text/javascript; charset=utf-8"]);
 

@@ -1,6 +1,6 @@
 {
   "name": "qqfriend",
-  "version": "2.0.3",
+  "version": "2.1.0",
   "description": "夜星 QQ 机器人桥接器",
   "type": "module",
   "main": "napcat_bridge.mjs",
@@ -27,9 +27,10 @@
     "replay:check": "node scripts/check-replay.mjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/client": "2.3.1",
     "7zip-bin": "^5.2.0",
     "jsep": "1.4.0",
-    "sharp": "^0.35.4",
+    "sharp": "0.35.5",
     "ws": "^8.18.0"
   },
   "devDependencies": {

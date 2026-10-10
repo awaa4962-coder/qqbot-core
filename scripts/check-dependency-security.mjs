@@ -15,7 +15,7 @@ function requireVersion(name, version, minimum) {
 }
 
 export function assertPatchedDependencies(state) {
-  requireVersion("sharp", state.sharpVersion, "0.35.4");
+  requireVersion("sharp", state.sharpVersion, "0.35.5");
   assert.equal(state.sharpVersion, state.lockedSharpVersion, "Installed sharp differs from package-lock.json; rebuild dependencies");
   if (state.lockedJsepVersion !== undefined) {
     requireVersion("jsep", state.jsepVersion, "1.4.0");

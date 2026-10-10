@@ -5,7 +5,8 @@ import { chatCancellation, CHAT_CANCEL_REASONS } from "../cognition/chat-run.mjs
 import { traceStage } from "../diagnostics/message-trace.mjs";
 import { createChatToolSession } from "./session.mjs";
 import { CHAT_TOOL_LIMITS, safeToolBatch, publicSearchPhrase } from "./policy.mjs";
-import { hasRegisteredContextGroup, registeredQuoteReading } from "../context/pruning.mjs";
+import { hasRegisteredContextGroup, registeredQuoteReading, registerContextGroups,
+  registeredContextSources, registeredContextMemorySources, registeredContextExpiry } from "../context/pruning.mjs";
 import { IMAGE_POLICY_EVIDENCE } from "../system-prompts/image-policy.mjs";
 
 export async function runScopedChat(request, options = {}) {
@@ -29,6 +30,7 @@ async function appendVision(context) {
   const evidence = await context.options.visionSession.message(context.provider, context.config);
   context.session.assertCurrent();
   const current = context.messages.at(-1);
+  let boundMessage;
   if (context.options.imagePolicy === IMAGE_POLICY_EVIDENCE && canCombineImageInput(current)) {
     const quotes = registeredQuoteReading(context.messages);
     const reading = quotes.length ? { type: "text", text: "[与本轮图片一起阅读的引用资料]\n" +
@@ -37,10 +39,17 @@ async function appendVision(context) {
     const content = Array.isArray(evidence.message.content)
       ? [...(reading ? [reading] : []), ...evidence.message.content, { type: "text", text: current.content }]
       : (reading ? reading.text + "\n\n" : "") + evidence.message.content + "\n\n" + current.content;
-    context.messages[context.messages.length - 1] = { ...current, content };
+    boundMessage = { ...current, content };
+    context.messages[context.messages.length - 1] = boundMessage;
   } else {
-    context.messages.splice(Math.max(0, context.messages.length - 1), 0, evidence.message);
+    boundMessage = evidence.message;
+    context.messages.splice(Math.max(0, context.messages.length - 1), 0, boundMessage);
   }
+  registerContextGroups([boundMessage], [{ group: "current-vision", priority: 100, index: 0,
+    sources: [...registeredContextSources([evidence.message]).filter(source => source.reason !== "vision_evidence"),
+      { kind: "image", reason: "vision_evidence" }],
+    memorySources: registeredContextMemorySources([evidence.message]), memoryExpiresAt: registeredContextExpiry([evidence.message]) }]);
+  context.session.trackContext(context.messages);
   context.request.trustedImageUrls = evidence.trustedImageUrls;
 }
 
@@ -63,7 +72,7 @@ async function compatibilitySearch(context) {
 
 function createSlot(request, options) {
   const session = options.toolSession || createChatToolSession({ scope: request.selfContext, task: options.task,
-    userMessage: options.userMessage, mentioned: options.mentioned === true, allowTools: options.allowTools });
+    userMessage: options.userMessage, userName: options.userName, mentioned: options.mentioned === true, allowTools: options.allowTools });
   const config = loadApiConfig();
   const providerId = options.providerId || getTaskRoute(options.task, { config })[options.position || "primary"];
   const provider = getProvider(providerId, { config });
@@ -77,7 +86,8 @@ function createSlot(request, options) {
 }
 
 async function runRounds(context) {
-  for (let round = 0; round < CHAT_TOOL_LIMITS.slotRounds; round++) {
+  const limits = context.session.limits || CHAT_TOOL_LIMITS;
+  for (let round = 0; round < limits.slotRounds; round++) {
     const result = await callRound(context, round);
     context.session.assertCurrent();
     if (!result.ok) return chatError();
@@ -91,7 +101,8 @@ async function runRounds(context) {
 async function callRound(context, round) {
   const { session, provider, request, messages, options, providerId, config } = context;
   const canTool = provider.capabilities.includes("tools") && provider.protocol !== "gemini-native";
-  context.declared = session.definitions(canTool && options.allowTools !== false && round < 2 && session.remainingModels() > 1);
+  const limits = session.limits || CHAT_TOOL_LIMITS;
+  context.declared = session.definitions(canTool && options.allowTools !== false && round < limits.slotRounds - 1 && session.remainingModels() > 1);
   const next = session.prepareModel({ ...request, messages, tools: context.declared, toolChoice: context.declared.length ? "auto" : "none" });
   const result = options.providerId ? await callApiProvider(providerId, next, { config })
     : await callTaskApi(options.task, options.position || "primary", next, { config });
@@ -100,7 +111,7 @@ async function callRound(context, round) {
 }
 
 async function appendTools(context, message) {
-  const calls = safeToolBatch(message);
+  const calls = safeToolBatch(message, (context.session.limits || CHAT_TOOL_LIMITS).toolCalls);
   if (!context.declared.length || !calls || calls.length > context.session.remainingTools() || calls.some(call => context.usedIds.has(call.id))) return false;
   context.messages.push(assistantToolMessage(message, context.provider));
   for (const call of calls) {
@@ -120,7 +131,7 @@ export function assistantToolMessage(message, provider) {
 
 function finalOutcome(result, context) {
   const outcome = parseChatOutcome(result.raw, { provider: result.provider, replyMode: context.options.replyMode, imagePayloads: context.request.trustedImageUrls });
-  if (outcome.kind === "reply" && outcome.text.length > CHAT_TOOL_LIMITS.replyChars) return chatError("output_budget");
+  if (outcome.kind === "reply" && outcome.text.length > (context.session.limits || CHAT_TOOL_LIMITS).replyChars) return chatError("output_budget");
   const memorySources = context.session.sources();
   return outcome.kind === "reply" ? { ...outcome, memorySources, memoryExpiresAt: context.session.expiry() } : outcome;
 }

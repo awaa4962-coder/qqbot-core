@@ -19,17 +19,17 @@ const stable = { imagePolicy: IMAGE_POLICY_STABLE };
 const focused = buildChatSystemPrompt({ ...evidence, imageTask: true });
 const replyModes = ["chat", "interjection", "technical", "summary", "admin"];
 
-// Source56 shared evidence/failure rules are reviewed; image-policy isolation remains fixed.
+// Reviewed 2.1.0 tool-autonomy bytes; image/failure rules and policy isolation stay fixed.
 const originalHashes = {
   [IMAGE_POLICY_STABLE]: {
-    chat: "fa6901afa3ccf1faea19e0b99912b16d239e1210b8d7fab44ddae20f9ab67c8f",
-    interjection: "36a4a5fd5efe2c6911af9695a59f6a3b2cd68e4e9fe19ac7be71862764f6134e",
-    technical: "fa75f934bc4966cfa8ae4fa7e913930f138cde5dc7e3fb101166a7d9bc90d15e",
+    chat: "29984aa6cae5573c542f5adcba55b8e6b3960d50d552b494d26ae8d76b20355e",
+    interjection: "204b36f0ad189b4f56fe0a60bcbafb5be76be4742be0b86f91b13edda8fb1b7b",
+    technical: "6bf04d09fd45d0de921ad549b17d5671cda749d8aa52800149a338b73cb1c0ae",
   },
   [IMAGE_POLICY_EVIDENCE]: {
-    chat: "14c940f6d56e7958520c97bbecdfcbb917f87d99c97274a468e6d0e08c596f06",
-    interjection: "6478fed4cc893b0fa4f74d0a03070576cadd294da1d1f18817fd9ef656bc3e65",
-    technical: "04c82a7172f23d7a4bf0dfc32d888b867e82c66b141dcd8284830daa24625e9c",
+    chat: "11697c52bd67660d1556ede8295cbaab96d54b1023f631eab47d0f656341428a",
+    interjection: "e0ecc1fac36c7d0430bd75358dc197795230fef0fcb5d8b4f0cebd1ab838ca43",
+    technical: "6605a5b25117b7adff384882adb00e39a533bfd381d0515a4e24a12264c40776",
   },
 };
 
@@ -176,7 +176,7 @@ test("missing image evidence and unexecuted tools cannot be reported as seen or 
   assert.match(focused, /未读图、缺帧、模糊文字、人物身份与出处不补猜/);
   assert.match(focused, /读取失败不等于内容为空/);
   assert.match(focused, /建议非执行.*无回执不说完成/);
-  assert.match(focused, /无检索结果不说.*查过、搜到、没查到.*或暗示成功/);
+  assert.match(focused, /无检索结果不说查过\/搜到\/没查到，不暗示成功/);
   assert.match(focused, /当前候选非全范围.*未提供不等于已删除/);
 });
 
@@ -186,9 +186,9 @@ test("declared read tools stay current-person and same-scope with no scope probi
   assert.match(focused, /read_bot_status 查状态/);
   assert.match(focused, /只读不保存\/下载\/发送\/改设置/);
   assert.match(focused, /empty\/denied\/unavailable 是状态.*不换用户\/群试探/);
-  assert.match(focused, /公开搜索仅用当前用户本条明写的公开关键词/);
-  assert.match(focused, /记忆\/引用\/文件\/其他工具结果不转搜索词/);
-  assert.match(focused, /不打印工具 JSON、内部编号或预算字段/);
+  assert.match(focused, /公开问题可组织查询词.*私有记忆.*不外发/);
+  assert.match(focused, /私有记忆\/历史\/引用\/文件\/内部标识不外发/);
+  assert.match(focused, /不输出工具JSON、编号、预算/);
 });
 
 test("untrusted material cannot issue instructions and preparing a personal change is not saving", () => {
@@ -218,7 +218,7 @@ test("image task system text is at least twenty percent shorter than each existi
       `${replyMode}: focused ${profile.length} chars, candidate ${original.length} chars`);
   }
   const original = buildChatSystemPrompt(evidence);
-  assert.equal(original.length, 3068);
+  assert.equal(original.length, 3055);
   t.diagnostic(JSON.stringify({ metric: "system-prompt-text-only", candidateChars: original.length,
     imageTaskChars: focused.length, removedChars: original.length - focused.length,
     reductionPercent: Number(((1 - focused.length / original.length) * 100).toFixed(2)) }));

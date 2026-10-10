@@ -61,7 +61,7 @@ async function runAiReply(group_id, userId, userMsg, userName, imageUrls, replyT
     imageAnchor: runtime.imageAnchor,
   });
 
-  const mimoOptions = { allowTools: !isPassiveInterjection, replyMode: isPassiveInterjection ? "interjection" : "chat",
+  const mimoOptions = { allowTools: true, replyMode: isPassiveInterjection ? "interjection" : "chat",
     currentUserId: uid, personaCue, currentInput: contextPacket.currentInput, imageSources: runtime.imageSources,
     attachments: runtime.attachments, currentMessageId: runtime.messageId, mentionTargets: runtime.mentionTargets };
   const outcome = await resolveAiReply({

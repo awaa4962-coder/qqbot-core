@@ -30,7 +30,8 @@ import { buildChatDeliverySnapshot, resolveChatDelivery } from "../cognition/del
 import { buildMemoryManagerSnapshot, applyMemoryManagerAction } from "./memory-manager.mjs";
 import { getApiUsageSnapshot } from "../api-providers/usage-metrics.mjs";
 import { buildAgentToolSnapshot } from "../chat-tools/registry.mjs";
-import { CHAT_TOOL_LIMITS } from "../chat-tools/policy.mjs";
+import { getToolSettingsSnapshot, applyToolSettingsAction } from "../chat-tools/settings.mjs";
+import { getMcpSnapshot, applyMcpAction } from "../mcp/index.mjs";
 import { buildNativeToolCompatibilitySnapshot } from "../chat-tools/compatibility.mjs";
 import { agentDraftTasks } from "../chat-tools/draft-tasks.mjs";
 import { agentWriteCoordinator } from "../chat-tools/write-coordinator.mjs";
@@ -60,6 +61,8 @@ const GET_ROUTES = new Map([
   ["/admin/conversation-summaries", handleConversationSummariesRoute],
   ["/admin/agent-drafts", handleAgentDraftsReadRoute],
   ["/admin/agent-actions", handleAgentActionsReadRoute],
+  ["/admin/agent-tools/settings", handleToolSettingsReadRoute],
+  ["/admin/mcp", handleMcpReadRoute],
 ]);
 
 const POST_ROUTES = new Map([
@@ -76,6 +79,8 @@ const POST_ROUTES = new Map([
   ["/admin/command-scaffold", handleCommandScaffoldRoute],
   ["/admin/backups", handleBackupsPostRoute],
   ["/admin/agent-drafts", handleAgentDraftsPostRoute],
+  ["/admin/agent-tools/settings", handleToolSettingsPostRoute],
+  ["/admin/mcp", handleMcpPostRoute],
 ]);
 
 const STICKER_PREVIEW_PATH = "/admin/stickers/image";
@@ -162,8 +167,35 @@ function handleCapabilitiesRoute(_req, res, context) {
     surface: "console",
     moduleStates: buildModuleCatalog().modules,
   });
-  context.sendJson(res, 200, { ...catalog, agentTools: { ...buildAgentToolSnapshot(CFG, buildNativeToolCompatibilitySnapshot()), limits: CHAT_TOOL_LIMITS },
-    agentDrafts: agentDraftTasks.snapshot(), agentWrites: agentWriteCoordinator.snapshot() }, 2);
+  try {
+    const settings = getToolSettingsSnapshot();
+    context.sendJson(res, 200, { ...catalog, agentTools: { ...buildAgentToolSnapshot(CFG, buildNativeToolCompatibilitySnapshot(), settings.settings),
+      limits: settings.effective.chat, settings }, mcpServices: getMcpSnapshot(),
+      agentDrafts: agentDraftTasks.snapshot(), agentWrites: agentWriteCoordinator.snapshot() }, 2);
+  } catch { context.sendJson(res, 503, { error: "tool_settings_unavailable" }); }
+}
+
+function handleToolSettingsReadRoute(_req, res, context) {
+  try { context.sendJson(res, 200, getToolSettingsSnapshot()); }
+  catch { context.sendJson(res, 503, { error: "tool_settings_unavailable" }); }
+}
+
+async function handleToolSettingsPostRoute(req, res, context) {
+  try { context.sendJson(res, 200, applyToolSettingsAction(await readJsonRequestBody(req))); }
+  catch (error) { context.sendJson(res, error.statusCode || 400, { error: error.code || "tool_settings_invalid" }); }
+}
+
+function handleMcpReadRoute(_req, res, context) {
+  context.sendJson(res, 200, getMcpSnapshot());
+}
+
+async function handleMcpPostRoute(req, res, context) {
+  try {
+    const result = await applyMcpAction(await readJsonRequestBody(req));
+    const status = result.ok ? 200 : ["revision_conflict", "configuration_busy"].includes(result.reason) ? 409 :
+      ["not_initialized", "persistence_failed", "configuration_unreadable"].includes(result.reason) ? 503 : 400;
+    context.sendJson(res, status, result.ok ? result : { error: result.reason || "mcp_action_failed", ...result });
+  } catch { context.sendJson(res, 400, { error: "mcp_action_invalid" }); }
 }
 
 function handleAgentActionsReadRoute(_req, res, context) {

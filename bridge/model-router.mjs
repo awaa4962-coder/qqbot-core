@@ -173,7 +173,7 @@ function withToolSession(request, task) {
   const imageTask = hasGroupImageInput(surface, task, liveScope, request.imageUrls, visionSession);
   return { ...options, imagePolicy, imageTask, ...(visionSession ? { visionSession } : {}), toolSession: options.toolSession || createChatToolSession({
     scope, task,
-    userMessage: request.userMsg, mentioned: request.isAtMe === true, allowTools: task === "interjection" ? false : options.allowTools,
+    userMessage: request.userMsg, userName: request.userName, mentioned: request.isAtMe === true, allowTools: options.allowTools,
     attachments: options.attachments, currentMessageId: options.currentMessageId, mentionTargets: options.mentionTargets,
   }) };
 }

@@ -14,6 +14,7 @@ import { getStickerRuntimeStatus } from "../features/stickers/index.mjs";
 import { getJmRuntimeHealth } from "../jm-provider.mjs";
 import { readApiProviderHealth } from "../api-providers/health.mjs";
 import { memoryProfilesAvailable } from "../memory-profile/store.mjs";
+import { getMcpSnapshot } from "../mcp/index.mjs";
 
 export function buildRuntimeStatus(options = {}) {
   const now = options.now || new Date();
@@ -74,8 +75,20 @@ function buildRuntimeModules(now) {
     resourceTransfer: buildWhitelistModule(CFG.resourceGroupWhitelist),
     apiProviders: readApiProviderHealth(),
     stickers: getStickerRuntimeStatus(),
+    mcp: buildMcpModule(),
     outputSafety: { enabled: true, health: "ready" },
   };
+}
+
+function buildMcpModule() {
+  const snapshot = getMcpSnapshot();
+  const servers = snapshot.servers || [];
+  const enabled = servers.filter(server => server.enabled);
+  const connected = enabled.filter(server => server.status === "connected").length;
+  return { enabled: enabled.length > 0, services: servers.length, connected,
+    tools: servers.reduce((count, server) => count + (server.tools || []).filter(tool => tool.available === true).length, 0),
+    health: snapshot.status === "error" ? "degraded" : !enabled.length ? "disabled" :
+      connected === enabled.length ? "ready" : snapshot.status === "not_initialized" ? "unknown" : "degraded" };
 }
 
 function buildJmModule(now) {
