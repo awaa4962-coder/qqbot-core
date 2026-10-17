@@ -20,6 +20,8 @@ QQFriend powers the Yexing QQ bot. It receives messages through NapCat / OneBot 
 
 ## Features
 
+The 2.1.2 development candidate changes JM metadata/image requests to the dependency's persistent session, reusing connections and cookies within a task. Default discovery, cookie initialization, concurrency and 60/90/120-second bounds remain unchanged. Numeric timing snapshots contain no resource URLs or titles; completed-request counts and cumulative parallel time are not final delivery proof or wall-clock percentages. This is a transport optimization candidate, not a claim of measured CDN throughput.
+
 | Capability | What it does |
 | --- | --- |
 | Chat and models | Per-task primary/fallback models, API presets, and reasoning settings; only sanitized final text is sent |

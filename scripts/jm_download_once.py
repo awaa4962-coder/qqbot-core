@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 import sys
-from threading import Lock
+from threading import Lock, local
 import time
 from types import MethodType
 
@@ -180,7 +180,7 @@ def build_option(JmOption, output_dir):
             "impl": "api",
             "domain": parse_jm_domains(),
             "postman": {
-                "type": "curl_cffi",
+                "type": "curl_cffi_session",
                 "meta_data": {
                     "impersonate": "chrome",
                     "headers": None,
@@ -196,31 +196,86 @@ def build_option(JmOption, output_dir):
     })
 
 
-def bound_image_requests(client):
+class DownloadTimings:
+    def __init__(self, clock=time.monotonic):
+        self.clock = clock
+        self.started = clock()
+        self.lock = Lock()
+        self.values = {"imageRequestsCompleted": 0, "imageRetriesCompleted": 0, "metadataCallsCompleted": 0, "imageSavesCompleted": 0}
+
+    def mark(self, key, once=False):
+        value = max(0, round((self.clock() - self.started) * 1000))
+        with self.lock:
+            if not once or key not in self.values:
+                self.values[key] = value
+
+    def duration(self, key, started):
+        with self.lock:
+            self.values[key] = max(0, round((self.clock() - started) * 1000))
+
+    def request(self, kind, started, retry=False):
+        value = max(0, round((self.clock() - started) * 1000))
+        count = {"imageRequest": "imageRequestsCompleted", "metadata": "metadataCallsCompleted", "imageSave": "imageSavesCompleted"}[kind]
+        with self.lock:
+            self.values[count] += 1
+            self.values[kind + "Ms"] = self.values.get(kind + "Ms", 0) + value
+            self.values[kind + "MaxMs"] = max(self.values.get(kind + "MaxMs", 0), value)
+            if retry:
+                self.values["imageRetriesCompleted"] += 1
+
+    def snapshot(self):
+        with self.lock:
+            return {**self.values, "observedMs": max(0, round((self.clock() - self.started) * 1000))}
+
+
+def bound_image_requests(client, timings=None):
     original_request = client.request_with_retry
+    metadata_state = local()
 
     def request_with_retry(self, request, url, domain_index=0, retry_count=0,
                            is_image=False, **kwargs):
         if not is_image:
-            return original_request(request, url, domain_index, retry_count, is_image, **kwargs)
+            depth = getattr(metadata_state, "depth", 0)
+            metadata_state.depth = depth + 1
+            started = timings.clock() if timings is not None else None
+            try:
+                return original_request(request, url, domain_index, retry_count, is_image, **kwargs)
+            finally:
+                metadata_state.depth = depth
+                if timings is not None and depth == 0:
+                    timings.request("metadata", started)
 
         # Image URLs already select a CDN. API mirrors cannot repair that host.
         self.update_request_with_specify_domain(kwargs, None, True)
         kwargs["timeout"] = REQUEST_TIMEOUT
         for attempt in range(IMAGE_ATTEMPTS):
+            started = timings.clock() if timings is not None else None
             try:
                 return self.raise_if_resp_should_retry(request(url, **kwargs), True)
             except Exception:
                 if attempt + 1 == IMAGE_ATTEMPTS:
                     raise
+            finally:
+                if timings is not None:
+                    timings.request("imageRequest", started, retry=attempt > 0)
 
     client.request_with_retry = MethodType(request_with_retry, client)
+    original_save = getattr(client, "save_image_resp", None)
+    if timings is not None and callable(original_save):
+        def save_image_resp(self, *args, **kwargs):
+            started = timings.clock()
+            try:
+                return original_save(*args, **kwargs)
+            finally:
+                timings.request("imageSave", started)
+        client.save_image_resp = MethodType(save_image_resp, client)
     return client
 
 
 class DownloadProgress:
-    def __init__(self, clock=time.monotonic):
+    def __init__(self, clock=time.monotonic, timings=None):
         self.clock = clock
+        self.timings = timings
         self.lock = Lock()
         self.phase = "preparing"
         self.completed = 0
@@ -245,6 +300,8 @@ class DownloadProgress:
             "bytes": self.bytes,
             "failed": self.failed_images + self.failed_photos,
         }
+        if self.timings is not None:
+            payload["timings"] = self.timings.snapshot()
         print(PROGRESS_PREFIX + json.dumps(payload), file=PROTOCOL_STDOUT, flush=True)
         self.last_emit = now
 
@@ -257,6 +314,8 @@ class DownloadProgress:
 
     def before_album(self, album):
         with self.lock:
+            if self.timings is not None:
+                self.timings.mark("albumReadyMs")
             self.photo_count = len(album)
             self.phase = "downloading"
             self._publish(True)
@@ -279,6 +338,9 @@ class DownloadProgress:
                 self.paths.add(path)
                 self.completed += 1
                 self.bytes += size
+                if self.timings is not None:
+                    self.timings.mark("firstImageMs", once=True)
+                    self.timings.mark("lastImageMs")
             self._publish()
 
     def refresh_failures(self, downloader):
@@ -295,7 +357,13 @@ def progress_downloader(JmDownloader, progress):
             progress.downloader = self
 
         def create_client(self):
-            return bound_image_requests(super().create_client())
+            started = progress.timings.clock() if progress.timings is not None else None
+            try:
+                client = super().create_client()
+            finally:
+                if progress.timings is not None:
+                    progress.timings.duration("clientInitMs", started)
+            return bound_image_requests(client, progress.timings)
 
         def before_album(self, album):
             super().before_album(album)
@@ -349,6 +417,7 @@ def failure_result(progress, category, files=0, bytes_total=0):
         "failed": progress.failed_images + progress.failed_photos,
         "failed_images": progress.failed_images,
         "failed_photos": progress.failed_photos,
+        "timings": progress.timings.snapshot() if progress.timings is not None else {},
     }
 
 
@@ -385,19 +454,22 @@ def main():
     if not args.id or not args.out:
         parser.error("--id and --out are required unless --check is used")
 
-    progress = DownloadProgress()
+    timings = DownloadTimings()
+    progress = DownloadProgress(timings=timings)
     progress.publish(force=True)
     try:
         with quiet_dependencies():
             os.makedirs(args.out, exist_ok=True)
             JmOption, download_album = import_jmcomic(allow_install=False)
             from jmcomic import JmDownloader
+            timings.mark("importMs")
             option = build_option(JmOption, args.out)
             album, downloader = download_album(
                 args.id, option=option, check_exception=True,
                 downloader=progress_downloader(JmDownloader, progress),
             )
             progress.refresh_failures(downloader)
+            timings.mark("downloadFinishedMs")
             files, bytes_total = summarize(args.out)
             complete = (
                 bool(downloader.all_success)
@@ -419,6 +491,7 @@ def main():
             "files": files,
             "bytes": bytes_total,
             "all_success": True,
+            "timings": timings.snapshot(),
         })
     except Exception as exc:
         if progress.downloader is not None:
@@ -426,6 +499,14 @@ def main():
         progress.publish(force=True)
         emit(failure_result(progress, error_category(exc), progress.completed, progress.bytes))
         raise SystemExit(1)
+    finally:
+        with quiet_dependencies():
+            session = getattr(getattr(getattr(progress.downloader, "client", None), "postman", None), "session", None)
+            if session is not None:
+                try:
+                    session.close()
+                except Exception:
+                    pass
 
 
 if __name__ == "__main__":

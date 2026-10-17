@@ -8,6 +8,9 @@ import { StringDecoder } from "node:string_decoder";
 
 export const RESULT_PREFIX = "QQFRIEND_JM_RESULT ";
 export const PROGRESS_PREFIX = "QQFRIEND_JM_PROGRESS ";
+const TIMING_KEYS = new Set(["importMs", "clientInitMs", "albumReadyMs", "firstImageMs", "lastImageMs", "observedMs",
+  "downloadFinishedMs", "imageRequestsCompleted", "imageRetriesCompleted", "imageRequestMs", "imageRequestMaxMs",
+  "metadataCallsCompleted", "metadataMs", "metadataMaxMs", "imageSavesCompleted", "imageSaveMs", "imageSaveMaxMs"]);
 
 export let jmHealthCache = null;
 
@@ -186,7 +189,7 @@ export async function runPythonJson({ command, args, env, timeoutMs, signal, onP
     const child = spawnImpl(command, args, { env, windowsHide: true, detached });
     let stdout = "";
     let stderr = "";
-    let pendingLine = "", settled = false, stopped = false;
+    let pendingLine = "", settled = false, stopped = false, latestTimings = null;
     const outDecoder = new StringDecoder("utf8"), errDecoder = new StringDecoder("utf8");
     const finish = result => {
       if (settled) return;
@@ -218,7 +221,9 @@ export async function runPythonJson({ command, args, env, timeoutMs, signal, onP
       while ((newline = pendingLine.indexOf("\n")) >= 0) {
         const line = pendingLine.slice(0, newline).trim();
         pendingLine = pendingLine.slice(newline + 1);
-        if (!stopped && line.startsWith(PROGRESS_PREFIX)) dispatchJmProgress(line.slice(PROGRESS_PREFIX.length), onProgress);
+        if (!stopped && line.startsWith(PROGRESS_PREFIX)) {
+          latestTimings = dispatchJmProgress(line.slice(PROGRESS_PREFIX.length), onProgress) || latestTimings;
+        }
       }
       if (pendingLine.length > 65536) pendingLine = "";
     });
@@ -231,7 +236,7 @@ export async function runPythonJson({ command, args, env, timeoutMs, signal, onP
     child.on("close", code => {
       if (settled) return;
       stdout += outDecoder.end(); stderr += errDecoder.end();
-      finish(stopped ? { ok: false, reason: "timeout" } : parseRunnerResult(stdout, stderr, code));
+      finish(withRunnerTimings(stopped ? { ok: false, reason: "timeout" } : parseRunnerResult(stdout, stderr, code), latestTimings));
     });
   });
 }
@@ -239,14 +244,31 @@ export async function runPythonJson({ command, args, env, timeoutMs, signal, onP
 function dispatchJmProgress(text, callback) {
   try {
     const value = JSON.parse(text);
-    if (!["preparing", "downloading"].includes(value.phase)) return;
+    if (!["preparing", "downloading"].includes(value.phase)) return null;
     const progress = { phase: value.phase };
     for (const key of ["completed", "total", "bytes", "failed"]) {
       if (key === "total" && value[key] === null) progress[key] = null;
       else if (Number.isSafeInteger(value[key]) && value[key] >= 0) progress[key] = value[key];
     }
     callback?.(progress);
-  } catch { /* Ignore malformed progress without exposing downloader output. */ }
+    return sanitizeJmTimings(value.timings);
+  } catch { return null; }
+}
+
+export function sanitizeJmTimings(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const timings = Object.fromEntries(Object.entries(value).filter(([key, number]) => TIMING_KEYS.has(key) &&
+    Number.isSafeInteger(number) && number >= 0 && number <= (key.endsWith("Ms") ? 86400000 : 1000000)));
+  return Object.keys(timings).length ? timings : null;
+}
+
+function withRunnerTimings(result, latestTimings) {
+  const timings = sanitizeJmTimings(result.timings) || latestTimings;
+  const cleaned = { ...result };
+  delete cleaned.timings;
+  if (!timings) return cleaned;
+  log("jm timings:", JSON.stringify(timings));
+  return { ...cleaned, timings };
 }
 
 export function parseRunnerResult(stdout, stderr, code) {
@@ -275,6 +297,7 @@ function normalizeRunnerFailure(parsed) {
     missing: value.missing || [], sourceReason: value.sourceReason || "",
     failedImages: value.failedImages ?? value.failed_images, failedPhotos: value.failedPhotos ?? value.failed_photos,
     errorCodes: codes.filter(code => typeof code === "string" && /^[a-z_]{1,32}$/.test(code)).slice(0, 8),
+    ...(sanitizeJmTimings(value.timings) ? { timings: sanitizeJmTimings(value.timings) } : {}),
   };
 }
 

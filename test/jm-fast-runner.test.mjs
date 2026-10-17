@@ -179,10 +179,50 @@ function pythonCase(t, code) {
 }
 
 describe("JM bounded Python runner (offline synthetic modules)", () => {
+  it("records bounded numeric timings without double-counting recursive API retries", t => pythonCase(t, String.raw`
+now = [0.0]
+timings = runner.DownloadTimings(clock=lambda: now[0])
+class RecursiveClient(FakeClient):
+    def request_with_retry(self, request, url, domain_index=0, retry_count=0, is_image=False, **kwargs):
+        now[0] += 0.01
+        if retry_count == 0:
+            return self.request_with_retry(request, url, domain_index, 1, is_image, **kwargs)
+        return "api-result"
+client = runner.bound_image_requests(RecursiveClient(), timings)
+assert client.request_with_retry(None, SECRET) == "api-result"
+assert timings.snapshot()["metadataCallsCompleted"] == 1
+assert timings.snapshot()["metadataMs"] == 20
+responses = iter(("invalid", "valid"))
+def request(*args, **kwargs):
+    now[0] += 0.025
+    return next(responses)
+assert client.request_with_retry(request, SECRET, is_image=True) == "valid"
+snapshot = timings.snapshot()
+assert snapshot["imageRequestsCompleted"] == 2 and snapshot["imageRetriesCompleted"] == 1
+assert snapshot["imageRequestMs"] == 50 and snapshot["imageRequestMaxMs"] == 25
+assert snapshot["observedMs"] == 70
+assert all(type(value) is int and value >= 0 for value in snapshot.values())
+assert not any(word in json.dumps(snapshot) for word in ("SECRET", "Authorization", "https://"))
+`));
+
+  it("closes the per-task transport session after success and failure", t => pythonCase(t, String.raw`
+closed = []
+original_create = FakeDownloader.create_client
+def create(self):
+    client = original_create(self)
+    client.postman = types.SimpleNamespace(session=types.SimpleNamespace(close=lambda: closed.append(1)))
+    return client
+FakeDownloader.create_client = create
+assert scenario("success")[0] == 0
+assert scenario("partial_return")[0] == 1
+assert closed == [1, 1]
+`));
+
   it("configures short tuple timeouts, task metadata caching and bounded concurrency", t => pythonCase(t, String.raw`
 os.environ["QQBOT_JM_DOMAINS"] = "one.invalid;two.invalid\nthree.invalid"
 config = runner.build_option(FakeOption, "/output")
 assert config["client"]["postman"]["meta_data"]["timeout"] == (3, 8)
+assert config["client"]["postman"]["type"] == "curl_cffi_session"
 assert config["client"]["retry_times"] == 1
 assert config["client"]["cache"] is True
 assert config["download"]["cache"] is False
@@ -298,7 +338,8 @@ assert len(events()) == 1
 code, result, progress, text = scenario("success")
 assert code == 0 and result["ok"] is True and result["all_success"] is True
 assert result["files"] == 4 and result["bytes"] == 12
-assert progress[-1] == {"phase": "preparing", "completed": 4, "total": 4, "bytes": 12, "failed": 0}
+assert {k:v for k,v in progress[-1].items() if k != "timings"} == {"phase": "preparing", "completed": 4, "total": 4, "bytes": 12, "failed": 0}
+assert result["timings"]["firstImageMs"] <= result["timings"]["lastImageMs"] <= result["timings"]["downloadFinishedMs"]
 assert all("PRIVATE" not in json.dumps(event) for event in progress)
 `));
 
