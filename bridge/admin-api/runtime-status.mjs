@@ -15,6 +15,7 @@ import { getJmRuntimeHealth } from "../jm-provider.mjs";
 import { readApiProviderHealth } from "../api-providers/health.mjs";
 import { memoryProfilesAvailable } from "../memory-profile/store.mjs";
 import { getMcpSnapshot } from "../mcp/index.mjs";
+import { isJmMaintenanceActive } from "../jm/maintenance.mjs";
 
 export function buildRuntimeStatus(options = {}) {
   const now = options.now || new Date();
@@ -104,6 +105,7 @@ function buildJmModule(now) {
     source: health.source,
     domains: CFG.jmDomains.length,
     timeoutMs: CFG.jmTimeoutMs,
+    maintenance: isJmMaintenanceActive(),
     zipPasswordConfigured: Boolean(CFG.jmZipPassword),
     sevenZipConfigured: health.sevenZipReady,
   };

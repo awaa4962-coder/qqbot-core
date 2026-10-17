@@ -9,6 +9,7 @@ import { transferJmToGroup, transferJmToPrivate } from "./transfer.mjs";
 import { zipDirectory } from "./archive.mjs";
 import { monotonicNow } from "../runtime-clock.mjs";
 import { JM_ACK_TIMEOUT_MS, JM_MAX_RESPONSE_MS } from "./deadline.mjs";
+import { isJmMaintenanceActive } from "./maintenance.mjs";
 
 export const JM_RE = /^jm\s*([0-9]{3,})$/i;
 
@@ -42,6 +43,7 @@ export async function handleJmTransferCommand(ctx, options = {}) {
     acknowledge: sendOptions => sender(ctx.group_id, "JM " + parsed.jmId + " 已开始下载，完成后会转发到群；60秒报进度，90秒超时停止。", options.replyToId, sendOptions),
     busy: () => sender(ctx.group_id, "已有 JM 下载任务在运行，请等当前任务完成后再试。", options.replyToId),
     unavailable: () => sender(ctx.group_id, "JM 任务没能启动，请稍后检查运行状态。", options.replyToId),
+    maintenance: () => sender(ctx.group_id, "JM 正在更新，本条下载尚未受理，请稍后重新发送。", options.replyToId, acknowledgementOptions()),
     duplicate: () => sender(ctx.group_id, "这条 JM 任务已经受理过，请先核实原任务结果，不会自动重做。", options.replyToId),
     transfer: (signal, timing) => transferJmToGroup({
       ...timing,
@@ -89,6 +91,7 @@ export async function handlePrivateJmTransferCommand(ctx, options = {}) {
     acknowledge: sendOptions => sender(ctx.user_id, "JM " + parsed.jmId + " 已开始下载，完成后会私聊发给你；60秒报进度，90秒超时停止。", sendOptions),
     busy: () => sender(ctx.user_id, "已有 JM 下载任务在运行，请等当前任务完成后再试。"),
     unavailable: () => sender(ctx.user_id, "JM 任务没能启动，请稍后检查运行状态。"),
+    maintenance: () => sender(ctx.user_id, "JM 正在更新，本条下载尚未受理，请稍后重新发送。", acknowledgementOptions()),
     duplicate: () => sender(ctx.user_id, "这条 JM 任务已经受理过，请先核实原任务结果，不会自动重做。"),
     transfer: (signal, timing) => transferJmToPrivate({
       ...timing,
@@ -108,8 +111,9 @@ export async function handlePrivateJmTransferCommand(ctx, options = {}) {
     }) });
 }
 
-async function startJmTask({ jmId, kind, eventKey, acknowledge, busy, unavailable, duplicate, transfer }) {
+async function startJmTask({ jmId, kind, eventKey, acknowledge, busy, unavailable, maintenance, duplicate, transfer }) {
   const startedAt = monotonicNow();
+  if (isJmMaintenanceActive()) { await notify(maintenance); return true; }
   try { if (jmTasks.hasEvent(eventKey)) { await notify(duplicate); return true; } }
   catch { await notify(unavailable); return true; }
   if (activeJmTask) { await notify(busy); return true; }
@@ -132,12 +136,16 @@ async function startJmTask({ jmId, kind, eventKey, acknowledge, busy, unavailabl
     await notify(error.message === "后台任务已满，请稍后再试" || error.message === "已有 JM 下载任务在运行，请稍后再试。" ? busy : unavailable);
     return true;
   }
-  try { await notify(() => acknowledge({ signal: AbortSignal.timeout(JM_ACK_TIMEOUT_MS), timeoutMs: JM_ACK_TIMEOUT_MS, maxAttempts: 1 })); }
+  try { await notify(() => acknowledge(acknowledgementOptions())); }
   finally { release(); }
   return true;
 }
 
 async function notify(send) { try { await send(); } catch {} }
+
+function acknowledgementOptions() {
+  return { signal: AbortSignal.timeout(JM_ACK_TIMEOUT_MS), timeoutMs: JM_ACK_TIMEOUT_MS, maxAttempts: 1 };
+}
 
 export function parsePrivateJmCommand(ctx, options) {
   const text = ctx?.text || ctx?.rawText;

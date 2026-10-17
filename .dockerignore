@@ -32,5 +32,6 @@ launcher-background.json
 **/mcp-services.json
 **/.mcp-secrets.json
 **/tool-settings.json
+**/jm-maintenance.json
 **/.user-salt
 **/usage-????-??-??.jsonl

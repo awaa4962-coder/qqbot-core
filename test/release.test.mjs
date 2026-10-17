@@ -73,7 +73,7 @@ function makeTempProject(t) {
 
 describe("release forbidden paths", () => {
   it("detects private config and runtime data", () => {
-    for (const filename of ["mcp-services.json", ".mcp-secrets.json", "tool-settings.json"]) {
+    for (const filename of ["mcp-services.json", ".mcp-secrets.json", "tool-settings.json", "jm-maintenance.json"]) {
       assert.equal(isForbiddenPath(filename), true);
       assert.equal(isForbiddenPath("bridge/" + filename), true);
       assert.equal(isForbiddenPath("launcher/QQFriendLauncher/Web/" + filename), true);

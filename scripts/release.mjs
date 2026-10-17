@@ -67,6 +67,7 @@ const FORBIDDEN_NAMES = new Set([
   "mcp-services.json",
   ".mcp-secrets.json",
   "tool-settings.json",
+  "jm-maintenance.json",
   ".user-salt",
   "openclaw-workspace-state.json",
   "launcher-config.json",
