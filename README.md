@@ -16,7 +16,7 @@
 
 QQFriend powers the Yexing QQ bot. It receives messages through NapCat / OneBot 11 and combines the current conversation, quoted sources, and personal memory to answer questions. It also handles images, group reports, link previews, and stickers. When enabled, bounded tools can search public information, read current attachments, calculate results, and prepare personal reminders. Personal changes and reminders require a separate confirmation from their owner. Services, model routes, allowlists, and task status are managed through a Chinese web console.
 
-> **Linux 2.1.0 is the latest validated and deployed release.** Use [v2.1.0](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.1.0) for deployment and `agent/linux-server-preview` for development. The tag and source ZIP match the tested running source; later documentation commits do not rebuild that image. `master` retains legacy code; its README is an overview, not a deployment source. Existing Windows installations are frozen. Accounts, credentials, and chat data are not migrated automatically.
+> **Linux 2.1.1 is released and deployed.** Use [v2.1.1](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.1.1) for deployment and `agent/linux-server-preview` for development. Source `29bde4e`, source ZIP `2528929a`, and running image `0bfd02c0` were verified together. Tags and source ZIPs identify tested frozen sources; later documentation commits do not rebuild their images. `master` retains legacy code; its README is an overview, not a deployment source. Existing Windows installations are frozen. Accounts, credentials, and chat data are not migrated automatically.
 
 ## Features
 
@@ -37,6 +37,8 @@ Ordinary-chat interjections use a fixed 10% trigger probability, independent of 
 Sticker replies run after a confirmed text reply. Their default trigger probability is 50% for both ordinary and strong-context replies, without an additional passive-chat discount. Allowlists, switches, cooldown, usable send materials, and semantic matching still apply: this does not guarantee an image on half of all replies. The sticker page separates skipped, shadow, cancelled, failed, unknown, partial, and confirmed-send outcomes. Unknown or partially confirmed deliveries are not replayed as replacement images.
 
 Protocol adapters cover OpenAI Chat / Responses, Anthropic, and Gemini. A working endpoint does not guarantee that every model supports vision, native tools, or all reasoning parameters. Capabilities depend on the configured endpoint and actual verification.
+
+JM uses a single clock from command acceptance: one progress notice at 60 seconds, cancellation at 90 seconds across download/archive/upload, and feedback requests within 120 seconds. Images use short request timeouts and at most two attempts rather than repeating an absolute CDN URL across API mirrors. Incomplete resources are never sent as complete archives. Unknown QQ upload outcomes are not replayed. This bounds processing and feedback attempts, not delivery by an unreachable QQ service or successful downloading of arbitrary resource sizes.
 
 ## Bounded Agent Tools
 
@@ -92,7 +94,7 @@ Requires Docker Engine and Docker Compose v2. The verified deployment target is 
 ### 1. Get the Release and Initialize
 
 ```bash
-git clone --branch v2.1.0 --depth 1 https://github.com/awaa4962-coder/qqbot-core.git qqfriend
+git clone --branch v2.1.1 --depth 1 https://github.com/awaa4962-coder/qqbot-core.git qqfriend
 cd qqfriend/deploy/linux
 bash prepare.sh
 ```
@@ -209,7 +211,7 @@ npm run replay:check
 
 `release:check` already includes dependency, lint, test, and runtime checks. Do not rerun the full suite just to collect counts for the same candidate. Real model probes may incur charges, require separate explicit authorization, and are not triggered by offline checks.
 
-The actual Linux validation snapshot for [2.1.0](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.1.0) is **3457 tests / 3413 passed / 44 optional-environment skips / 0 failures**, with ESLint 0 errors / 0 warnings, 13 offline replay checks passed, and 350 runtime files matching frozen source `04dfeaf`. Same-source GitHub CI passed. A fresh restricted backup parsed 211 JSON files and passed isolated restore checks before the tested image was deployed. Live health/readiness, NapCat, JM dependencies/FS, effective tool settings, empty default MCP, and console assets passed readonly postchecks. Skips are not passes; engineering checks do not prove natural reply frequency, sticker delivery, model understanding, or third-party MCP safety. These are release-specific results, not a permanent guarantee. Cache benefits must be observed under normal traffic; prompts are not padded and paid warm-up requests are not used to manufacture hit rates or savings claims.
+The actual Linux validation snapshot for [2.1.1](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.1.1) is **3538 tests / 3494 passed / 44 optional-environment skips / 0 failures**, with ESLint 0 errors / 0 warnings, 13 offline replay checks passed, and 352 runtime files matching frozen source `29bde4e`. Same-source GitHub CI passed. A fresh restricted backup parsed 247 JSON files and passed isolated restore checks before the tested image was deployed. Live health/readiness, NapCat, JM dependencies/FS, timing settings, maintenance removal, effective tool settings, empty default MCP, and console assets passed readonly postchecks. Earlier operator failures remain recorded; finalization did not restart or replay the running candidate. Skips are not passes; engineering checks do not prove real download throughput, QQ delivery, model understanding, or third-party MCP safety. These are release-specific results, not a permanent guarantee. Cache benefits must be observed under normal traffic; prompts are not padded and paid warm-up requests are not used to manufacture hit rates or savings claims.
 
 | Document | Contents |
 | --- | --- |
