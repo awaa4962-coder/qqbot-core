@@ -16,11 +16,11 @@
 
 QQFriend powers the Yexing QQ bot. It receives messages through NapCat / OneBot 11 and combines the current conversation, quoted sources, and personal memory to answer questions. It also handles images, group reports, link previews, and stickers. When enabled, bounded tools can search public information, read current attachments, calculate results, and prepare personal reminders. Personal changes and reminders require a separate confirmation from their owner. Services, model routes, allowlists, and task status are managed through a Chinese web console.
 
-> **Linux 2.1.1 is released and deployed.** Use [v2.1.1](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.1.1) for deployment and `agent/linux-server-preview` for development. Source `29bde4e`, source ZIP `2528929a`, and running image `0bfd02c0` were verified together. Tags and source ZIPs identify tested frozen sources; later documentation commits do not rebuild their images. `master` retains legacy code; its README is an overview, not a deployment source. Existing Windows installations are frozen. Accounts, credentials, and chat data are not migrated automatically.
+> **Linux 2.1.2 is released and deployed.** Use [v2.1.2](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.1.2) for deployment and `agent/linux-server-preview` for development. Source `f69b893`, source ZIP `1d5e9453`, and running image `9aceeeba` were verified together. Tags and source ZIPs identify tested frozen sources; later documentation commits do not rebuild their images. `master` retains legacy code; its README is an overview, not a deployment source. Existing Windows installations are frozen. Accounts, credentials, and chat data are not migrated automatically.
 
 ## Features
 
-The 2.1.2 development candidate changes JM metadata/image requests to the dependency's persistent session, reusing connections and cookies within a task. Default discovery, cookie initialization, concurrency and 60/90/120-second bounds remain unchanged. Numeric timing snapshots contain no resource URLs or titles; completed-request counts and cumulative parallel time are not final delivery proof or wall-clock percentages. This is a transport optimization candidate, not a claim of measured CDN throughput.
+Version 2.1.2 uses the dependency's persistent session for JM metadata/image requests, reusing connections and cookies within a task. A controlled 35-request comparison reduced TCP connections from 35 to 5 (metadata 3 to 1; images 32 to 4). Default discovery, cookie initialization, concurrency and 60/90/120-second bounds remain unchanged. Numeric timing snapshots contain no resource URLs or titles; completed-request counts and cumulative parallel time are not final delivery proof or wall-clock percentages. Real CDN throughput gains remain to be observed under natural traffic.
 
 | Capability | What it does |
 | --- | --- |
@@ -96,7 +96,7 @@ Requires Docker Engine and Docker Compose v2. The verified deployment target is 
 ### 1. Get the Release and Initialize
 
 ```bash
-git clone --branch v2.1.1 --depth 1 https://github.com/awaa4962-coder/qqbot-core.git qqfriend
+git clone --branch v2.1.2 --depth 1 https://github.com/awaa4962-coder/qqbot-core.git qqfriend
 cd qqfriend/deploy/linux
 bash prepare.sh
 ```
@@ -213,7 +213,7 @@ npm run replay:check
 
 `release:check` already includes dependency, lint, test, and runtime checks. Do not rerun the full suite just to collect counts for the same candidate. Real model probes may incur charges, require separate explicit authorization, and are not triggered by offline checks.
 
-The actual Linux validation snapshot for [2.1.1](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.1.1) is **3538 tests / 3494 passed / 44 optional-environment skips / 0 failures**, with ESLint 0 errors / 0 warnings, 13 offline replay checks passed, and 352 runtime files matching frozen source `29bde4e`. Same-source GitHub CI passed. A fresh restricted backup parsed 247 JSON files and passed isolated restore checks before the tested image was deployed. Live health/readiness, NapCat, JM dependencies/FS, timing settings, maintenance removal, effective tool settings, empty default MCP, and console assets passed readonly postchecks. Earlier operator failures remain recorded; finalization did not restart or replay the running candidate. Skips are not passes; engineering checks do not prove real download throughput, QQ delivery, model understanding, or third-party MCP safety. These are release-specific results, not a permanent guarantee. Cache benefits must be observed under normal traffic; prompts are not padded and paid warm-up requests are not used to manufacture hit rates or savings claims.
+The actual Linux validation snapshot for [2.1.2](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.1.2) is **3545 tests / 3501 passed / 44 optional-environment skips / 0 failures**, with ESLint 0 errors / 0 warnings, offline replay/smoke checks passed, and 352 runtime files matching frozen source `f69b893`. Same-source GitHub CI passed. A fresh restricted backup parsed 245 JSON files and passed isolated restore checks before the tested image was deployed. Live health/readiness, NapCat, JM dependencies/FS, timing settings, maintenance removal, effective tool settings, empty default MCP, and console assets passed readonly postchecks. Two preflight aborts remain recorded; a dependency-health probe was conservatively counted as a worker. Refreshing main-process health and waiting for the unchanged idle check resolved the timing conflict without excluding processes or relaxing guards. Only the final attempt stopped and replaced the incumbent. Documentation synchronization does not restart or replay the running candidate. Skips are not passes; engineering checks do not prove real download throughput, QQ delivery, model understanding, or third-party MCP safety. These are release-specific results, not a permanent guarantee. Cache benefits must be observed under normal traffic; prompts are not padded and paid warm-up requests are not used to manufacture hit rates or savings claims.
 
 | Document | Contents |
 | --- | --- |
