@@ -29,7 +29,7 @@ const TEST_FRIEND_WHITELIST = [3000000001, 3000000002];
 const TEST_BOT_BLACKLIST = [4000000001];
 const TEST_LONG_GROUPS = ['2000000005', '2000000003'];
 const DEFAULT_RESOURCE_MAX_BYTES = 500 * 1024 * 1024;
-const DEFAULT_JM_TIMEOUT_MS = 30 * 60 * 1000;
+const DEFAULT_JM_TIMEOUT_MS = 90 * 1000;
 const DEFAULT_JM_ZIP_PASSWORD = 'FS';
 const DEFAULT_JMCOMIC_SRC = path.join(ROOT, 'runtime_deps', 'jmcomic', 'src');
 
@@ -255,7 +255,7 @@ export const CFG = {
   jmPython: readJmPython(),
   jmcomicSrc: readJmcomicSrc(),
   jmDomains: parseList(process.env.QQBOT_JM_DOMAINS || ''),
-  jmTimeoutMs: Number(process.env.QQBOT_JM_TIMEOUT_MS || DEFAULT_JM_TIMEOUT_MS),
+  jmTimeoutMs: readBoundedNumber('QQBOT_JM_TIMEOUT_MS', DEFAULT_JM_TIMEOUT_MS, 1000, DEFAULT_JM_TIMEOUT_MS),
   jmZipPassword: readJmZipPassword(),
   jmSevenZipPath: String(process.env.QQBOT_7Z_PATH || '').trim(),
   linkPreviewEnabled: readBooleanEnv('QQBOT_LINK_PREVIEW_ENABLED', true),

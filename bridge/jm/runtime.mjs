@@ -4,8 +4,10 @@ import { findUsableSevenZip } from "../seven-zip.mjs";
 import { log, logE } from "../logger.mjs";
 import { monotonicNow } from "../runtime-clock.mjs";
 import { spawn, spawnSync } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 
 export const RESULT_PREFIX = "QQFRIEND_JM_RESULT ";
+export const PROGRESS_PREFIX = "QQFRIEND_JM_PROGRESS ";
 
 export let jmHealthCache = null;
 
@@ -25,9 +27,10 @@ export function runJmDownload(jmId, outputDir, options = {}) {
   return runPythonJson({
     command: CFG.jmPython,
     args: [script, "--id", String(jmId), "--out", outputDir],
-    env: buildJmDownloadEnv(),
+    env: { ...buildJmDownloadEnv(), QQBOT_JM_AUTO_INSTALL: "0" },
     timeoutMs: options.timeoutMs || CFG.jmTimeoutMs,
     signal: options.signal,
+    onProgress: options.onProgress,
   });
 }
 
@@ -176,13 +179,15 @@ export function resetJmRuntimeHealthCache() {
   jmHealthPromise = null;
 }
 
-export async function runPythonJson({ command, args, env, timeoutMs, signal }) {
+export async function runPythonJson({ command, args, env, timeoutMs, signal, onProgress, spawnImpl = spawn }) {
   if (signal?.aborted) return { ok: false, reason: "timeout" };
   return await new Promise(resolve => {
-    const child = spawn(command, args, { env, windowsHide: true });
+    const detached = process.platform !== "win32";
+    const child = spawnImpl(command, args, { env, windowsHide: true, detached });
     let stdout = "";
     let stderr = "";
-    let settled = false;
+    let pendingLine = "", settled = false, stopped = false;
+    const outDecoder = new StringDecoder("utf8"), errDecoder = new StringDecoder("utf8");
     const finish = result => {
       if (settled) return;
       settled = true;
@@ -191,22 +196,57 @@ export async function runPythonJson({ command, args, env, timeoutMs, signal }) {
       resolve(result);
     };
     const abort = () => {
-      try { child.kill("SIGKILL"); } catch {}
-      finish({ ok: false, reason: "timeout" });
+      if (stopped || settled) return;
+      stopped = true;
+      try {
+        if (detached && Number.isSafeInteger(child.pid) && child.pid > 0) process.kill(-child.pid, "SIGKILL");
+        else child.kill("SIGKILL");
+      } catch {
+        try { child.kill("SIGKILL"); } catch { /* Keep the task locked until close confirms worker exit. */ }
+      }
     };
     const timer = setTimeout(abort, timeoutMs);
     timer.unref?.();
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) abort();
 
-    child.stdout.on("data", chunk => { stdout += chunk.toString("utf8"); });
-    child.stderr.on("data", chunk => { stderr += chunk.toString("utf8"); });
-    child.on("error", error => finish({ ok: false, reason: error.code === "ENOENT" ? "missing_dependency" : error.message }));
+    child.stdout.on("data", chunk => {
+      const text = outDecoder.write(chunk);
+      stdout = (stdout + text).slice(-1024 * 1024);
+      pendingLine += text;
+      let newline;
+      while ((newline = pendingLine.indexOf("\n")) >= 0) {
+        const line = pendingLine.slice(0, newline).trim();
+        pendingLine = pendingLine.slice(newline + 1);
+        if (!stopped && line.startsWith(PROGRESS_PREFIX)) dispatchJmProgress(line.slice(PROGRESS_PREFIX.length), onProgress);
+      }
+      if (pendingLine.length > 65536) pendingLine = "";
+    });
+    child.stderr.on("data", chunk => { stderr = (stderr + errDecoder.write(chunk)).slice(-1024 * 1024); });
+    child.on("error", error => {
+      // kill()/pipe errors do not prove process exit; keep the task lock until close.
+      if (stopped || (Number.isSafeInteger(child.pid) && child.pid > 0)) return;
+      finish({ ok: false, reason: error.code === "ENOENT" ? "missing_dependency" : "worker_start_failed" });
+    });
     child.on("close", code => {
       if (settled) return;
-      finish(parseRunnerResult(stdout, stderr, code));
+      stdout += outDecoder.end(); stderr += errDecoder.end();
+      finish(stopped ? { ok: false, reason: "timeout" } : parseRunnerResult(stdout, stderr, code));
     });
   });
+}
+
+function dispatchJmProgress(text, callback) {
+  try {
+    const value = JSON.parse(text);
+    if (!["preparing", "downloading"].includes(value.phase)) return;
+    const progress = { phase: value.phase };
+    for (const key of ["completed", "total", "bytes", "failed"]) {
+      if (key === "total" && value[key] === null) progress[key] = null;
+      else if (Number.isSafeInteger(value[key]) && value[key] >= 0) progress[key] = value[key];
+    }
+    callback?.(progress);
+  } catch { /* Ignore malformed progress without exposing downloader output. */ }
 }
 
 export function parseRunnerResult(stdout, stderr, code) {
@@ -220,20 +260,22 @@ export function parseRunnerResult(stdout, stderr, code) {
     try {
       const parsed = JSON.parse(line.slice(RESULT_PREFIX.length));
       if (parsed?.ok) return parsed;
-      return {
-        ok: false,
-        reason: parsed?.reason || "download_failed",
-        error: parsed?.error || "",
-        missing: parsed?.missing || [],
-        sourceReason: parsed?.sourceReason || "",
-      };
+      return normalizeRunnerFailure(parsed);
     } catch {}
   }
-  // Log context for debugging when result line is missing
-  const stdoutTail = stdout.split(/\r?\n/).slice(-10).join("\\n").slice(0, 800);
-  const stderrTail = stderr.slice(-500);
-  log("jm runner exit:", code, "stdout_last_lines:", stdoutTail, "stderr:", stderrTail);
+  log("jm runner exit:", code, "stdoutLength:", stdout.length, "stderrLength:", stderr.length);
   return { ok: false, reason: code === 0 ? "download_failed" : "missing_dependency" };
+}
+
+function normalizeRunnerFailure(parsed) {
+  const value = parsed && typeof parsed === "object" ? parsed : {};
+  const codes = Array.isArray(value.errorCodes) ? value.errorCodes : [value.error_category];
+  return {
+    ok: false, reason: value.reason || "download_failed", error: value.error || "",
+    missing: value.missing || [], sourceReason: value.sourceReason || "",
+    failedImages: value.failedImages ?? value.failed_images, failedPhotos: value.failedPhotos ?? value.failed_photos,
+    errorCodes: codes.filter(code => typeof code === "string" && /^[a-z_]{1,32}$/.test(code)).slice(0, 8),
+  };
 }
 
 export function parseHealthResult(stdout) {

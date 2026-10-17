@@ -12,8 +12,13 @@ const SEND_DELAY_MS = 300;
 const DEFAULT_SEND_ATTEMPTS = 2;
 const DEFAULT_RETRY_DELAY_MS = 700;
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+function sleep(ms, signal) {
+  return new Promise(resolve => {
+    if (signal?.aborted) { resolve(); return; }
+    const finish = () => { clearTimeout(timer); signal?.removeEventListener("abort", finish); resolve(); };
+    const timer = setTimeout(finish, ms);
+    signal?.addEventListener("abort", finish, { once: true });
+  });
 }
 
 export function normalizeOutboundText(text) {
@@ -87,6 +92,8 @@ export async function sendTextToGroup({
   maxAttempts = DEFAULT_SEND_ATTEMPTS,
   retryDelayMs = DEFAULT_RETRY_DELAY_MS,
   stopReason,
+  signal,
+  timeoutMs,
 }) {
   const chunks = splitLongText(text, maxLen);
   if (!chunks.length) return null;
@@ -99,11 +106,11 @@ export async function sendTextToGroup({
     const result = await sendGroupPayload(
       { group_id: groupId, message },
       "sendMsg",
-      { maxAttempts, retryDelayMs, stopReason }
+      { maxAttempts, retryDelayMs, stopReason, signal, timeoutMs }
     );
     results.push(result);
     if (!isOutboundPayloadSuccessful(result)) break;
-    if (i < chunks.length - 1) await sleep(SEND_DELAY_MS);
+    if (i < chunks.length - 1) await sleep(SEND_DELAY_MS, signal);
   }
   return results.length <= 1 ? (results[0] || null) : results;
 }
@@ -115,6 +122,8 @@ export async function sendTextToPrivate({
   maxAttempts = DEFAULT_SEND_ATTEMPTS,
   retryDelayMs = DEFAULT_RETRY_DELAY_MS,
   stopReason,
+  signal,
+  timeoutMs,
 }) {
   const chunks = splitLongText(text, maxLen);
   if (!chunks.length) return null;
@@ -126,11 +135,11 @@ export async function sendTextToPrivate({
     const result = await sendPrivatePayload(
       { user_id: userId, message },
       "sendPrivateMsg",
-      { maxAttempts, retryDelayMs, stopReason }
+      { maxAttempts, retryDelayMs, stopReason, signal, timeoutMs }
     );
     results.push(result);
     if (!isOutboundPayloadSuccessful(result)) break;
-    if (i < chunks.length - 1) await sleep(SEND_DELAY_MS);
+    if (i < chunks.length - 1) await sleep(SEND_DELAY_MS, signal);
   }
   return results.length <= 1 ? (results[0] || null) : results;
 }
@@ -159,7 +168,7 @@ async function sendPayloadWithRetry({ url, payload, label, options, surface }) {
     usedAttempts = attempt;
     markOutboundAttempt();
     traceSendStarted(attempt, start);
-    const outcome = await sendPayloadOnce(url, payload);
+    const outcome = await sendPayloadOnce(url, payload, options);
     lastResult = outcome.result;
     lastError = outcome.error;
     if (outcome.ok) {
@@ -172,7 +181,7 @@ async function sendPayloadWithRetry({ url, payload, label, options, surface }) {
     if (!outcome.retryable) break;
     if (attempt < attempts) {
       log(label + " retry:", attempt + 1, "of", attempts);
-      await sleep(retryDelayMs);
+      await sleep(retryDelayMs, options.signal);
     }
   }
   logE(label + " failed:", lastError || "unknown error");
@@ -201,17 +210,19 @@ function checkSendStart(options, surface, payload) {
 }
 
 function commandStopReason(options) {
+  if (options.signal?.aborted) return "cancelled";
   try { return options.stopReason?.() || ""; }
   catch { return "privacy_changed"; }
 }
 
-async function sendPayloadOnce(url, payload) {
+async function sendPayloadOnce(url, payload, options) {
   try {
+    if (options.signal?.aborted) return { ok: false, result: { status: "cancelled" }, retryable: false, error: "cancelled" };
     const response = await fetch(url, {
       method: "POST",
       headers: buildNapCatHeaders({ "Content-Type": "application/json; charset=utf-8" }),
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(15000),
+      signal: sendAbortSignal(options),
     });
     const result = await response.json();
     const httpOk = response.ok !== false;
@@ -227,6 +238,13 @@ async function sendPayloadOnce(url, payload) {
     recordChatSendReceipt("unknown");
     return unconfirmedSend(error.name || "transport_failed");
   }
+}
+
+function sendAbortSignal(options) {
+  const requested = Number(options.timeoutMs);
+  const duration = Number.isFinite(requested) && requested > 0 ? Math.max(1, Math.min(15000, Math.trunc(requested))) : 15000;
+  const timeout = AbortSignal.timeout(duration);
+  return options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
 }
 
 function unconfirmedSend(error) {

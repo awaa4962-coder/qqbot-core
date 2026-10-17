@@ -1,18 +1,25 @@
 import argparse
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 import json
 import os
 import subprocess
 import sys
-import traceback
+from threading import Lock
+import time
+from types import MethodType
 
 RESULT_PREFIX = "QQFRIEND_JM_RESULT "
+PROGRESS_PREFIX = "QQFRIEND_JM_PROGRESS "
+PROTOCOL_STDOUT = sys.stdout
+REQUEST_TIMEOUT = (3, 8)
+IMAGE_ATTEMPTS = 2
 JM_DEPENDENCIES = [
-    "jmcomic",
-    "curl_cffi",
-    "commonX",
-    "PyYAML",
-    "Pillow",
-    "pycryptodome",
+    "jmcomic==2.7.4",
+    "curl_cffi==0.16.0",
+    "commonX==0.6.40",
+    "PyYAML==6.0.3",
+    "Pillow==12.3.0",
+    "pycryptodome==3.23.0",
 ]
 JM_REQUIREMENTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "requirements-jm.txt")
 JM_REQUIRED_SOURCE_FILES = [
@@ -25,7 +32,14 @@ JM_REQUIRED_SOURCE_FILES = [
 
 
 def emit(payload):
-    print(RESULT_PREFIX + json.dumps(payload, ensure_ascii=False), flush=True)
+    print(RESULT_PREFIX + json.dumps(payload, ensure_ascii=False), file=PROTOCOL_STDOUT, flush=True)
+
+
+@contextmanager
+def quiet_dependencies():
+    # Worker-thread tracebacks and dependency logs may contain signed URLs.
+    with open(os.devnull, "w") as sink, redirect_stdout(sink), redirect_stderr(sink):
+        yield
 
 
 def jm_source_status():
@@ -79,7 +93,7 @@ def install_jm_dependencies():
         command.extend(["--requirement", JM_REQUIREMENTS_FILE])
     else:
         command.extend(JM_DEPENDENCIES)
-    subprocess.check_call(command)
+    subprocess.check_call(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def load_jmcomic():
@@ -95,7 +109,7 @@ def classify_import_failure(source_status, error_text):
     return "jmcomic_import_failed"
 
 
-def import_jmcomic():
+def import_jmcomic(allow_install=True):
     source_status = jm_source_status()
     add_optional_source_path(source_status)
     first_error = ""
@@ -110,8 +124,7 @@ def import_jmcomic():
                 return load_jmcomic()
             except Exception as installed_exc:
                 first_error = first_error + " | installed: " + type(installed_exc).__name__ + ": " + str(installed_exc)
-        if auto_install_enabled():
-            print("QQFRIEND_JM_DEPENDENCY_INSTALL start", file=sys.stderr, flush=True)
+        if allow_install and auto_install_enabled():
             try:
                 install_jm_dependencies()
                 clear_jmcomic_modules()
@@ -121,7 +134,14 @@ def import_jmcomic():
         emit({
             "ok": False,
             "reason": classify_import_failure(source_status, first_error),
-            "error": first_error,
+            "error": "JM runtime dependencies are unavailable.",
+            "error_category": "dependency",
+            "files": 0,
+            "bytes": 0,
+            "all_success": False,
+            "failed": 0,
+            "failed_images": 0,
+            "failed_photos": 0,
             "sourceReason": source_status.get("reason"),
             "missing": source_status.get("missing", []),
         })
@@ -156,7 +176,7 @@ def build_option(JmOption, output_dir):
             },
         },
         "client": {
-            "cache": None,
+            "cache": True,
             "impl": "api",
             "domain": parse_jm_domains(),
             "postman": {
@@ -165,14 +185,171 @@ def build_option(JmOption, output_dir):
                     "impersonate": "chrome",
                     "headers": None,
                     "proxies": None,
+                    "timeout": REQUEST_TIMEOUT,
                 },
             },
-            "retry_times": 5,
+            "retry_times": 1,
         },
         "plugins": {
             "valid": "log",
         },
     })
+
+
+def bound_image_requests(client):
+    original_request = client.request_with_retry
+
+    def request_with_retry(self, request, url, domain_index=0, retry_count=0,
+                           is_image=False, **kwargs):
+        if not is_image:
+            return original_request(request, url, domain_index, retry_count, is_image, **kwargs)
+
+        # Image URLs already select a CDN. API mirrors cannot repair that host.
+        self.update_request_with_specify_domain(kwargs, None, True)
+        kwargs["timeout"] = REQUEST_TIMEOUT
+        for attempt in range(IMAGE_ATTEMPTS):
+            try:
+                return self.raise_if_resp_should_retry(request(url, **kwargs), True)
+            except Exception:
+                if attempt + 1 == IMAGE_ATTEMPTS:
+                    raise
+
+    client.request_with_retry = MethodType(request_with_retry, client)
+    return client
+
+
+class DownloadProgress:
+    def __init__(self, clock=time.monotonic):
+        self.clock = clock
+        self.lock = Lock()
+        self.phase = "preparing"
+        self.completed = 0
+        self.total = None
+        self.bytes = 0
+        self.failed_images = 0
+        self.failed_photos = 0
+        self.photo_count = None
+        self.photos = {}
+        self.paths = set()
+        self.downloader = None
+        self.last_emit = None
+
+    def _publish(self, force=False):
+        now = self.clock()
+        if not force and self.last_emit is not None and now - self.last_emit < 0.5:
+            return
+        payload = {
+            "phase": self.phase,
+            "completed": self.completed,
+            "total": self.total,
+            "bytes": self.bytes,
+            "failed": self.failed_images + self.failed_photos,
+        }
+        print(PROGRESS_PREFIX + json.dumps(payload), file=PROTOCOL_STDOUT, flush=True)
+        self.last_emit = now
+
+    def publish(self, phase=None, force=False):
+        with self.lock:
+            changed = phase is not None and self.phase != phase
+            if phase is not None:
+                self.phase = phase
+            self._publish(force or changed)
+
+    def before_album(self, album):
+        with self.lock:
+            self.photo_count = len(album)
+            self.phase = "downloading"
+            self._publish(True)
+
+    def before_photo(self, photo):
+        with self.lock:
+            self.photos[id(photo)] = len(photo)
+            # Album page_count is not a substitute for fetched chapter manifests.
+            if self.photo_count is not None and len(self.photos) == self.photo_count:
+                self.total = sum(self.photos.values())
+            self._publish()
+
+    def after_image(self, path):
+        size = os.path.getsize(path)
+        if size <= 0:
+            raise ValueError("Empty image output")
+        with self.lock:
+            path = os.path.abspath(path)
+            if path not in self.paths:
+                self.paths.add(path)
+                self.completed += 1
+                self.bytes += size
+            self._publish()
+
+    def refresh_failures(self, downloader):
+        with self.lock:
+            self.failed_images = len(downloader.download_failed_image)
+            self.failed_photos = len(downloader.download_failed_photo)
+            self._publish()
+
+
+def progress_downloader(JmDownloader, progress):
+    class ProgressDownloader(JmDownloader):
+        def __init__(self, option):
+            super().__init__(option)
+            progress.downloader = self
+
+        def create_client(self):
+            return bound_image_requests(super().create_client())
+
+        def before_album(self, album):
+            super().before_album(album)
+            progress.before_album(album)
+
+        def before_photo(self, photo):
+            super().before_photo(photo)
+            progress.before_photo(photo)
+
+        def after_image(self, image, img_save_path):
+            super().after_image(image, img_save_path)
+            progress.after_image(img_save_path)
+
+        def download_by_image_detail(self, image):
+            try:
+                return super().download_by_image_detail(image)
+            finally:
+                progress.refresh_failures(self)
+
+        def download_by_photo_detail(self, photo):
+            try:
+                return super().download_by_photo_detail(photo)
+            finally:
+                progress.refresh_failures(self)
+
+    return ProgressDownloader
+
+
+def error_category(exc):
+    names = {cls.__name__.lower() for cls in type(exc).__mro__}
+    if any("timeout" in name for name in names):
+        return "timeout"
+    if any("connection" in name or "request" in name or "curl" in name for name in names):
+        return "network"
+    if any("image" in name or "unidentified" in name for name in names):
+        return "image"
+    if isinstance(exc, OSError):
+        return "filesystem"
+    return "download"
+
+
+def failure_result(progress, category, files=0, bytes_total=0):
+    return {
+        "ok": False,
+        "reason": "download_failed",
+        "error": "JM download failed or is incomplete.",
+        "error_category": category,
+        "files": files,
+        "bytes": bytes_total,
+        "all_success": False,
+        "failed": progress.failed_images + progress.failed_photos,
+        "failed_images": progress.failed_images,
+        "failed_photos": progress.failed_photos,
+    }
 
 
 def summarize(root):
@@ -195,7 +372,8 @@ def main():
     args = parser.parse_args()
 
     if args.check:
-        import_jmcomic()
+        with quiet_dependencies():
+            import_jmcomic()
         emit({
             "ok": True,
             "reason": "runtime_ok",
@@ -207,24 +385,46 @@ def main():
     if not args.id or not args.out:
         parser.error("--id and --out are required unless --check is used")
 
-    os.makedirs(args.out, exist_ok=True)
-    JmOption, download_album = import_jmcomic()
-
+    progress = DownloadProgress()
+    progress.publish(force=True)
     try:
-        option = build_option(JmOption, args.out)
-        album, downloader = download_album(args.id, option=option, check_exception=True)
-        files, bytes_total = summarize(args.out)
+        with quiet_dependencies():
+            os.makedirs(args.out, exist_ok=True)
+            JmOption, download_album = import_jmcomic(allow_install=False)
+            from jmcomic import JmDownloader
+            option = build_option(JmOption, args.out)
+            album, downloader = download_album(
+                args.id, option=option, check_exception=True,
+                downloader=progress_downloader(JmDownloader, progress),
+            )
+            progress.refresh_failures(downloader)
+            files, bytes_total = summarize(args.out)
+            complete = (
+                bool(downloader.all_success)
+                and progress.failed_images == 0 and progress.failed_photos == 0
+                and progress.total is not None and progress.total > 0
+                and all(count > 0 for count in progress.photos.values())
+                and progress.completed == progress.total == files
+                and bytes_total == progress.bytes and bytes_total > 0
+            )
+        progress.publish(force=True)
+        if not complete:
+            emit(failure_result(progress, "incomplete", files, bytes_total))
+            raise SystemExit(1)
+        progress.publish(phase="preparing", force=True)
         emit({
             "ok": True,
             "id": str(args.id),
             "title": getattr(album, "name", ""),
             "files": files,
             "bytes": bytes_total,
-            "all_success": bool(getattr(downloader, "all_success", False)),
+            "all_success": True,
         })
     except Exception as exc:
-        traceback.print_exc()
-        emit({"ok": False, "reason": "download_failed", "error": str(exc)})
+        if progress.downloader is not None:
+            progress.refresh_failures(progress.downloader)
+        progress.publish(force=True)
+        emit(failure_result(progress, error_category(exc), progress.completed, progress.bytes))
         raise SystemExit(1)
 
 

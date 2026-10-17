@@ -4,8 +4,8 @@ import { logE } from './logger.mjs';
 import { normalizeMsg, cleanText } from './context/messages.mjs';
 import { fetchSafeText, validateSafeUrl } from './safe-url.mjs';
 import { buildNapCatHeaders } from './napcat-auth.mjs';
-import { uploadFileToNapCat } from './napcat-stream.mjs';
-import { isOneBotResponseSuccessful } from './onebot-receipt.mjs';
+import { createUploadScope, uploadFileToNapCat } from './napcat-stream.mjs';
+import { classifyOneBotReceipt, isOneBotResponseSuccessful } from './onebot-receipt.mjs';
 import {
   normalizeOutboundText,
   isOutboundPayloadSuccessful,
@@ -222,53 +222,65 @@ export async function sendPrivateMsg(user_id, message, options = {}) {
 }
 
 export async function uploadGroupFile(groupId, filePath, name, options = {}) {
-  try {
-    const uploadPath = await resolveNapCatUploadPath(filePath, name, options);
-    const fetchImpl = options.fetchImpl || fetch;
-    const r = await fetchImpl(CFG.napcatApi + '/upload_group_file', {
-      method: 'POST',
-      headers: buildNapCatHeaders(
-        { 'Content-Type': 'application/json; charset=utf-8' },
-        { token: options.token }
-      ),
-      body: JSON.stringify({
-        group_id: groupId,
-        file: uploadPath,
-        name: name,
-      }),
-      signal: AbortSignal.timeout(60000),
-    });
-    const d = await r.json();
-    return r.ok === false ? { status: 'unknown', delivery: 'unconfirmed' } : d;
-  } catch (e) {
-    logE('uploadGroupFile error:', e.message);
-    return null;
-  }
+  return uploadQQFile('upload_group_file', { group_id: groupId }, filePath, name, options);
 }
 
 export async function uploadPrivateFile(userId, filePath, name, options = {}) {
+  return uploadQQFile('upload_private_file', { user_id: userId }, filePath, name, options);
+}
+
+async function uploadQQFile(action, recipient, filePath, name, options) {
+  const scope = createUploadScope(options);
+  let httpScope;
+  let uploadDispatched = false;
   try {
-    const uploadPath = await resolveNapCatUploadPath(filePath, name, options);
+    scope.check();
+    const uploadPath = await scope.run(() => resolveNapCatUploadPath(filePath, name, {
+      ...options, signal: scope.signal, totalTimeoutMs: undefined,
+    }, scope));
+    scope.check();
     const fetchImpl = options.fetchImpl || fetch;
-    const r = await fetchImpl(CFG.napcatApi + '/upload_private_file', {
+    const timeoutMs = Number(options.timeoutMs ?? 60000);
+    httpScope = createUploadScope({ signal: scope.signal,
+      totalTimeoutMs: Number.isFinite(timeoutMs) ? Math.max(0, timeoutMs) : 60000 }, scope);
+    const request = {
       method: 'POST',
       headers: buildNapCatHeaders(
         { 'Content-Type': 'application/json; charset=utf-8' },
         { token: options.token }
       ),
-      body: JSON.stringify({
-        user_id: userId,
-        file: uploadPath,
-        name: name,
-      }),
-      signal: AbortSignal.timeout(60000),
+      body: JSON.stringify({ ...recipient, file: uploadPath, name }),
+      signal: httpScope.signal,
+    };
+    const r = await httpScope.run(() => {
+      options.onRequestDispatched?.();
+      httpScope.check();
+      uploadDispatched = true;
+      return fetchImpl(CFG.napcatApi + '/' + action, request);
     });
-    const d = await r.json();
-    return r.ok === false ? { status: 'unknown', delivery: 'unconfirmed' } : d;
-  } catch (e) {
-    logE('uploadPrivateFile error:', e.message);
+    const d = await httpScope.run(() => r.json());
+    httpScope.check();
+    return r.ok === false || classifyOneBotReceipt(d, { allowIdOnly: false }) === 'unknown'
+      ? unconfirmedUpload() : d;
+  } catch (error) {
+    if (uploadDispatched) return unconfirmedUpload();
+    if (scope.signal.aborted || httpScope?.signal.aborted || isUploadCancellation(error)) {
+      return { status: 'cancelled', uploadDispatched: false };
+    }
+    logE('NapCat file upload error: request failed');
     return null;
+  } finally {
+    httpScope?.dispose();
+    scope.dispose();
   }
+}
+
+function unconfirmedUpload() {
+  return { status: 'unknown', delivery: 'unconfirmed', uploadDispatched: true };
+}
+
+function isUploadCancellation(error) {
+  return error?.name === 'AbortError' || error?.name === 'TimeoutError' || error?.code === 'ABORT_ERR';
 }
 
 export async function getGroupMemberInfo(groupId, userId) {
@@ -289,15 +301,19 @@ export async function getGroupMemberInfo(groupId, userId) {
   return null;
 }
 
-async function resolveNapCatUploadPath(filePath, name, options = {}) {
+async function resolveNapCatUploadPath(filePath, name, options = {}, scope) {
+  options.signal?.throwIfAborted();
   const wsUrl = String(options.wsUrl ?? CFG.napcatWsApi ?? '').trim();
   if (!wsUrl) return filePath;
   try {
     const streamUploader = options.streamUploader || uploadFileToNapCat;
-    const uploaded = await streamUploader(filePath, { filename: name, wsUrl, token: options.token });
+    const uploaded = await streamUploader(filePath, { ...options, filename: name, wsUrl }, scope);
+    options.signal?.throwIfAborted();
     return uploaded.filePath;
   } catch (error) {
-    logE('NapCat stream upload error:', error.message);
+    options.signal?.throwIfAborted();
+    if (isUploadCancellation(error)) throw error;
+    logE('NapCat stream upload error: transfer failed');
     if (options.streamRequired ?? CFG.napcatStreamRequired) throw error;
     return filePath;
   }

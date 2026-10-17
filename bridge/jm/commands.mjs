@@ -7,6 +7,8 @@ import { runJmDownload } from "./runtime.mjs";
 import { sendMsg, sendPrivateMsg, uploadGroupFile, uploadPrivateFile } from "../napcat.mjs";
 import { transferJmToGroup, transferJmToPrivate } from "./transfer.mjs";
 import { zipDirectory } from "./archive.mjs";
+import { monotonicNow } from "../runtime-clock.mjs";
+import { JM_ACK_TIMEOUT_MS, JM_MAX_RESPONSE_MS } from "./deadline.mjs";
 
 export const JM_RE = /^jm\s*([0-9]{3,})$/i;
 
@@ -37,11 +39,13 @@ export async function handleJmTransferCommand(ctx, options = {}) {
   }
 
   return startJmTask({ jmId: parsed.jmId, kind: "group", eventKey: taskEventKey("group", ctx.group_id, ctx.message_id),
-    acknowledge: () => sender(ctx.group_id, "JM " + parsed.jmId + " 已开始下载，完成后会转发到群。", options.replyToId),
+    acknowledge: sendOptions => sender(ctx.group_id, "JM " + parsed.jmId + " 已开始下载，完成后会转发到群；60秒报进度，90秒超时停止。", options.replyToId, sendOptions),
     busy: () => sender(ctx.group_id, "已有 JM 下载任务在运行，请等当前任务完成后再试。", options.replyToId),
     unavailable: () => sender(ctx.group_id, "JM 任务没能启动，请稍后检查运行状态。", options.replyToId),
     duplicate: () => sender(ctx.group_id, "这条 JM 任务已经受理过，请先核实原任务结果，不会自动重做。", options.replyToId),
-    transfer: signal => transferJmToGroup({
+    transfer: (signal, timing) => transferJmToGroup({
+      ...timing,
+      timeoutMs: options.timeoutMs, progressDelayMs: options.progressDelayMs,
       jmId: parsed.jmId,
       groupId: ctx.group_id,
       replyToId: options.replyToId,
@@ -82,11 +86,13 @@ export async function handlePrivateJmTransferCommand(ctx, options = {}) {
   }
 
   return startJmTask({ jmId: parsed.jmId, kind: "private", eventKey: taskEventKey("private", ctx.user_id, ctx.message_id),
-    acknowledge: () => sender(ctx.user_id, "JM " + parsed.jmId + " 已开始下载，完成后会私聊发给你。"),
+    acknowledge: sendOptions => sender(ctx.user_id, "JM " + parsed.jmId + " 已开始下载，完成后会私聊发给你；60秒报进度，90秒超时停止。", sendOptions),
     busy: () => sender(ctx.user_id, "已有 JM 下载任务在运行，请等当前任务完成后再试。"),
     unavailable: () => sender(ctx.user_id, "JM 任务没能启动，请稍后检查运行状态。"),
     duplicate: () => sender(ctx.user_id, "这条 JM 任务已经受理过，请先核实原任务结果，不会自动重做。"),
-    transfer: signal => transferJmToPrivate({
+    transfer: (signal, timing) => transferJmToPrivate({
+      ...timing,
+      timeoutMs: options.timeoutMs, progressDelayMs: options.progressDelayMs,
       jmId: parsed.jmId,
       userId: ctx.user_id,
       startedNotice: false,
@@ -103,6 +109,7 @@ export async function handlePrivateJmTransferCommand(ctx, options = {}) {
 }
 
 async function startJmTask({ jmId, kind, eventKey, acknowledge, busy, unavailable, duplicate, transfer }) {
+  const startedAt = monotonicNow();
   try { if (jmTasks.hasEvent(eventKey)) { await notify(duplicate); return true; } }
   catch { await notify(unavailable); return true; }
   if (activeJmTask) { await notify(busy); return true; }
@@ -111,9 +118,13 @@ async function startJmTask({ jmId, kind, eventKey, acknowledge, busy, unavailabl
   activeJmTask = jmId;
   try {
     jmTasks.start({ scope: "jm", action: "transfer", meta: { kind, eventKey },
-      timeoutMs: Math.min(2_000_000_000, Math.max(300000, Number(CFG.jmTimeoutMs) || 1800000) + 900000), run: async ({ signal }) => {
+      timeoutMs: JM_MAX_RESPONSE_MS, run: async ({ signal, progress }) => {
       await gate;
-      try { return await transfer(signal); }
+      try {
+        signal.throwIfAborted();
+        progress("preparing");
+        return await transfer(signal, { startedAt, onPhase: state => progress(state.phase) });
+      }
       finally { activeJmTask = null; }
     } });
   } catch (error) {
@@ -121,7 +132,7 @@ async function startJmTask({ jmId, kind, eventKey, acknowledge, busy, unavailabl
     await notify(error.message === "后台任务已满，请稍后再试" || error.message === "已有 JM 下载任务在运行，请稍后再试。" ? busy : unavailable);
     return true;
   }
-  try { await notify(acknowledge); }
+  try { await notify(() => acknowledge({ signal: AbortSignal.timeout(JM_ACK_TIMEOUT_MS), timeoutMs: JM_ACK_TIMEOUT_MS, maxAttempts: 1 })); }
   finally { release(); }
   return true;
 }

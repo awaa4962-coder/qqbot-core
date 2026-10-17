@@ -4,11 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "2.1.0";
-export const VERSION_NAME = "autonomous-tool-runtime";
+export const VERSION = "2.1.1";
+export const VERSION_NAME = "jm-bounded-transfer";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
+  "2.1.1为JM统一受理后的全链时限：60秒未完成报告一次真实进度，90秒停止下载/打包/上传，反馈请求不超120秒；图片短超时及有界重试，不发缺图包。QQ已受理但回执未知时只提示核实，不自动重发；不保证任意资源都能在时限内成功。",
   "单一模块化注册表定义11项有限工具：记忆/状态查询、公开搜索与原文、计算、本轮附件、总结草稿/任务、本人资料草稿、提醒草稿和确认状态；不提供任意系统执行。",
   "命令与帮助按当前用户、群和权限展示；能力定义、运行状态与调用权限分别判断，配置存在不代表服务连通或用户获准执行。",
   "自述事实来自模块与命令清单；分层提示词保留本轮问题、图片、引用正文与来源，区分字面、已知情境和来源声明，不把消息来源核验当成作者意图或世界事实核验。",
@@ -26,6 +27,7 @@ export const VERSION_NOTES_ZH = Object.freeze([
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
+  "2.1.1 bounds JM from acceptance: one progress notice at 60 seconds, cancellation at 90 seconds across download/archive/upload, and feedback requests within 120 seconds. Short image timeouts and bounded retries never turn incomplete files into success. Unknown QQ delivery is not replayed; arbitrary resources are not guaranteed to finish within the budget.",
   "A single modular registry defines 11 limited tools: memory/status reads, public search/excerpts, calculation, current attachments, summary drafts/tasks, personal-change drafts, reminder drafts and action status. No arbitrary system execution is provided.",
   "Commands and help are scoped to the current user, group and permissions. Capability definitions, runtime state and invocation permissions are distinct; configured does not mean connected or authorized.",
   "Self facts come from module and command manifests. Layered prompts retain the current question, image, quoted body and source, separating literal meaning, supplied context and attributed claims. Message origin does not verify authorship, intent or world facts.",

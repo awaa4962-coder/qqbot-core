@@ -16,7 +16,7 @@
 
 QQFriend powers the Yexing QQ bot. It receives messages through NapCat / OneBot 11 and combines the current conversation, quoted sources, and personal memory to answer questions. It also handles images, group reports, link previews, and stickers. When enabled, bounded tools can search public information, read current attachments, calculate results, and prepare personal reminders. Personal changes and reminders require a separate confirmation from their owner. Services, model routes, allowlists, and task status are managed through a Chinese web console.
 
-> **Linux 2.1.0 is the latest validated and deployed release.** Use [v2.1.0](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.1.0) for deployment and `agent/linux-server-preview` for development. The tag and source ZIP match the tested running source; later documentation commits do not rebuild that image. `master` retains legacy code; its README is an overview, not a deployment source. Existing Windows installations are frozen. Accounts, credentials, and chat data are not migrated automatically.
+> **Linux 2.1.1 is the bounded-JM development candidate; 2.1.0 remains the deployed release until rollout is recorded.** Use [v2.1.0](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.1.0) for deployment and `agent/linux-server-preview` for development. Tags and source ZIPs identify tested frozen sources; later documentation commits do not rebuild their images. `master` retains legacy code; its README is an overview, not a deployment source. Existing Windows installations are frozen. Accounts, credentials, and chat data are not migrated automatically.
 
 ## Features
 
@@ -37,6 +37,8 @@ Ordinary-chat interjections use a fixed 10% trigger probability, independent of 
 Sticker replies run after a confirmed text reply. Their default trigger probability is 50% for both ordinary and strong-context replies, without an additional passive-chat discount. Allowlists, switches, cooldown, usable send materials, and semantic matching still apply: this does not guarantee an image on half of all replies. The sticker page separates skipped, shadow, cancelled, failed, unknown, partial, and confirmed-send outcomes. Unknown or partially confirmed deliveries are not replayed as replacement images.
 
 Protocol adapters cover OpenAI Chat / Responses, Anthropic, and Gemini. A working endpoint does not guarantee that every model supports vision, native tools, or all reasoning parameters. Capabilities depend on the configured endpoint and actual verification.
+
+JM's 2.1.1 candidate uses a single clock from command acceptance: one progress notice at 60 seconds, cancellation at 90 seconds across download/archive/upload, and feedback requests within 120 seconds. Images use short request timeouts and at most two attempts rather than repeating an absolute CDN URL across API mirrors. Incomplete resources are never sent as complete archives. Unknown QQ upload outcomes are not replayed. This bounds processing and feedback attempts, not delivery by an unreachable QQ service or successful downloading of arbitrary resource sizes.
 
 ## Bounded Agent Tools
 
