@@ -4,7 +4,8 @@ import path from "node:path";
 import { CFG } from "../config.mjs";
 import { JM_CLEANUP_DELAY_MS, JM_TEMP_PREFIX, activeJmTempDirs, scheduleJmTempCleanup } from "./temporary.mjs";
 import { buildJmTransferSuccessText, getJmZipPassword, summarizeDirectory, zipDirectory } from "./archive.mjs";
-import { logE } from "../logger.mjs";
+import { log, logE } from "../logger.mjs";
+import { monotonicNow } from "../runtime-clock.mjs";
 import { runJmDownload } from "./runtime.mjs";
 import { sendMsg, sendPrivateMsg, uploadGroupFile, uploadPrivateFile } from "../napcat.mjs";
 import { classifyOneBotReceipt, isOneBotResponseSuccessful } from "../onebot-receipt.mjs";
@@ -38,9 +39,13 @@ async function transferJm(options, destination) {
   const assertAllowed = options.assertAllowed || (() => {});
   let tempDir, downloadDir, timeoutNotice;
   let uploadMayBeSubmitted = false;
+  const timings = jmPhaseTimings(options.startedAt ?? monotonicNow());
   const progressController = new AbortController();
-  const budget = createJmDeadline({ startedAt: options.startedAt, timeoutMs: options.timeoutMs || CFG.jmTimeoutMs,
-    progressDelayMs: options.progressDelayMs, signal: options.signal, onPhase: options.onPhase,
+  const budget = createJmDeadline({ startedAt: timings.startedAt, timeoutMs: options.timeoutMs || CFG.jmTimeoutMs,
+    progressDelayMs: options.progressDelayMs, signal: options.signal, onPhase: state => {
+      timings.enter(state.phase);
+      options.onPhase?.(state);
+    },
     onProgress: async state => {
       if (progressController.signal.aborted || budget.signal.aborted) return;
       await sendJmNotice(destination, buildJmProgressText(state), options, budget, {
@@ -49,6 +54,7 @@ async function transferJm(options, destination) {
     },
     onDeadline: () => {
       progressController.abort();
+      timings.enter("cancelling");
       try { options.onPhase?.({ phase: "cancelling" }); } catch { /* Still report the deadline if task metadata is unavailable. */ }
       timeoutNotice = sendJmNotice(destination,
         jmErrorText(uploadMayBeSubmitted ? "upload_unconfirmed" : "job_timeout"), options, budget);
@@ -79,14 +85,13 @@ async function transferJm(options, destination) {
       onRequestDispatched: () => { budget.check(); assertAllowed(); uploadMayBeSubmitted = true; },
       onProgress: () => budget.progress({ phase: "uploading" }),
     });
+    uploadMayBeSubmitted = mayHaveSubmitted(uploadResult, uploadMayBeSubmitted);
     budget.check();
-    if (!uploadOk(uploadResult)) {
-      assertAllowed();
-      throw new Error(classifyOneBotReceipt(uploadResult) === "failed" ? "upload_failed" : "upload_unconfirmed");
-    }
+    requireUploadReceipt(uploadResult, uploadMayBeSubmitted, assertAllowed);
 
     budget.finish();
     progressController.abort();
+    timings.enter("notification");
     const noticeConfirmed = await sendJmNotice(destination, buildJmTransferSuccessText(options.jmId, summary, zipPassword), options, budget);
     return { ok: true, jmId: options.jmId, files: summary.files, bytes: summary.bytes, noticeConfirmed };
   } catch (error) {
@@ -96,15 +101,49 @@ async function transferJm(options, destination) {
       if (timeoutNotice) await timeoutNotice;
       return { ok: false, reason: uploadMayBeSubmitted ? "upload_unconfirmed" : "job_timeout" };
     }
-    return reportJmFailure(error, destination, options, budget);
+    if (options.signal?.aborted) return { ok: false, reason: uploadMayBeSubmitted ? "upload_unconfirmed" : "cancelled" };
+    timings.enter("notification");
+    return await reportJmFailure(uploadFailure(error, uploadMayBeSubmitted), destination, options, budget);
   } finally {
     budget.finish();
     progressController.abort();
+    log("jm transfer timings:", JSON.stringify(timings.finish()));
     if (tempDir) {
       activeJmTempDirs.delete(path.resolve(tempDir));
       scheduleJmTempCleanup(tempDir, options.cleanupDelayMs ?? JM_CLEANUP_DELAY_MS);
     }
   }
+}
+
+function mayHaveSubmitted(receipt, tracked) {
+  if (receipt?.uploadDispatched === true) return true;
+  return tracked && !(receipt?.status === "cancelled" && receipt.uploadDispatched === false);
+}
+
+function requireUploadReceipt(uploadResult, uploadMayBeSubmitted, assertAllowed) {
+  if (uploadOk(uploadResult)) return;
+  if (!uploadMayBeSubmitted) assertAllowed();
+  const rejected = !uploadMayBeSubmitted || classifyOneBotReceipt(uploadResult) === "failed";
+  if (rejected) throw Object.assign(new Error("upload_failed"), { code: "JM_UPLOAD_REJECTED" });
+  throw new Error("upload_unconfirmed");
+}
+
+function uploadFailure(error, mayBeSubmitted) {
+  return mayBeSubmitted && error?.code !== "JM_UPLOAD_REJECTED" ? new Error("upload_unconfirmed") : error;
+}
+
+function jmPhaseTimings(startedAt) {
+  const measured = {};
+  let phase = "preparing", milestone = startedAt;
+  function enter(next) {
+    if (next === phase) return;
+    const now = monotonicNow();
+    const key = phase + "Ms";
+    measured[key] = (measured[key] || 0) + Math.max(0, Math.round(now - milestone));
+    phase = next;
+    milestone = now;
+  }
+  return { startedAt, enter, finish: () => { enter("done"); return measured; } };
 }
 
 async function downloadJmArchive(options, budget, paths) {
@@ -114,10 +153,14 @@ async function downloadJmArchive(options, budget, paths) {
     timeoutMs: budget.remainingMs(), signal: budget.signal, onProgress: state => budget.progress(state),
   });
   budget.check();
-  if (!result.ok || result.all_success === false) throw jmDownloadError(result);
+  if (!result.ok) throw jmDownloadError(result);
+  if (result.all_success === false) throw new Error("incomplete_result");
   paths.assertAllowed();
   const summary = await summarizeDirectory(paths.downloadDir, { signal: budget.signal });
   if (summary.files <= 0) throw new Error("empty_result");
+  if (["files", "bytes"].some(key => result[key] !== undefined && result[key] !== summary[key])) {
+    throw new Error("incomplete_result");
+  }
   budget.check();
   budget.progress({ phase: "packing", completed: summary.files, bytes: summary.bytes });
   const zipPassword = getJmZipPassword(options);
@@ -129,7 +172,10 @@ async function downloadJmArchive(options, budget, paths) {
 }
 
 function jmDownloadError(result) {
-  return Object.assign(new Error(result.reason || "download_failed"), {
+  const codes = result.errorCodes || [];
+  const reason = codes.includes("incomplete") ? "incomplete_result"
+    : codes.includes("metadata_retry_limit") ? "metadata_retry_limit" : result.reason || "download_failed";
+  return Object.assign(new Error(reason), {
     missing: result.missing || [], failedImages: result.failedImages,
     failedPhotos: result.failedPhotos, errorCodes: result.errorCodes,
   });
@@ -167,20 +213,29 @@ export function formatJmErrorDetail(error) {
   return [missing.trim(), counts, codes.length ? "codes=" + codes.join(",") : ""].filter(Boolean).join(" ");
 }
 
+const JM_ERROR_TEXT = {
+  job_timeout: "JM 已到本次处理时限（最多90秒），已禁止后续转发并请求停止后台任务。临时文件保留约1天。",
+  missing_jmcomic_source: "JM 运行依赖不完整，缺少 jmcomic 源码文件，已停止任务，没有保存文件。",
+  missing_python_dependency: "JM Python 依赖缺失或安装失败，已停止任务，没有保存文件。",
+  jmcomic_import_failed: "JM 模块导入失败，可能是源码版本不完整或依赖不匹配。",
+  missing_dependency: "JM 依赖还没安装或不可用，已回退，没有保存文件。",
+  timeout: "JM 下载超时，已停止任务，临时文件会在约 1 天后自动清理。",
+  metadata_retry_limit: "JM 没能在重试上限内取得目录或章节信息，已停止下载。",
+  incomplete_result: "JM 没有下载完整，未打包或转发。临时文件会在约 1 天后自动清理。",
+  worker_exited: "JM 下载进程未能正常运行，没有转发文件。",
+  worker_start_failed: "JM 下载进程未能正常运行，没有转发文件。",
+  cancelled: "JM 任务已取消，没有提交文件转发。",
+  permission_changed: "JM 权限已变化，已停止后续处理。",
+  empty_result: "JM 下载没有产出文件，临时目录会在约 1 天后自动清理。",
+  upload_failed: "JM 已下载但转发失败，临时文件会在约 1 天后自动清理。",
+  upload_unconfirmed: "JM 转发结果未确认，请先在 QQ 核实，不会自动重发；临时文件仍保留约 1 天。",
+  zip_tool_missing: "JM 已下载但缺少 7-Zip，无法生成带密码压缩包。",
+  zip_failed: "JM 已下载但打包失败，临时文件会在约 1 天后自动清理。",
+  zip_timeout: "JM 打包超时，已停止打包，临时文件会在约 1 天后自动清理。",
+};
+
 export function jmErrorText(reason) {
-  if (reason === "job_timeout") return "JM 已到本次处理时限（最多90秒），已禁止后续转发并请求停止后台任务。临时文件保留约1天。";
-  if (reason === "missing_jmcomic_source") return "JM 运行依赖不完整，缺少 jmcomic 源码文件，已停止任务，没有保存文件。";
-  if (reason === "missing_python_dependency") return "JM Python 依赖缺失或安装失败，已停止任务，没有保存文件。";
-  if (reason === "jmcomic_import_failed") return "JM 模块导入失败，可能是源码版本不完整或依赖不匹配。";
-  if (reason === "missing_dependency") return "JM 依赖还没安装或不可用，已回退，没有保存文件。";
-  if (reason === "timeout") return "JM 下载超时，已停止任务，临时文件会在约 1 天后自动清理。";
-  if (reason === "empty_result") return "JM 下载没有产出文件，临时目录会在约 1 天后自动清理。";
-  if (reason === "upload_failed") return "JM 已下载但转发失败，临时文件会在约 1 天后自动清理。";
-  if (reason === "upload_unconfirmed") return "JM 转发结果未确认，请先在 QQ 核实，不会自动重发；临时文件仍保留约 1 天。";
-  if (reason === "zip_tool_missing") return "JM 已下载但缺少 7-Zip，无法生成带密码压缩包。";
-  if (reason === "zip_failed") return "JM 已下载但打包失败，临时文件会在约 1 天后自动清理。";
-  if (reason === "zip_timeout") return "JM 打包超时，已停止打包，临时文件会在约 1 天后自动清理。";
-  return "JM 下载失败，临时文件会在约 1 天后自动清理。";
+  return Object.hasOwn(JM_ERROR_TEXT, reason) ? JM_ERROR_TEXT[reason] : "JM 下载失败，临时文件会在约 1 天后自动清理。";
 }
 
 export function uploadOk(result) {

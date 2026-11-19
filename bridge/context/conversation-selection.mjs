@@ -2,10 +2,39 @@ import { compareRelevance, currentTopicText, isContinuation, messageFeatures, no
 import { wallAgeMs } from "../runtime-clock.mjs";
 import { replyWindow } from "./source-groups.mjs";
 import { archivedTextCompleteness } from "./messages.mjs";
-import { excludedMemorySource } from "../memory-profile/source-exclusions.mjs";
+import { excludedMemorySource, expandMemorySourceExclusions } from "../memory-profile/source-exclusions.mjs";
+import { summaryPrivacy } from "../group-summary/state.mjs";
 
 const MAX_SCAN = 120;
 const GROUP_MAX_AGE_MS = 30 * 60 * 1000;
+const RECENT_IMAGE_MAX_AGE_MS = 5 * 60 * 1000;
+
+export function readHistoryPrivacy() {
+  try {
+    const privacy = summaryPrivacy();
+    if (Number.isSafeInteger(privacy?.epoch) && privacy.epoch >= 0 && privacy.users &&
+        typeof privacy.users === "object" && !Array.isArray(privacy.users)) return privacy;
+  } catch { /* An unreadable cutoff is not an empty cutoff. */ }
+  return null;
+}
+
+export function historySourceAllowed(message, privacy, userId = message?.uid) {
+  const uid = String(userId ?? "");
+  if (!privacy || !/^\d{1,20}$/.test(uid) || !Number.isSafeInteger(message?.ts) || message.ts <= 0) return false;
+  if (!Object.hasOwn(privacy.users, uid)) return true;
+  const cutoff = privacy.users[uid];
+  return Number.isSafeInteger(cutoff) && cutoff > 0 && message.ts > cutoff &&
+    !(message.receivedAt > 0 && message.receivedAt <= cutoff);
+}
+
+export function erasedHistoryIds(messages, privacy) {
+  const erased = new Set(messages.filter(row => row?.messageId && !historySourceAllowed(row, privacy)).map(row => String(row.messageId)));
+  return erased.size ? expandMemorySourceExclusions(messages, erased) : erased;
+}
+
+export function inHistoryGroup(row, groupId) {
+  return [row.group, row.groupId, row.group_id].every(id => id === undefined || String(id) === String(groupId));
+}
 
 export function selectConversationThread(thread, options = {}) {
   if (!thread?.turns?.length || options.quoteEvidence?.state === "unavailable" || currentTopicText(options.userMsg).switched) return null;
@@ -64,7 +93,10 @@ function continuesTopic(text, previousText) {
 }
 
 export function selectGroupConversation(messages = [], options = {}) {
-  const candidates = messages.slice(-MAX_SCAN).filter(message => usableMessage(message, options));
+  const privacy = options.historyPrivacy === undefined ? readHistoryPrivacy() : options.historyPrivacy;
+  const excluded = options.erasedIds ?? erasedHistoryIds(messages, privacy);
+  const candidates = messages.slice(-MAX_SCAN).filter(message => historySourceAllowed(message, privacy) &&
+    !excludedMemorySource(message, excluded) && usableMessage(message, options));
   const topic = currentTopicText(options.userMsg);
   const query = topic.switched ? topic.text : options.replyText || topic.text;
   const features = retrievalFeatures(query);
@@ -187,12 +219,32 @@ export function selectRecentImageMessage(messages = [], options = {}) {
   if (!/图|照片|表情|截图|image|picture|photo|[这那](?:个|位|张)?(?:是谁|是什么角色|认识吗)/i.test(String(options.userMsg || ""))) return null;
   if (currentTopicText(options.userMsg).switched) return null;
   const targets = new Set((options.mentions || []).filter(item => !item.isBot && !item.isAll).map(item => String(item.qq)));
-  const eligible = messages.slice(-MAX_SCAN).filter(item => item.imageUrls?.length &&
-    /^-?\d{1,20}$/.test(String(item.messageId || "")) && /^\d{1,20}$/.test(String(item.uid || "")) &&
-    item.role !== "assistant" && Number.isFinite(item.ts) && item.ts > 0 && item.ts <= (options.now ?? Date.now()) &&
-    wallAgeMs(item.ts, options.now ?? Date.now()) <= 5 * 60 * 1000 &&
-    (!options.replyToMessageId || String(item.messageId) === String(options.replyToMessageId)));
+  const now = options.now ?? Date.now();
+  const privacy = readHistoryPrivacy();
+  if (!privacy) return null;
+  const erased = erasedHistoryIds(messages, privacy);
+  const eligible = recentImageCandidates(messages, privacy, erased, options)
+    .filter(item => recentImageEligible(item, now, privacy, erased) && matchesRecentImageScope(item, options));
   if (options.replyToMessageId) return eligible.at(-1) || null;
   const own = eligible.filter(item => targets.size ? targets.has(String(item.uid)) : String(item.uid) === String(options.uid));
   return own.at(-1) || null;
 }
+
+function recentImageCandidates(messages, privacy, erased, options) {
+  return messages.filter(row => historySourceAllowed(row, privacy) &&
+    !excludedMemorySource(row, erased) && !excludedMemorySource(row, options.excludeMessageIds)).slice(-MAX_SCAN);
+}
+
+function matchesRecentImageScope(row, options) {
+  return (!options.groupId || inHistoryGroup(row, options.groupId)) &&
+    !(options.selfUin && String(row.uid) === String(options.selfUin)) &&
+    (!options.replyToMessageId || String(row.messageId) === String(options.replyToMessageId));
+}
+
+export function recentImageEligible(row, now, privacy, excluded) {
+  return Array.isArray(row?.imageUrls) && row.imageUrls.length > 0 && /^-?\d{1,20}$/.test(String(row.messageId || "")) &&
+    row.role !== "assistant" && historySourceAllowed(row, privacy) && !excludedMemorySource(row, excluded) &&
+    row.ts <= now && now < recentImageExpiry(row.ts);
+}
+
+export function recentImageExpiry(at) { return at + RECENT_IMAGE_MAX_AGE_MS + 1; }

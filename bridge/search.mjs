@@ -8,19 +8,12 @@ import { CORE_IDENTITY, CONTEXT_SAFETY } from './system-prompts/identity.mjs';
 import { redactSensitiveText } from './privacy.mjs';
 import { assertChatRunCurrent, chatRunSignal } from './cognition/chat-run.mjs';
 import { getMemoryPrivacyGeneration } from './memory-profile/generation.mjs';
-import { fetchSafeResponse, readBoundedResponseBuffer, validateSafeUrl } from './safe-url.mjs';
+import { fetchSafeResponse, readBoundedResponseBuffer, resolveSafeHttpTarget, validateSafeUrl } from './safe-url.mjs';
+import { fetchPinnedResponse } from './pinned-http.mjs';
+import { WEB_SEARCH_TOOL, publicWebFailureCode, publicWebHttpFailure, publicWebRequestFailure, publicWebResponseFailure } from './chat-tools/public-web-plugin.mjs';
 
 // Tool definition
-export const MIMO_TOOLS = [
-  {
-    type: 'function',
-    function: {
-      name: 'web_search',
-      description: '搜索最新的网络信息',
-      parameters: { type: 'object', properties: { query: { type: 'string', description: '搜索关键词' } }, required: ['query'] },
-    },
-  },
-];
+export const MIMO_TOOLS = [WEB_SEARCH_TOOL.definition];
 
 const SEARCH_TRIGGERS = ['搜索', '搜一下', '查一下', '查查', '帮我搜', '搜搜', '今天天气', '最近新闻', '最近有什么', '热搜', '发生了什么', '实时']; // 去掉"最新""当前""现在怎么样"等日常高频词
 
@@ -37,10 +30,11 @@ export async function webSearch(query, options = {}) {
 }
 
 // Structured evidence uses the same providers/fallback, without a model summary call.
-export async function webSearchResults(query, { signal } = {}) {
-  const result = await searchResults(query, { signal });
+export async function webSearchResults(query, options = {}) {
+  const result = await searchResults(query, options);
   return {
     status: result.status,
+    ...(result.reason ? { reason: result.reason } : {}),
     sources: result.sources.slice(0, 5).flatMap(source => {
       const url = sourceUrl(source.url);
       return url ? [{ url, title: String(source.title || '').slice(0, 160), snippet: String(source.snippet || '').slice(0, 300) }] : [];
@@ -54,14 +48,10 @@ async function searchResults(query, options) {
   query = redactSensitiveText(query);
   if (!CFG.tavilyKey) return bingSearchResults(query, options);
   try {
-    const r = await fetch('https://api.tavily.com/search', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ api_key: CFG.tavilyKey, query: query, max_results: 5, include_answer: true }),
-      signal: searchSignal(12000, options.signal), redirect: 'error',
-    });
-    if (!r.ok) throw new Error('Tavily HTTP ' + r.status);
+    const r = await requestTavily(query, options);
+    if (!r.ok) throw new Error(publicWebHttpFailure(r.status));
     const buffer = r.body ? await readBoundedResponseBuffer(r, 128 * 1024) : null;
-    if (r.body && buffer === null) throw new Error('Tavily response too large');
+    if (r.body && buffer === null) throw new Error("response_too_large");
     const d = buffer ? JSON.parse(buffer.toString('utf8')) : await r.json();
     assertSearchCurrent(options);
     if (d?.results?.length) {
@@ -70,11 +60,29 @@ async function searchResults(query, options) {
       })), answer: d.answer || '' };
     }
     return { status: 'empty', sources: [], answer: '' };
-  } catch {
+  } catch (error) {
     assertSearchCurrent(options);
-    logE('webSearch (Tavily) failed; trying public fallback');
+    logE("webSearch (Tavily) failed; trying public fallback:", publicWebFailureCode(error?.message) || publicWebRequestFailure(error));
     return await bingSearchResults(query, options);
   }
+}
+
+async function requestTavily(query, options) {
+  const url = 'https://api.tavily.com/search';
+  const signal = searchSignal(12000, options.signal);
+  const body = JSON.stringify({ api_key: CFG.tavilyKey, query, max_results: 5, include_answer: true });
+  const headers = { 'Content-Type': 'application/json', 'Content-Length': String(Buffer.byteLength(body)) };
+  const request = { method: 'POST', headers, body, signal };
+  if (process.env.NODE_ENV === 'test' && !options.lookup) {
+    assertSearchCurrent(options);
+    return fetch(url, { ...request, redirect: 'error' });
+  }
+  const target = await resolveSafeHttpTarget(url, { signal, lookup: options.lookup });
+  assertSearchCurrent(options);
+  signal.throwIfAborted();
+  if (!target.ok) throw new Error(target.reason);
+  // A fixed destination and no redirect handling keep the API credential at Tavily.
+  return fetchPinnedResponse(target.url, { ...request, addresses: target.addresses, requestImpl: options.requestImpl });
 }
 
 export async function bingSearch(query, options = {}) {
@@ -88,17 +96,24 @@ async function bingSearchResults(query, options = {}) {
     const safe = await fetchSafeResponse('https://cn.bing.com/search?q=' + encodeURIComponent(query) + '&form=QBLH&mkt=zh-CN', {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
       signal: searchSignal(10000, options.signal), timeoutMs: 10000, maxRedirects: 0,
+      lookup: options.lookup, requestImpl: options.requestImpl, beforeRequest: () => assertSearchCurrent(options),
     });
     const r = safe.response;
-    if (!safe.ok || !r?.ok) throw new Error('Bing unavailable');
+    const failure = publicWebResponseFailure(safe);
+    if (failure) return failedSearch(failure);
     const buffer = await readBoundedResponseBuffer(r, 128 * 1024);
-    if (buffer === null) throw new Error('Bing response too large');
+    if (buffer === null) return failedSearch("response_too_large");
     const html = buffer.toString('utf8');
     assertSearchCurrent(options);
     const results = parseBingSources(html);
     if (results.length) { log('bingSearch: got', results.length, 'results'); return { status: 'ok', provider: 'bing', sources: results, answer: '' }; }
     return { status: 'empty', sources: [], answer: '' };
-  } catch { assertSearchCurrent(options); logE('bingSearch failed'); return { status: 'unavailable', sources: [], answer: '' }; }
+  } catch (error) { assertSearchCurrent(options); return failedSearch(publicWebRequestFailure(error)); }
+}
+
+function failedSearch(reason) {
+  logE("bingSearch failed:", reason);
+  return { status: "unavailable", reason, sources: [], answer: "" };
 }
 
 function parseBingSources(html) {
@@ -146,7 +161,9 @@ function searchSignal(timeoutMs, external) {
   return globalThis.AbortSignal.any([globalThis.AbortSignal.timeout(timeoutMs), chatRunSignal(), external].filter(Boolean));
 }
 
-function assertSearchCurrent(options) { assertChatRunCurrent(); options.signal?.throwIfAborted(); }
+function assertSearchCurrent(options) {
+  assertChatRunCurrent(); options.signal?.throwIfAborted(); options.beforeRequest?.();
+}
 
 export async function buildSearchFallback(toolResults, toolResults2, userMsg, userName, selfContext, options = {}) {
   const privacyGeneration = getMemoryPrivacyGeneration();

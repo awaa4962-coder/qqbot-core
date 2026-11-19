@@ -24,6 +24,17 @@ import { initializeDeliveries } from "./deliveries.js";
     tool_model_round: "模型轮次", tool_completed: "工具完成", tool_empty: "无结果", tool_denied: "权限拒绝",
     tool_arguments: "参数无效", tool_unavailable: "工具不可用", tool_reused: "复用结果", tool_budget: "达到预算上限",
   };
+  const webReasons = {
+    not_allowed: "本轮未开放联网", query_not_allowed: "查询未通过公开输入规则",
+    query_not_in_current_message: "查询未绑定本条消息", private_query_not_authorized: "不能用私有资料作为查询",
+    sensitive_query: "查询包含不允许外发的内容", sensitive_source: "来源不允许外发", unknown_source: "没有本轮授权的网页引用",
+    page_budget: "本轮读页次数已用完", result_budget: "超过工具结果额度", request_timeout: "联网请求超时",
+    expired: "本轮网页操作已过期", cancelled: "联网请求已取消", dns_lookup_failed: "域名解析失败",
+    redirect_not_followed: "未跟随网站重定向", network_error: "网络连接失败", unsafe_response: "网址或响应未通过安全检查",
+    upstream_forbidden: "网站或搜索服务拒绝访问", upstream_not_found: "网站未找到页面", upstream_rate_limited: "网站或搜索服务限流",
+    upstream_error: "网站或搜索服务响应异常", search_failed: "搜索服务不可用", search_empty: "没有搜索结果",
+    response_too_large: "网页超过读取上限", content_type: "网页格式不支持", empty_content: "没有可读取的正文",
+  };
   const labels = {
     ...toolReasons,
     processing: "处理中", sent: "已发送", partial: "部分成功", failed: "失败", silent: "主动不回复", ignored: "未触发", no_reply: "未产生回复", processed: "处理结束",
@@ -217,7 +228,8 @@ import { initializeDeliveries } from "./deliveries.js";
     const tools = toolDetails(step);
     if (step.stage === "tool") {
       const reason = typeof step.reason === "string" && Object.hasOwn(toolReasons, step.reason) ? toolReasons[step.reason] : "";
-      return [reason, ...tools].filter(Boolean).join(" · ");
+      const webReason = typeof step.webReason === "string" && Object.hasOwn(webReasons, step.webReason) ? webReasons[step.webReason] : "";
+      return [webReason || reason, ...tools].filter(Boolean).join(" · ");
     }
     return [step.reason && label(step.reason), step.provider, step.position && label(step.position), step.route && label(step.route), step.model,
       step.selfFactsVersion && `运行事实 v${step.selfFactsVersion} · ${step.capabilityCount || 0} 项能力`,

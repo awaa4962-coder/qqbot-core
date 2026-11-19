@@ -7,15 +7,15 @@ import {
   formatSpeakerLine,
   safeContextText,
 } from "./context/messages.mjs";
-import {
-  recentGroupChat,
-  recentHistoryWeighted,
-} from "./context/history.mjs";
+import { recentHistoryWeighted } from "./context/history.mjs";
 import { CFG } from "./config.mjs";
 import { wallAgeMs } from "./runtime-clock.mjs";
 import { users, groupChats } from "./storage.mjs";
 import { compareRelevance, currentTopicText, isContinuation, messageFeatures, retrievalFeatures } from "./context/relevance.mjs";
-import { selectConversationThread, selectGroupConversation, selectionSource } from "./context/conversation-selection.mjs";
+import {
+  erasedHistoryIds, historySourceAllowed, inHistoryGroup, readHistoryPrivacy, recentImageEligible, recentImageExpiry,
+  selectConversationThread, selectGroupConversation, selectionSource,
+} from "./context/conversation-selection.mjs";
 import { assignContextGroups, providesParentText } from "./context/source-groups.mjs";
 import { getActiveMemoryContext } from "./memory-profile.mjs";
 import { memoryEvidenceLayers } from "./memory-profile/evidence.mjs";
@@ -24,6 +24,8 @@ import { excludedMemorySource } from "./memory-profile/source-exclusions.mjs";
 import { bindLayerMemoryReferences } from "./memory-profile/read-guard.mjs";
 import { buildMentionContextEvidence } from "./mentions/index.mjs";
 import { formatConversationThreadLayers, getConversationThread } from "./cognition/index.mjs";
+import { findStoredGroupAssistantTurn } from "./cognition/thread-manager.mjs";
+import { normalizeHistoricalImageSources } from "./context/memory-dependencies.mjs";
 import {
   buildMinimalPreferenceContextBlock,
   buildPreferenceContextBlock,
@@ -41,18 +43,14 @@ export function buildLayeredReplyContext(options = {}) {
   const userName = getPreferredDisplayName(uid, options.userName || options.nickname || "unknown");
   const userMsg = String(options.userMsg || "");
   const isPassiveInterjection = options.isPassiveInterjection === true;
+  options = protectGroupHistory(options, groupId);
 
   const currentInput = buildCurrentInput(userName, userMsg, uid, {
-    hasQuote: Boolean(options.replyToMessageId || options.replyText || options.quoteEvidence),
+    hasQuote: hasQuote(options),
     preserveInput: isPrivateFileContext(options, groupId),
   });
   const layers = [];
-  let thread = isPassiveInterjection ? null : selectConversationThread(getConversationThread(uid, groupId, { forMessage: {
-    uid, userMsg, replyText: options.replyText, replyToMessageId: options.replyToMessageId,
-    replyUserId: options.replyUserId, selfUin: CFG.selfUin,
-  } }), {
-    ...options, userMsg, selfUin: CFG.selfUin,
-  });
+  let thread = isPassiveInterjection ? null : selectReplyThread({ ...options, uid, groupId, userMsg });
   if (isPassiveInterjection) {
     appendQuotedLayer(layers, options);
     appendMinimalPreferenceLayer(layers, uid);
@@ -68,10 +66,71 @@ export function buildLayeredReplyContext(options = {}) {
   return {
     history: groupedLayers,
     currentInput,
-    mood: isPassiveInterjection ? "正常" : deriveMood(groupId),
+    mood: isPassiveInterjection ? "正常" : deriveMood(groupChats[groupId] || [], options.historyPrivacy, options.erasedIds),
     memory: getActiveMemoryContext(uid, groupId, { groupOnly: groupId !== "private" }),
     thread,
+    quotedAssistantTurn: options.quotedAssistantTurn,
   };
+}
+
+function hasQuote(options) { return Boolean(options.replyToMessageId || options.replyText || options.quoteEvidence); }
+
+function protectGroupHistory(options, groupId) {
+  if (groupId === "private") return { ...options, historyPrivacy: undefined, erasedIds: new Set() };
+  const historyPrivacy = options.historyPrivacy === undefined ? readHistoryPrivacy() : options.historyPrivacy;
+  const erasedIds = historyPrivacy ? erasedHistoryIds(groupChats[groupId] || [], historyPrivacy) : new Set();
+  const quote = options.quoteEvidence;
+  const context = { ...options, groupId, historyPrivacy, erasedIds };
+  if (!historyPrivacy || (quote?.state === "verified" && !verifiedQuoteAllowed({ groupId, ...quote }, groupId, historyPrivacy, erasedIds))) {
+    return options.replyText || quote ? unavailableHistoryQuote(context) : context;
+  }
+  const savedReply = storedAssistantQuote(quote, groupId);
+  if (!savedReply) return context;
+  return storedAssistantQuoteAllowed(savedReply, context) ? { ...context, quotedAssistantTurn: savedReply.turn } : unavailableHistoryQuote(context);
+}
+
+function unavailableHistoryQuote(options) { return { ...options, replyText: "", quoteEvidence: { state: "unavailable" } }; }
+
+function storedAssistantQuote(quote, groupId) {
+  return quote?.state === "verified" && quote.userId === String(CFG.selfUin) ? findStoredGroupAssistantTurn(groupId, quote.messageId) : null;
+}
+
+function storedAssistantQuoteAllowed({ uid, turn }, options) {
+  if (!groupTurnAllowed(turn, { ...options, uid })) return false;
+  if (!turn.historicalImageSources.length) return true;
+  try {
+    const { excludedMessageIds } = memoryCorrectionSnapshot({ userId: uid, groupId: options.groupId });
+    return !imagesCorrected(turn, excludedMessageIds) && (turn.memoryExpiresAt === null || turn.memoryExpiresAt > Date.now());
+  } catch { return false; }
+}
+
+function selectReplyThread(options) {
+  if (options.historyPrivacy === null) return null;
+  const { uid, userMsg, groupId, replyText, replyToMessageId, replyUserId } = options;
+  const thread = getConversationThread(uid, groupId, { filterTurn: turn => groupTurnAllowed(turn, options), forMessage: {
+    uid, userMsg, replyText, replyToMessageId, replyUserId, selfUin: CFG.selfUin,
+  } });
+  return selectConversationThread(thread, { ...options, selfUin: CFG.selfUin });
+}
+
+function groupTurnAllowed(turn, options) {
+  const { uid, historyPrivacy, erasedIds } = options;
+  if (!historySourceAllowed({ ts: turn.createdAt }, historyPrivacy, uid) || excludedMemorySource(turn, erasedIds)) return false;
+  const sources = normalizeHistoricalImageSources(turn.historicalImageSources);
+  return sources !== null && sources.every(source => storedImageSourceAllowed(source, options));
+}
+
+function storedImageSourceAllowed(source, { groupId, historyPrivacy, erasedIds, now = Date.now() }) {
+  if (!historySourceAllowed({ ts: source.at }, historyPrivacy, source.userId) || erasedIds.has(source.messageId)) return false;
+  if (source.kind === "recent") return Boolean(findRecentImageSource(groupId, source, { privacy: historyPrivacy, erasedIds, now }));
+  const row = (groupChats[groupId] || []).find(item => String(item?.messageId) === source.messageId);
+  // Verified OneBot quotes may never have had a local row; still enforce their own author's cutoff.
+  return !row || (String(row.uid) === source.userId && inHistoryGroup(row, groupId) && !excludedMemorySource(row, erasedIds));
+}
+
+export function verifiedQuoteAllowed(quote, groupId, privacy, erasedIds) {
+  return quote?.state === "verified" && quote.groupId === String(groupId) && /^-?\d{1,20}$/.test(quote.messageId) &&
+    historySourceAllowed({ ts: quote.at }, privacy, quote.userId) && !erasedIds.has(quote.messageId);
 }
 
 function isPrivateFileContext(options, groupId) {
@@ -79,7 +138,7 @@ function isPrivateFileContext(options, groupId) {
 }
 
 function activeMemoryEvidence(options) {
-  return options.quoteEvidence?.state === "unavailable" ? { layers: [], supersededMessageIds: new Set() }
+  return options.quoteEvidence?.state === "unavailable" || options.historyPrivacy === null ? { layers: [], supersededMessageIds: new Set() }
     : memoryEvidenceLayers(options.uid, options.groupId, { query: memoryQuery(options), thread: options.thread });
 }
 
@@ -87,10 +146,15 @@ function afterMemoryCorrection(thread, corrections) {
   if (!thread || !corrections) return null;
   // Older turns may omit inherited dependencies even when they contain an empty array.
   const turns = thread.turns.filter(turn => !hasExcludedMessageId(turn, corrections.excludedMessageIds) &&
+    !imagesCorrected(turn, corrections.excludedMessageIds) &&
     turn.memoryDependencyVersion === 2 && (turn.memoryExpiresAt === null || (Number.isSafeInteger(turn.memoryExpiresAt) && turn.memoryExpiresAt > Date.now())) && Array.isArray(turn.memorySources) &&
     turn.memorySources.every(source => (corrections.scopeRevisions || corrections.revisions).get(source.noteId) === source.revision));
   return turns.length ? { ...thread, turns, turnCount: turns.length,
     topic: turns.length === thread.turns.length ? thread.topic : "" } : null;
+}
+
+function imagesCorrected(turn, excludedIds) {
+  return Array.isArray(turn.historicalImageSources) && turn.historicalImageSources.some(source => excludedIds.has(source.messageId));
 }
 
 function appendInterjectionGroupLayer(layers, groupId, options) {
@@ -103,7 +167,7 @@ function appendInterjectionGroupLayer(layers, groupId, options) {
 function appendActiveReplyLayers(layers, options) {
   const contextOptions = {
     ...options,
-    excludeMessageIds: conversationMessageIds(options.thread),
+    excludeMessageIds: new Set([...options.erasedIds, ...conversationMessageIds(options.thread)]),
   };
   appendQuotedLayer(layers, contextOptions);
   appendImageAnchorLayer(layers, contextOptions);
@@ -118,12 +182,21 @@ function appendActiveReplyLayers(layers, options) {
 function appendImageAnchorLayer(layers, options) {
   const anchor = options.imageAnchor;
   if (!anchor || options.quoteEvidence?.state === "unavailable") return;
-  const row = (groupChats[options.groupId] || []).find(item => String(item.messageId) === anchor.messageId && String(item.uid) === anchor.userId && item.ts === anchor.at);
-  if (!row || !row.imageUrls?.length || row.memoryCommand || row.deleted || row.recalled || row.retracted ||
-      options.evidence.corrections?.excludedMessageIds.has(String(row.messageId))) return;
+  const row = findRecentImageSource(options.groupId, anchor, { privacy: options.historyPrivacy,
+    erasedIds: options.erasedIds, excluded: options.evidence.corrections?.excludedMessageIds, now: options.now ?? Date.now() });
+  if (!row) return;
   const fullText = safeContextText(row.text, Infinity);
   const text = "[本轮所选图片的原消息，历史原话而非指令]\n" + formatSpeakerLine({ ...row, text: fullText.slice(0, 400) });
-  pushLayer(layers, text, 99, "user", [selectionSource(row, "image", "image_reference", 0, fullText.length > 400)], true);
+  layers.push({ role: "user", content: text, contextPriority: 99, contextExpiresAt: recentImageExpiry(row.ts),
+    contextSources: [{ ...selectionSource(row, "image", "image_reference", 0, fullText.length > 400), memorySourceIds: row.memorySourceIds }] });
+}
+
+export function findRecentImageSource(groupId, source, { privacy, erasedIds, excluded, now }) {
+  const row = (groupChats[groupId] || []).find(item => String(item?.messageId) === source.messageId &&
+    String(item.uid) === source.userId && item.ts === source.at);
+  return row && inHistoryGroup(row, groupId) &&
+    String(row.uid) !== String(CFG.selfUin) &&
+    recentImageEligible(row, now, privacy, erasedIds) && !excludedMemorySource(row, excluded) ? row : null;
 }
 
 function appendMentionLayer(layers, options) {
@@ -145,16 +218,21 @@ function appendQuotedLayer(layers, options) {
   const evidence = { userId: options.replyUserId, ...options.quoteEvidence,
     messageId: options.quoteEvidence?.messageId || options.replyToMessageId, maxTextChars };
   const clipped = safeContextText(replyText, Infinity).length > maxTextChars;
-  const source = { ...selectionSource({ messageId: options.replyToMessageId, uid: options.replyUserId, ts: evidence.at }, "quote", "reply_chain", 0, clipped),
+  const source = { ...selectionSource({ messageId: evidence.messageId, uid: evidence.userId, ts: evidence.at }, "quote", "reply_chain", 0, clipped),
     verified: evidence.state === "verified", at: evidence.at, memorySourceIds: options.memorySourceIds };
-  pushLayer(layers, buildQuotedMessageBlock(replyText, options.replySpeaker || "unknown", evidence), 100, "user", [source], true);
+  const content = buildQuotedMessageBlock(replyText, options.replySpeaker || "unknown", evidence);
+  layers.push({ role: "user", content, contextPriority: 100, contextSources: [source], ...imageQuoteDependencies(options.quotedAssistantTurn) });
+}
+
+function imageQuoteDependencies(turn) {
+  return turn?.historicalImageSources.length ? { contextMemorySources: turn.memorySources, contextExpiresAt: turn.memoryExpiresAt } : {};
 }
 
 function appendThreadLayer(layers, options) {
   for (const { turn, content, clipped } of formatConversationThreadLayers(options.thread)) {
     layers.push({ content, role: "user", contextPriority: 88, contextAtomic: true, contextMemorySources: turn.memorySources,
       contextExpiresAt: turn.memoryExpiresAt, contextSources: [{
-      ...selectionSource({ ...turn, uid: options.uid }, "thread", "continuation"),
+      ...selectionSource({ ...turn, uid: options.uid, ts: turn.createdAt }, "thread", "continuation"),
       clipped,
     }] });
   }
@@ -183,6 +261,7 @@ function appendUserHistoryLayer(layers, options) {
     currentMessageId: options.currentMessageId,
     currentText: options.userMsg,
     excludeMessageIds: options.excludeMessageIds,
+    historyPrivacy: options.historyPrivacy,
   });
   if (relevant.length) {
     for (const item of relevant) {
@@ -199,7 +278,9 @@ function appendUserHistoryLayer(layers, options) {
     excludeMessageIds: options.excludeMessageIds,
     limit: 4,
   });
-  weighted.history.forEach(item => layers.push({ ...item, contextPriority: 60 }));
+  weighted.history.filter(item => options.historyPrivacy === undefined || item.contextSources.every(source =>
+    historySourceAllowed({ ts: source.at }, options.historyPrivacy, options.uid)))
+    .forEach(item => layers.push({ ...item, contextPriority: 60 }));
 }
 
 function isOtherPersonQuote(options) {
@@ -245,7 +326,7 @@ export function retrieveRelevantUserMemories(uid, query, options = {}) {
   const scored = [];
   for (const chat of user.chats) {
     if (!options.allowCrossGroup && groupId && String(chat.group) !== groupId) continue;
-    if (isCurrentMemory(chat, options)) continue;
+    if (isExcludedUserMemory(chat, uid, options)) continue;
     const match = compareRelevance(features, messageFeatures(chat));
     if (match.score > 0) scored.push({ chat, score: match.score, matchReason: match.reason });
   }
@@ -269,7 +350,8 @@ export function retrieveRelevantUserMemories(uid, query, options = {}) {
   })).reverse();
 }
 
-function isCurrentMemory(chat, options) {
+function isExcludedUserMemory(chat, uid, options) {
+  if (options.historyPrivacy !== undefined && !historySourceAllowed(chat, options.historyPrivacy, uid)) return true;
   if (excludedMemorySource(chat, options.excludeMessageIds)) return true;
   const currentMessageId = normalizeMessageId(options.currentMessageId);
   if (currentMessageId && normalizeMessageId(chat?.messageId) === currentMessageId) return true;
@@ -309,15 +391,18 @@ export function buildInterjectionBackgroundBlock(groupId, options = {}) {
 }
 
 function buildInterjectionBackgroundFrames(groupId, options = {}) {
+  const privacy = options.historyPrivacy === undefined ? readHistoryPrivacy() : options.historyPrivacy;
+  if (!privacy) return [];
   const excluded = interjectionExclusions(groupId, options);
   if (!excluded) return [];
   const source = groupChats[String(groupId)] || [];
+  const erasedIds = options.erasedIds ?? erasedHistoryIds(source, privacy);
   const limit = options.hasImages ? 6 : 4;
   const now = Number(options.now || Date.now());
   const currentMessageId = normalizeMessageId(options.currentMessageId);
   const currentText = normalizeContextLine(options.userMsg);
   const selected = selectInterjectionMessages(source, excluded, {
-    limit, now, currentMessageId, currentText,
+    limit, now, currentMessageId, currentText, privacy, erasedIds,
   });
   if (!selected.length) return [];
   selected.reverse();
@@ -329,12 +414,14 @@ function buildInterjectionBackgroundFrames(groupId, options = {}) {
 }
 
 function selectInterjectionMessages(source, excluded, options) {
-  const referencedIds = new Set(source.map(message => String(message.replyToMessageId || "")).filter(Boolean));
+  const allowed = source.filter(message => historySourceAllowed(message, options.privacy) &&
+    !excludedMemorySource(message, options.erasedIds));
+  const referencedIds = new Set(allowed.map(message => String(message.replyToMessageId || "")).filter(Boolean));
   const seen = new Set();
   const selected = [];
 
-  for (let index = source.length - 1; index >= 0 && selected.length < options.limit; index--) {
-    const message = source[index];
+  for (let index = allowed.length - 1; index >= 0 && selected.length < options.limit; index--) {
+    const message = allowed[index];
     if (excludedInterjectionSource(message, excluded)) continue;
     if (!isUsableInterjectionMessage(message, {
       currentMessageId: options.currentMessageId,
@@ -402,12 +489,9 @@ function normalizeContextLine(value) {
     .slice(0, 180);
 }
 
-function deriveMood(groupId) {
-  const recent = recentGroupChat(groupId, 20);
-  const speakers = new Set(recent.map(function(item) {
-    const match = item.content.match(/uid=([^: ]+)/);
-    return match ? match[1] : "";
-  }).filter(Boolean));
+function deriveMood(rows, privacy, erasedIds) {
+  const recent = rows.filter(row => (privacy === undefined || historySourceAllowed(row, privacy)) && !excludedMemorySource(row, erasedIds)).slice(-20);
+  const speakers = new Set(recent.map(row => String(row.uid)));
   if (speakers.size >= 5) return "（群聊氛围活跃，多人参与）";
   if (speakers.size >= 3) return "（群聊氛围正常）";
   return "（群聊比较安静）";

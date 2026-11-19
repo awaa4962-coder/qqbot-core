@@ -33,14 +33,15 @@ export function withSummaryWriteLock(options, operation) {
   const root = summaryRoot(options);
   fs.mkdirSync(root, { recursive: true, mode: 0o700 });
   const lock = path.join(root, "write.lock");
-  try {
-    if (Date.now() - fs.statSync(lock).mtimeMs > 30000) fs.rmSync(lock, { force: true });
-  } catch (error) { if (error.code !== "ENOENT") throw error; }
+  // Only the owner releases this lock; a crashed writer fails closed.
   let descriptor;
   try { descriptor = fs.openSync(lock, "wx", 0o600); }
-  catch { throw new Error("日报记录正在更新，请稍后重试"); }
+  catch (error) {
+    if (error.code === "EEXIST") throw new Error("日报记录正在更新，请稍后重试", { cause: error });
+    throw error;
+  }
   try { return operation(); }
-  finally { fs.closeSync(descriptor); fs.rmSync(lock, { force: true }); }
+  finally { fs.closeSync(descriptor); fs.unlinkSync(lock); }
 }
 
 export function summaryPrivacy(options = {}) {

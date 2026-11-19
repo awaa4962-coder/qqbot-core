@@ -174,7 +174,8 @@ test("resource download releases the group queue and rechecks permission before 
   const hold = deferred();
   const fetching = deferred();
   const nextMessage = deferred();
-  const allowed = [601003];
+  const [groupId, otherGroupId] = CFG.groupWhitelist;
+  const allowed = [groupId];
   const sent = [];
   let uploads = 0;
   globalThis.fetch = async () => {
@@ -182,18 +183,18 @@ test("resource download releases the group queue and rechecks permission before 
     return new globalThis.Response("synthetic resource", { headers: { "content-length": "18" } });
   };
   const manager = createOneBotLinkManager({ processor: event => event.kind === "resource"
-    ? handleResourceTransferCommand({ isAtMe: true, group_id: 601003, text: "下载 https://example.com/a.txt" }, {
+    ? handleResourceTransferCommand({ isAtMe: true, group_id: groupId, user_id: 601003, text: "下载 https://example.com/a.txt" }, {
       parsedCommand: { ok: true, url: "https://example.com/a.txt" }, groupWhitelist: allowed,
       sender: async (_id, text) => { sent.push(text); return { status: "ok" }; },
       uploader: async () => { uploads++; return { status: "ok" }; },
     }) : Promise.resolve(nextMessage.resolve()) });
   try {
-    manager.enqueue({ kind: "resource", message_type: "group", group_id: 601003 });
-    manager.enqueue({ kind: "next", message_type: "group", group_id: 601003 });
+    manager.enqueue({ kind: "resource", message_type: "group", group_id: groupId });
+    manager.enqueue({ kind: "next", message_type: "group", group_id: groupId });
     await boundedWait(fetching.promise);
     await boundedWait(nextMessage.promise);
-    assert.equal(await handleResourceTransferCommand({ isAtMe: true, group_id: 601007, text: "下载 https://example.com/other.txt" }, {
-      parsedCommand: { ok: true, url: "https://example.com/other.txt" }, groupWhitelist: [601007],
+    assert.equal(await handleResourceTransferCommand({ isAtMe: true, group_id: otherGroupId, user_id: 601007, text: "下载 https://example.com/other.txt" }, {
+      parsedCommand: { ok: true, url: "https://example.com/other.txt" }, groupWhitelist: [otherGroupId],
       sender: async (_id, text) => { sent.push(text); return { status: "ok" }; },
       uploader: async () => { uploads++; return { status: "ok" }; },
     }), true);
@@ -204,7 +205,9 @@ test("resource download releases the group queue and rechecks permission before 
     assert.equal(listResourceTasks().at(-1).phase, "failed");
     assert.equal(sent.length, 2);
     const stateFile = path.join(CFG.dataRoot, ".qqfriend", "tasks", `resource-transfers-${process.pid}.json`);
-    assert.doesNotMatch(fs.readFileSync(stateFile, "utf8"), /a\.txt|601003|synthetic resource/);
+    const state = fs.readFileSync(stateFile, "utf8");
+    assert.doesNotMatch(state, /a\.txt|601003|synthetic resource/);
+    assert.ok(!state.includes(String(groupId)));
   } finally {
     hold.resolve(); await waitResourceTasks(); await manager.stop({ drainMs: 1000 });
     globalThis.fetch = oldFetch;
@@ -217,9 +220,9 @@ test("resource command reports success after a confirmed single upload", async (
   let fetches = 0;
   const sent = [];
   globalThis.fetch = async () => { fetches++; return new globalThis.Response("synthetic resource", { headers: { "content-length": "18" } }); };
-  const ctx = { isAtMe: true, group_id: 601004, message_id: 901004, text: "下载 https://example.com/b.txt" };
+  const ctx = { isAtMe: true, group_id: CFG.groupWhitelist[0], user_id: 601004, message_id: 901004, text: "下载 https://example.com/b.txt" };
   const options = {
-    parsedCommand: { ok: true, url: "https://example.com/b.txt" }, groupWhitelist: [601004],
+    parsedCommand: { ok: true, url: "https://example.com/b.txt" }, groupWhitelist: [ctx.group_id],
     sender: async (_id, text) => { sent.push(text); return { status: "ok" }; },
     uploader: async () => { uploads++; return { status: "ok", retcode: 0 }; },
   };

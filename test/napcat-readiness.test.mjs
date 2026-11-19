@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { CFG } from "../bridge/config.mjs";
 import {
+  getCachedNapCatReadiness,
   refreshNapCatReadiness,
   resetNapCatReadinessForTest,
 } from "../bridge/napcat-readiness.mjs";
@@ -53,6 +54,36 @@ test("login-shaped data cannot override failed, async, malformed or HTTP error r
       assert.equal(result.reason, "not_logged_in");
     }
   } finally { resetNapCatReadinessForTest(); }
+});
+
+test("forced readiness ignores even a fresh cache and concurrent readers share the new probe", async t => {
+  t.after(resetNapCatReadinessForTest);
+  resetNapCatReadinessForTest();
+  const fetcher = async () => response(CFG.selfUin || 12345);
+  const initial = await refreshNapCatReadiness({ cacheNow: 100, fetcher });
+  assert.equal(initial.ready, true);
+  const cached = await refreshNapCatReadiness({ cacheNow: 101, fetcher: unexpectedProbe });
+  assert.equal(cached.ready, true);
+
+  let probes = 0;
+  let finish;
+  const reply = new Promise(resolve => { finish = resolve; });
+  const forced = refreshNapCatReadiness({ cacheNow: 200, force: true, fetcher: () => { probes++; return reply; } });
+  const other = refreshNapCatReadiness({ cacheNow: 201, force: true, fetcher: unexpectedProbe });
+  const reader = refreshNapCatReadiness({ cacheNow: 201, fetcher: unexpectedProbe });
+  finish({ ok: true, json: async () => ({ status: "failed", retcode: 100 }) });
+  const results = await Promise.all([forced, other, reader]);
+  assert.equal(probes, 1);
+  assert.deepEqual(results.map(result => result.reason), Array(3).fill("not_logged_in"));
+  results[0].ready = true;
+  assert.equal(results[1].ready, false);
+  assert.equal(getCachedNapCatReadiness().ready, false);
+  assert.equal((await refreshNapCatReadiness({ cacheNow: 5200, fetcher })).ready, true);
+
+  function unexpectedProbe() {
+    probes++;
+    throw new Error("unexpected split probe");
+  }
 });
 
 function response(userId) {

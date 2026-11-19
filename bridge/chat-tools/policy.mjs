@@ -98,19 +98,21 @@ export function publicSearchPhrase(text, task) {
   if (task === "file_chat" || task === "interjection" || typeof text !== "string" || text.length > 1000) return "";
   if (containsSensitiveText(text) || redactSensitiveText(text) !== text) return "";
   const request = text.trim().replace(/^(?:请问)?(?:能不能|可不可以)(?=.{0,6}(?:搜|联网|上网))/, "请");
-  if (negativeSearch(request)) return "";
+  if (publicSearchCancelled(request)) return "";
   const first = request.split(/[，,。！？!?；;\n]|\.\s/)[0].trim();
-  const explicit = first.match(/^(?:请|麻烦)?\s*(?:(?:帮我|替我|为我|给我|你)\s*)?(?:联网搜索|上网查|网上查|在网上查|搜索|搜一下|搜搜|搜)\s*(.+)$/i)
+  const explicit = first.match(/^(?:请|麻烦)?\s*(?:(?:帮我|替我|为我|给我|你)\s*)?(?:联网搜索|联网查(?:一下)?|上网查|网上查|在网上查|搜索|搜一下|搜搜|搜)\s*(.+)$/i)
     || first.match(/^(?:please\s+)?(?:search(?:\s+for)?|look up)\s+(.+)$/i);
   const query = explicit?.[1]?.trim() || (/^.{1,80}(?:是什么梗|什么梗|出自哪里|出处是什么|天气怎么样|天气如何|天气预报|最近新闻|今天新闻|今日热搜)$/.test(first) ? first : "");
   return query.length >= 2 && query.length <= 160 ? query : "";
 }
 
-function negativeSearch(text) {
-  return publicNetworkCancelled(text) || /(?:不|别|勿|禁止|停止|取消|无需|没有必要|没必要).{0,20}(?:搜|联网|上网|查)/.test(text) ||
+export function publicSearchCancelled(text) {
+  return publicNetworkCancelled(text) || /(?:不要|不用|不必|不需要|不允许|不准|不许|别|勿|禁止|停止|取消|无需|没有必要|没必要).{0,20}(?:搜|联网|上网|查)/.test(text) ||
+    /(?:^|[，,。；;\n!?！？])\s*(?:(?:请|麻烦|这次|本轮)\s*)*不(?:能)?(?:联网|上网|搜索|查资料)/.test(text) ||
     /(?:搜索|联网|上网).{0,8}(?:算了|取消|停止|不要|不必|不需要|不用)/.test(text) ||
     /(?:^|[，,。;；\n])\s*(?:算了|取消(?:吧)?|停止)(?:\s|[。！!？?]|$)/.test(text) ||
-    /\b(?:don't|do not|no|not|never|without|cancel)\b.{0,32}\b(?:search|look up|browse)/i.test(text) ||
+    /\b(?:don't|do not|no|never|without|cancel|stop)\b.{0,32}\b(?:search|look up|browse)/i.test(text) ||
+    /\bnot\b.{0,48}\b(?:search|look up|browse|network|requests?)\b/i.test(text) ||
     /(?:^|[,;]\s*)(?:never mind|cancel(?: it)?|stop)\b/i.test(text);
 }
 

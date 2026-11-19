@@ -221,7 +221,7 @@ assert closed == [1, 1]
   it("configures short tuple timeouts, task metadata caching and bounded concurrency", t => pythonCase(t, String.raw`
 os.environ["QQBOT_JM_DOMAINS"] = "one.invalid;two.invalid\nthree.invalid"
 config = runner.build_option(FakeOption, "/output")
-assert config["client"]["postman"]["meta_data"]["timeout"] == (3, 8)
+assert config["client"]["postman"]["meta_data"]["timeout"] == (3, 4)
 assert config["client"]["postman"]["type"] == "curl_cffi_session"
 assert config["client"]["retry_times"] == 1
 assert config["client"]["cache"] is True
@@ -229,6 +229,56 @@ assert config["download"]["cache"] is False
 assert config["download"]["image"]["decode"] is True
 assert config["download"]["threading"] == {"image": 12, "photo": 2}
 assert config["client"]["domain"] == ["one.invalid", "two.invalid", "three.invalid"]
+`));
+
+  it("caps a logical metadata retry cascade without changing independent calls", t => pythonCase(t, String.raw`
+class RecursiveClient(FakeClient):
+    def request_with_retry(self, request, url, domain_index=0, retry_count=0, is_image=False, **kwargs):
+        try:
+            return request(url, **kwargs)
+        except TimeoutError:
+            return self.request_with_retry(request, url, domain_index + 1, retry_count, **kwargs)
+timings, calls = runner.DownloadTimings(), []
+client = runner.bound_image_requests(RecursiveClient(), timings)
+def fail(url, **kwargs):
+    assert kwargs["timeout"] == (3, 4)
+    calls.append(url)
+    raise TimeoutError(SECRET)
+for _ in range(2):
+    try:
+        client.request_with_retry(fail, SECRET)
+        assert False
+    except runner.MetadataRetryLimit as exc:
+        assert runner.error_category(exc) == "metadata_retry_limit"
+assert len(calls) == 8
+assert client.request_with_retry(lambda *a, **k: "recovered", SECRET) == "recovered"
+assert timings.snapshot()["metadataTimeouts"] == 8
+assert timings.snapshot()["metadataCallsCompleted"] == 3
+`));
+
+  it("does not immediately retry HTTP rejection or throttling on the same image URL", t => pythonCase(t, String.raw`
+class StatusClient(FakeClient):
+    def raise_if_resp_should_retry(self, resp, is_image):
+        if resp.status_code != 200:
+            raise ValueError(SECRET)
+        return resp
+timings = runner.DownloadTimings()
+client = runner.bound_image_requests(StatusClient(), timings)
+for status in (401, 403, 404, 410, 429, 503):
+    calls = []
+    def request(*args, **kwargs):
+        calls.append(1)
+        return types.SimpleNamespace(status_code=status)
+    try:
+        client.request_with_retry(request, SECRET, is_image=True)
+        assert False
+    except ValueError:
+        pass
+    assert len(calls) == (2 if status == 503 else 1)
+snapshot = timings.snapshot()
+assert snapshot["imageForbidden"] == snapshot["imageNotFound"] == snapshot["imageServerErrors"] == 2
+assert snapshot["imageRateLimited"] == snapshot["imageRetriesCompleted"] == 1
+assert "SECRET" not in json.dumps(snapshot)
 `));
 
   it("caps each failed image at two attempts independent of API mirror count without class patches", t => pythonCase(t, String.raw`
@@ -338,9 +388,9 @@ assert len(events()) == 1
 code, result, progress, text = scenario("success")
 assert code == 0 and result["ok"] is True and result["all_success"] is True
 assert result["files"] == 4 and result["bytes"] == 12
-assert {k:v for k,v in progress[-1].items() if k != "timings"} == {"phase": "preparing", "completed": 4, "total": 4, "bytes": 12, "failed": 0}
+assert {k:v for k,v in progress[-1].items() if k != "timings"} == {"phase": "downloading", "completed": 4, "total": 4, "bytes": 12, "failed": 0}
 assert result["timings"]["firstImageMs"] <= result["timings"]["lastImageMs"] <= result["timings"]["downloadFinishedMs"]
-assert all("PRIVATE" not in json.dumps(event) for event in progress)
+assert "PRIVATE" not in text and "000000000000" not in text
 `));
 
   it("rejects empty, missing, unknown, zero-byte and library-incomplete outputs", t => pythonCase(t, String.raw`

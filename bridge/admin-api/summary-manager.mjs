@@ -13,6 +13,7 @@ import { redactSummaryText } from "../group-summary/formatter.mjs";
 import { assertSummaryEpoch, readSummaryJson, summaryKey, summaryPrivacy, summaryRoot, withSummaryWriteLock, writeSummaryJson } from "../group-summary/state.mjs";
 
 export function createSummaryManager(options = {}) {
+  const shutdown = new AbortController();
   const jobFile = path.join(summaryRoot(options), "jobs.json");
   const groups = () => (options.whitelist || CFG.summaryGroupWhitelist).map(String);
   const tasks = createTaskRunner({
@@ -53,8 +54,19 @@ export function createSummaryManager(options = {}) {
     return revision;
   }
 
-  async function execute(input, target, progress) {
-    const common = { ...options, ...target, groupWhitelist: groups(), onProgress: progress };
+  async function execute(input, target, { progress, signal }) {
+    const taskSignal = AbortSignal.any([signal, shutdown.signal, options.signal].filter(Boolean));
+    const assertCurrent = () => taskSignal.throwIfAborted();
+    const guard = hook => async (...args) => {
+      assertCurrent();
+      const result = await hook?.(...args);
+      assertCurrent();
+      return result;
+    };
+    assertCurrent();
+    const common = { ...options, ...target, groupWhitelist: groups(), onProgress: progress, signal: taskSignal,
+      beforeCall: () => { assertCurrent(); options.beforeCall?.(); },
+      beforeSave: guard(options.beforeSave), beforeSend: guard(options.beforeSend), beforeChunk: guard(options.beforeChunk) };
     if (input.action === "generate") return await (options.preview || previewGroupSummary)(common);
     const revision = chosenRevision(input, target);
     if (["confirm-delivered", "confirm-not-delivered"].includes(input.action)) return resolveSummaryDelivery(revisionResult(revision), input.action === "confirm-delivered", common);
@@ -69,10 +81,11 @@ export function createSummaryManager(options = {}) {
   function start(input) {
     const target = scope(input);
     return tasks.start({ scope: summaryKey(target.dateText, target.groupId), action: input.action, meta: target,
-      run: ({ progress }) => execute(input, target, progress) });
+      run: runtime => execute(input, target, runtime) });
   }
 
   async function act(input = {}) {
+    shutdown.signal.throwIfAborted();
     if (["generate", "regenerate-topic", "send", "resume", "confirm-delivered", "confirm-not-delivered"].includes(input.action)) return start(input);
     if (input.action !== "save") throw new Error("不支持的日报操作");
     const target = scope(input);
@@ -86,7 +99,12 @@ export function createSummaryManager(options = {}) {
     return { revisionId: revision.id, ...snapshot(target) };
   }
 
-  return { snapshot, act, wait: tasks.wait };
+  async function stop() {
+    shutdown.abort(Object.assign(new Error("服务正在关闭。"), { code: "bridge_stopping" }));
+    await tasks.wait();
+    return true;
+  }
+  return { snapshot, act, wait: tasks.wait, stop };
 }
 
 function revisionResult(revision) {
@@ -108,6 +126,7 @@ async function regenerateTopic(revision, input, options) {
   const document = { ...revision.document, headline: "", headlineEvidenceIds: [], topics: revision.document.topics.map(item => item.id === input.discussionId ? replacement : item) };
   const summary = renderSummaryDocument(document, revision.bundle, options);
   const result = { ...revision, document, summary, provider: generated.provider };
+  await options.beforeSave?.();
   const saved = saveReportRevision(result, { ...options, kind: "topic-regenerated", expectedRevisionId: input.expectedRevisionId });
   return { ok: true, revisionId: saved.id };
 }

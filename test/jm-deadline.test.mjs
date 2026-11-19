@@ -158,9 +158,35 @@ test("an incomplete downloader result never becomes an archive or success", asyn
   };
   try {
     const result = await transferJmToGroup(f.options);
-    assert.equal(result.ok, false); assert.equal(f.fixture.packed, 0); assert.equal(f.fixture.uploads, 0);
+    assert.equal(result.reason, "incomplete_result"); assert.equal(f.fixture.packed, 0); assert.equal(f.fixture.uploads, 0);
   } finally { await f.clean(); }
 });
+
+test("files changed after the worker verified them never reach the archiver", async () => {
+  const f = syntheticTransfer();
+  const download = f.options.runner;
+  f.options.runner = async (...args) => ({ ...await download(...args), files: 1, bytes: 1 });
+  try {
+    assert.equal((await transferJmToGroup(f.options)).reason, "incomplete_result");
+    assert.equal(f.fixture.packed, 0);
+    assert.equal(f.fixture.uploads, 0);
+  } finally { await f.clean(); }
+});
+
+for (const dispatched of [false, true]) {
+  test(`JM missing return value is ${dispatched ? "unconfirmed after HTTP dispatch" : "a failure before HTTP dispatch"}`, async () => {
+    const f = syntheticTransfer({ trackUploadDispatch: true });
+    f.options.uploader = async (_id, _file, _name, options) => {
+      f.fixture.uploads++;
+      if (dispatched) options.onRequestDispatched();
+      return null;
+    };
+    try {
+      assert.equal((await transferJmToPrivate(f.options)).reason, dispatched ? "upload_unconfirmed" : "upload_failed");
+      assert.equal(f.fixture.uploads, 1);
+    } finally { await f.clean(); }
+  });
+}
 
 test("an external cancellation does not emit a delayed timeout notice", async t => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
@@ -170,4 +196,26 @@ test("an external cancellation does not emit a delayed timeout notice", async t 
   assert.equal(result.ok, false);
   t.mock.timers.tick(120000);
   assert.equal(f.fixture.sent.length, 0); assert.equal(f.fixture.uploads, 0);
+});
+
+test("lost permission cannot downgrade an already submitted JM upload to unsent", async () => {
+  let allowed = true;
+  const f = syntheticTransfer({ trackUploadDispatch: true, assertAllowed: () => {
+    if (!allowed) throw new Error("permission_changed");
+  } });
+  f.options.uploader = async (_id, _file, _name, options) => {
+    options.onRequestDispatched();
+    allowed = false;
+    return { status: "unknown", uploadDispatched: true };
+  };
+  try {
+    assert.equal((await transferJmToPrivate(f.options)).reason, "upload_unconfirmed");
+    assert.equal(f.fixture.sent.length, 0);
+  } finally { await f.clean(); }
+});
+
+test("explicit predispatch cancellation cannot become an unconfirmed JM upload", async () => {
+  const f = syntheticTransfer({ uploader: async () => ({ status: "cancelled", uploadDispatched: false }) });
+  try { assert.equal((await transferJmToPrivate(f.options)).reason, "upload_failed"); }
+  finally { await f.clean(); }
 });

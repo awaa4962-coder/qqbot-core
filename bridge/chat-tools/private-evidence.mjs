@@ -8,6 +8,8 @@ const MAX_SCOPE_VALUE = 160;
 const MAX_PROTECTED = 512;
 const MAX_PROTECTED_CHARS = 32768;
 const MAX_STRING = 24000;
+const MAX_INLINE_JPEG = 2 * 1024 * 1024 + 64;
+const INLINE_JPEG = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/;
 const PUBLIC_TOOLS = new Set(["web_search", "read_public_page", "calculate", "read_bot_status"]);
 const PRIVATE_KINDS = new Set(["group", "thread", "quote", "memory", "note", "file", "attachment", "image", "recent"]);
 const PUBLIC_KINDS = new Set(["current", "public", "system"]);
@@ -45,7 +47,7 @@ export function createPublicQueryGuard(options = {}) {
   function trackContext(messages) {
     if (blocked) return false;
     try {
-      const copies = snapshot(messages);
+      const copies = snapshot(messages, { nodes: 0, chars: 0, active: new Set(), projectImages: true });
       if (!Array.isArray(copies) || copies.length > 128) throw new Error("context_invalid");
       for (let index = 0; index < copies.length; index++) trackMessage(messages[index], copies[index]);
       return true;
@@ -190,7 +192,7 @@ function collectIdentifiers(value, protect) {
 }
 
 // Validate data descriptors before consuming values; getters, exotic objects and cycles never become evidence.
-function snapshot(value, state = { nodes: 0, chars: 0, active: new Set() }, depth = 0) {
+function snapshot(value, state = { nodes: 0, chars: 0, active: new Set() }, depth = 0, imageEnvelope = false) {
   if (++state.nodes > 4096 || depth > 12) throw new Error("evidence_object_limit");
   if (value === null || typeof value !== "object") return primitiveSnapshot(value, state);
   if (types.isProxy(value) || state.active.has(value)) throw new Error("evidence_object_invalid");
@@ -198,7 +200,7 @@ function snapshot(value, state = { nodes: 0, chars: 0, active: new Set() }, dept
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== null && prototype !== (array ? Array.prototype : Object.prototype)) throw new Error("evidence_prototype_invalid");
   state.active.add(value);
-  const result = copyFields(value, array, state, depth);
+  const result = copyFields(value, array, state, depth, imageEnvelope);
   state.active.delete(value);
   return result;
 }
@@ -214,7 +216,7 @@ function primitiveSnapshot(value, state) {
   throw new Error("evidence_primitive_invalid");
 }
 
-function copyFields(value, array, state, depth) {
+function copyFields(value, array, state, depth, imageEnvelope) {
   const keys = Reflect.ownKeys(value);
   if (keys.length > (array ? 257 : 64)) throw new Error("evidence_field_limit");
   const result = array ? [] : Object.create(null);
@@ -225,11 +227,22 @@ function copyFields(value, array, state, depth) {
       result.length = descriptor.value;
     } else {
       if (array && !/^(?:0|[1-9]\d*)$/.test(key)) throw new Error("evidence_array_key_invalid");
-      Object.defineProperty(result, key, { value: snapshot(descriptor.value, state, depth + 1), enumerable: true });
+      Object.defineProperty(result, key, {
+        value: snapshotField(value, key, descriptor.value, state, depth, imageEnvelope), enumerable: true,
+      });
     }
   }
   if (array && Object.keys(result).length !== result.length) throw new Error("evidence_array_sparse");
   return result;
+}
+
+function snapshotField(parent, key, value, state, depth, imageEnvelope) {
+  if (imageEnvelope && key === "url" && typeof value === "string" && value.length <= MAX_INLINE_JPEG && INLINE_JPEG.test(value)) {
+    // Keep the image part private without making its encoded bytes into search terms.
+    return "[private image payload]";
+  }
+  const image = state.projectImages && key === "image_url" && Object.getOwnPropertyDescriptor(parent, "type")?.value === "image_url";
+  return snapshot(value, state, depth + 1, image);
 }
 function evidenceDescriptor(value, key) {
   if (typeof key !== "string" || key.length > 96) throw new Error("evidence_key_invalid");

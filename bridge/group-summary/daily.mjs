@@ -35,33 +35,47 @@ export async function runDailySummaries(options = {}) {
 }
 
 async function runDailySummaryForGroup(options) {
-  const { dateText, groupId, createGuard, loadMessages, sendSummary, log } = options;
-  const guard = createGuard({ dateText, groupId });
-  if (!guard.ok) return skippedResult(guard.reason, options);
-
+  const { dateText, groupId, createGuard } = options;
+  let guard;
   try {
-    const loaded = loadMessages(dateText, groupId);
-    const capture = Array.isArray(loaded) ? null : loaded;
-    const messages = capture ? capture.messages : loaded;
-    if (!messages.length) return skippedResult("no_messages", options);
-    log("start", { dateText, groupId, messages: messages.length });
-    const result = await sendSummary({
-      dateText,
-      groupId,
-      messages,
-      capture,
-      guard,
-      beforeSend: payload => guard.markAttempt?.(payload),
-    });
-    markSentWhenSuccessful(guard, result);
-    log(result.ok && result.sent ? "sent" : "failed", { dateText, groupId, result: { ok: result.ok, sent: result.sent, provider: result.provider, error: result.error, reason: result.reason, revisionId: result.revisionId } });
-    return { groupId, ...result };
+    guard = createGuard({ dateText, groupId });
+    if (!guard.ok) return skippedResult(guard.reason, options);
   } catch (error) {
-    log("error", { dateText, groupId, error: error.message });
-    return { groupId, ok: false, sent: false, error: error.message };
-  } finally {
-    guard.release();
+    return groupError(options, "claim", error);
   }
+
+  let result;
+  try {
+    result = await sendDailySummaryForGroup(guard, options);
+  } catch (error) {
+    result = groupError(options, "send", error);
+  }
+  try {
+    guard.release();
+  } catch (error) {
+    const failed = groupError(options, "release", error);
+    return { ...result, ok: false, pending: true, error: result.error || failed.error, releaseError: failed.error };
+  }
+  return result;
+}
+
+async function sendDailySummaryForGroup(guard, options) {
+  const { dateText, groupId, loadMessages, sendSummary, log } = options;
+  const loaded = loadMessages(dateText, groupId);
+  const capture = Array.isArray(loaded) ? null : loaded;
+  const messages = capture ? capture.messages : loaded;
+  if (!messages.length) return skippedResult("no_messages", options);
+  log("start", { dateText, groupId, messages: messages.length });
+  const result = await sendSummary({ dateText, groupId, messages, capture, guard });
+  markSentWhenSuccessful(guard, result);
+  log(result.ok && result.sent ? "sent" : "failed", { dateText, groupId, result: { ok: result.ok, sent: result.sent, provider: result.provider, error: result.error, reason: result.reason, revisionId: result.revisionId } });
+  return { groupId, ...result };
+}
+
+function groupError({ dateText, groupId, log }, stage, error) {
+  const message = error?.message || String(error);
+  try { log("error", { dateText, groupId, stage, error: message }); } catch {}
+  return { groupId, ok: false, sent: false, error: message };
 }
 
 function skippedResult(reason, options) {
@@ -70,11 +84,7 @@ function skippedResult(reason, options) {
 }
 
 function markSentWhenSuccessful(guard, result) {
-  if (result.publicationManaged) return;
-  if (!result.ok || !result.sent) {
-    guard.markFailed?.();
-    return;
-  }
+  if (result.publicationManaged || !result.ok || !result.sent) return;
   guard.markSent({
     messages: result.messages,
     outputFile: result.outputFile,

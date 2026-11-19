@@ -56,19 +56,20 @@ async function runAiReply(group_id, userId, userMsg, userName, imageUrls, replyT
     replyUserId: runtime.replyUserId,
     quoteEvidence: runtime.quoteEvidence,
     memorySourceIds: runtime.memorySourceIds,
-    hasImages: Boolean(imageUrls?.length),
-    imageCount: imageUrls?.length || 0,
+    imageUrls: imageUrls || [],
+    imageSources: runtime.imageSources,
     imageAnchor: runtime.imageAnchor,
   });
 
   const mimoOptions = { allowTools: true, replyMode: isPassiveInterjection ? "interjection" : "chat",
-    currentUserId: uid, personaCue, currentInput: contextPacket.currentInput, imageSources: runtime.imageSources,
+    currentUserId: uid, personaCue, currentInput: contextPacket.currentInput, imageSources: contextPacket.imageInput.sources,
+    imageBindings: contextPacket.imageInput.bindings, requiredImageBindings: contextPacket.imageInput.requiredBindings,
     attachments: runtime.attachments, currentMessageId: runtime.messageId, mentionTargets: runtime.mentionTargets };
   const outcome = await resolveAiReply({
     userMsg,
     userName: preferredUserName,
     fullHistory: contextPacket.messages,
-    imageUrls,
+    imageUrls: contextPacket.imageInput.urls,
     group_id,
     isAtMe,
     mood: contextPacket.mood,
@@ -109,6 +110,7 @@ async function runAiReply(group_id, userId, userMsg, userName, imageUrls, replyT
       outcome: "sent",
       memorySources: replyMemorySources(contextPacket, outcome),
       memoryExpiresAt: earliestMemoryExpiry(contextPacket.memoryExpiresAt, outcome.memoryExpiresAt),
+      historicalImageSources: contextPacket.historicalImageSources,
     });
   }
   log("aiReply done for", preferredUserName, "in", gid);
@@ -174,8 +176,8 @@ function markProfileGenerated(uid, now) {
 }
 
 export async function resolveAiReply(ctx, runtime = {}) {
-  const hasImages = Boolean(ctx.imageUrls?.length);
-  const visionContext = hasImages && runtime.resolveVision
+  const resolveVision = ctx.imageUrls?.length && !ctx.mimoOptions?.imageBindings?.some(Boolean) && runtime.resolveVision;
+  const visionContext = resolveVision
     ? await runtime.resolveVision(ctx.imageUrls, { userId: ctx.uid })
     : undefined;
   const modelResult = await (runtime.executeChatTask || executeChatTask)({
@@ -188,7 +190,7 @@ export async function resolveAiReply(ctx, runtime = {}) {
     mood: ctx.mood,
     options: {
       ...ctx.mimoOptions,
-      ...(hasImages && runtime.resolveVision ? { visionContext } : {}),
+      ...(resolveVision ? { visionContext } : {}),
     },
   });
   const outcome = normalizeChatOutcome(modelResult);

@@ -43,6 +43,18 @@ test("model task diagnostics retain fixed budget reasons but never raw errors", 
   assert.doesNotMatch(JSON.stringify(stages), /private error|private input/);
 });
 
+test("public web diagnostic details project enum codes only for public tools", async () => {
+  const recorder = createTraceRecorder();
+  await withMessageTrace(ctx, () => {
+    traceStage("tool", { toolName: "read_public_page", reason: "tool_unavailable", webReason: "upstream_rate_limited" });
+    traceStage("tool", { toolName: "web_search", reason: "tool_denied", webReason: "https://example.test/private-query" });
+    traceStage("tool", { toolName: "calculate", reason: "tool_unavailable", webReason: "page_budget" });
+  }, recorder);
+  const stages = recorder.list().items[0].stages.filter(stage => stage.stage === "tool");
+  assert.deepEqual(stages.map(stage => stage.webReason), ["upstream_rate_limited", undefined, undefined]);
+  assert.doesNotMatch(JSON.stringify(stages), /private-query/);
+});
+
 test("trace keeps only bounded source reasons and anonymous input composition", async () => {
   const recorder = createTraceRecorder();
   const secret = "sk-" + "syntheticprivate".repeat(3);

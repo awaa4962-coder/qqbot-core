@@ -37,6 +37,7 @@ class OneBotLinkManager {
     this.awaitingPong = false;
     this.heartbeatTimer = null;
     this.stopped = false;
+    this.drainDeadline = Infinity;
     this.counters = {
       connections: 0,
       replacements: 0,
@@ -70,6 +71,10 @@ class OneBotLinkManager {
   }
 
   enqueue(event) {
+    if (this.stopped) {
+      markEventDropped("bridge_stopping");
+      return false;
+    }
     if (this.queueDepth >= this.maxQueue) {
       this.counters.queueDropped++;
       markEventDropped("websocket_queue_full");
@@ -82,7 +87,13 @@ class OneBotLinkManager {
     this.queueDepth++;
     const promise = previous
       .catch(() => {})
-      .then(() => this.processor(event))
+      .then(() => {
+        if (this.now() >= this.drainDeadline) {
+          markEventDropped("bridge_stopping");
+          return undefined;
+        }
+        return this.processor(event);
+      })
       .catch(error => this.logError("WS processEvent error:", error.message))
       .finally(() => this._finishQueued(scope, token));
     this.chains.set(scope, { promise, token });
@@ -120,6 +131,9 @@ class OneBotLinkManager {
   }
 
   async stop(options = {}) {
+    const requested = Number(options.drainMs ?? 10_000);
+    const drainMs = Number.isFinite(requested) ? Math.max(0, requested) : 0;
+    this.drainDeadline = Math.min(this.drainDeadline, this.now() + drainMs);
     this.stopped = true;
     if (this.heartbeatTimer) this.clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = null;
@@ -127,12 +141,24 @@ class OneBotLinkManager {
     this.active = null;
     if (socket) closeEventually(socket, 1001, "bridge shutting down");
     this._publish({ connected: false, lastDisconnectReason: "bridge_shutdown" });
-    const drainMs = Math.max(0, Number(options.drainMs ?? 10_000));
-    if (!this.chains.size || !drainMs) return;
-    await Promise.race([
-      Promise.allSettled([...this.chains.values()].map(entry => entry.promise)),
-      new Promise(resolve => nodeSetTimeout(resolve, drainMs)),
-    ]);
+    if (!this.chains.size) return true;
+    const remainingMs = this.drainDeadline - this.now();
+    if (remainingMs <= 0) return false;
+    let timer;
+    try {
+      return await Promise.race([
+        Promise.allSettled([...this.chains.values()].map(entry => entry.promise))
+          .then(() => this.now() < this.drainDeadline && this.chains.size === 0),
+        new Promise(resolve => {
+          timer = nodeSetTimeout(() => {
+            this.drainDeadline = Math.min(this.drainDeadline, this.now());
+            resolve(false);
+          }, Math.ceil(remainingMs));
+        }),
+      ]);
+    } finally {
+      nodeClearTimeout(timer);
+    }
   }
 
   _replacePrevious(previous, ws) {
@@ -255,6 +281,7 @@ function safeClose(ws, code, reason) {
 
 function closeEventually(ws, code, reason) {
   safeClose(ws, code, reason);
+  if (ws?.readyState === 3) return;
   const timer = nodeSetTimeout(() => {
     if (ws?.readyState === 3) return;
     try { ws.terminate(); } catch {}

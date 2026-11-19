@@ -1,12 +1,11 @@
 import { containsSensitiveText } from "../privacy.mjs";
-import { authorizedSearchQuery, permitsPublicSearch, publicNetworkCancelled } from "./policy.mjs";
+import { authorizedSearchQuery, permitsPublicSearch, publicSearchCancelled } from "./policy.mjs";
 
 const PRIVATE_TEXT = /\[redacted\]|<redacted>|\bredacted\b|\u5df2\u8131\u654f|\u5df2\u9690\u85cf|\u79c1\u804a\u8bb0\u5f55|\u804a\u5929\u8bb0\u5f55|\u5bc6\u7801|\u5bc6\u94a5|\u8eab\u4efd\u8bc1|\u624b\u673a\u53f7|\b(?:sk-[\w-]+|eyJ[\w-]+\.[\w-]+\.[\w-]+)\b/i;
 const ID_FIELD = /(?:\b(?:uid|qq|user[_ -]?id|group[_ -]?id|message[_ -]?id|current[_ -]?message[_ -]?id|reply[_ -]?to(?:[_ -]?message)?[_ -]?id|turn[_ -]?id|session(?:[_ -]?id)?|conversation(?:[_ -]?id)?)\b|QQ\u53f7|\u7fa4\u53f7|\u4f1a\u8bdd\u6807\u8bc6)["']?\s*[:=\uff1a]\s*["']?[\w-]+|(?:\b(?:uid|qq|user[_ -]?id|group[_ -]?id|message[_ -]?id|session[_ -]?id)\b|QQ\u53f7|\u7fa4\u53f7|\u4f1a\u8bdd\u6807\u8bc6)\s*\d+/i;
 const PRIVATE_REF = /\b(?:cf|src|att|draft|rem|mem)_[a-f0-9]{16,}\b/i;
 const SECRET_FIELD = /\b(?:credentials?|access[_ -]?key|private[_ -]?key|cookie|set[_ -]?cookie|auth|jwt)["']?\s*[:=]\s*\S+/i;
 const SCOPE_ID = /^(?:userId|groupId|messageId|currentMessageId|replyToMessageId|turnId|sessionId|conversationId|selfUin|botId)$/i;
-const NETWORK_VETO = /(?:\u4e0d|\u522b|\u52ff|\u7981\u6b62|\u505c\u6b62|\u53d6\u6d88|\u65e0\u9700|\u6ca1\u6709\u5fc5\u8981|\u6ca1\u5fc5\u8981).{0,24}(?:\u641c|\u8054\u7f51|\u4e0a\u7f51|\u67e5)|(?:\u641c\u7d22|\u8054\u7f51|\u4e0a\u7f51).{0,8}(?:\u7b97\u4e86|\u53d6\u6d88|\u505c\u6b62|\u4e0d\u8981|\u4e0d\u5fc5|\u4e0d\u9700\u8981|\u4e0d\u7528)|\b(?:don't|do not|no|not|never|without|cancel|stop)\b.{0,48}\b(?:search|look up|browse|network|requests?)\b/i;
 
 // Lexical minimum only: private-tool provenance must also be guarded by the backend.
 export function publicTextSafe(value, scope = {}, protectedValues = []) {
@@ -25,7 +24,7 @@ export function publicToolsAllowed(userMessage, task, { autonomous, scope } = {}
   if (!["group_chat", "private_chat"].includes(task) || typeof userMessage !== "string" ||
       !userMessage.trim() || userMessage.length > 1000 || !publicTextSafe(userMessage, scope)) return false;
   const message = userMessage.normalize("NFKC").toLowerCase();
-  if (publicNetworkCancelled(message) || NETWORK_VETO.test(message)) return false;
+  if (publicSearchCancelled(message)) return false;
   return autonomous === true || permitsPublicSearch(userMessage, task);
 }
 

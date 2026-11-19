@@ -4,11 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "2.1.2";
-export const VERSION_NAME = "jm-transport-reuse";
+export const VERSION = "2.1.3";
+export const VERSION_NAME = "runtime-reliability";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const VERSION_NOTES_ZH = Object.freeze([
+  "2.1.3聚焦Linux运行可靠性：历史资料失效、发送前权限复核、日报防重、关停与JM打包回退。公开联网工具继续由模型按需选择，MCP插件入口保留。",
   "2.1.2将JM元数据和图片请求切换到库内持久会话，复用连接和Cookie；并发、默认域名发现及Cookie初始化不变。新增脱敏整数阶段耗时快照，区分已完成请求和并行累计耗时；受控连接复用测试不等于实际CDN提速保证。",
   "2.1.1为JM统一受理后的全链时限：60秒未完成报告一次真实进度，90秒停止下载/打包/上传，反馈请求不超120秒；图片短超时及有界重试，不发缺图包。QQ已受理但回执未知时只提示核实，不自动重发；不保证任意资源都能在时限内成功。",
   "单一模块化注册表定义11项有限工具：记忆/状态查询、公开搜索与原文、计算、本轮附件、总结草稿/任务、本人资料草稿、提醒草稿和确认状态；不提供任意系统执行。",
@@ -28,6 +29,7 @@ export const VERSION_NOTES_ZH = Object.freeze([
 ]);
 
 export const VERSION_NOTES_EN = Object.freeze([
+  "2.1.3 focuses on Linux runtime reliability: historical evidence invalidation, permission checks before dispatch, daily report deduplication, shutdown, and JM archiver fallback. Public web tools remain model-selectable, and the MCP plugin interface is retained.",
   "2.1.2 uses the library's persistent session for JM metadata and images, reusing connections and cookies without changing concurrency, default discovery or cookie initialization. Sanitized integer timing snapshots distinguish completed requests and cumulative parallel durations; controlled connection reuse is not a real-CDN speed guarantee.",
   "2.1.1 bounds JM from acceptance: one progress notice at 60 seconds, cancellation at 90 seconds across download/archive/upload, and feedback requests within 120 seconds. Short image timeouts and bounded retries never turn incomplete files into success. Unknown QQ delivery is not replayed; arbitrary resources are not guaranteed to finish within the budget.",
   "A single modular registry defines 11 limited tools: memory/status reads, public search/excerpts, calculation, current attachments, summary drafts/tasks, personal-change drafts, reminder drafts and action status. No arbitrary system execution is provided.",

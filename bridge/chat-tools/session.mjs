@@ -13,6 +13,7 @@ import { recallMemory, readBotStatus } from "./read.mjs";
 import { registeredTool, registeredTools, getToolSourceRevision } from "./registry.mjs";
 import { effectiveToolPolicy, getToolSettingsSnapshot } from "./settings.mjs";
 import { authorizePublicQuery, publicToolsAllowed } from "./public-query-policy.mjs";
+import { isPublicWebTool, publicWebFailureCode, publicWebRequestFailure } from "./public-web-plugin.mjs";
 import { createPublicQueryGuard } from "./private-evidence.mjs";
 import { createPublicSourceSession } from "./public-sources.mjs";
 import { createMaterialServices } from "./material-services.mjs";
@@ -43,7 +44,7 @@ export function createChatToolSession(options = {}) {
   const cache = new Map();
   const publicQueryGuard = sessionQueryGuard(options, scope);
   const publicSources = createPublicSourceSession({ userMessage: options.userMessage, task: options.task, signal, now,
-    autonomous: policy.autonomy && policy.network, scope,
+    autonomous: policy.autonomy && policy.network, scope, assertCurrent,
     protectedValues: publicQueryGuard.protectedValues, isPublicQueryAllowed: query => publicQueryGuard.allows(query),
     search: options.webSearchResults, read: options.readPublicPage,
     searchTextAdapter: options.webSearch || (!policy.autonomy && !agentScopeAllowed(scope, cfg, options) ? webSearch : undefined) });
@@ -62,7 +63,7 @@ export function createChatToolSession(options = {}) {
   const runtimeContext = { scope, cfg, options, signal, assertCurrent, publicQueryGuard,
     networkAllowed: policy.network && publicToolsAllowed(options.userMessage, options.task, { autonomous: policy.autonomy, scope }) };
 
-  function assertCurrent() { assertBaseCurrent(); materials.assertCurrent(); }
+  function assertCurrent() { assertBaseCurrent(); materials.assertCurrent(); options.assertEvidenceCurrent?.(); }
 
   function assertBaseCurrent() {
     if (invalid) throw stopped(invalid);
@@ -136,7 +137,7 @@ export function createChatToolSession(options = {}) {
       }
     }
     state.toolOutputChars += content.length;
-    traceStage("tool", toolResultDiagnostic(call.function.name, { status, content, overBudget }, reused, state, limits));
+    traceStage("tool", toolResultDiagnostic(call.function.name, { status, content, overBudget, reason: result?.reason }, reused, state, limits));
     return { role: "tool", tool_call_id: call.id, content };
   }
 
@@ -187,7 +188,10 @@ function createToolExecutor(context) {
     if (toolCacheable(name) && cache.has(key) && cacheAuthorized(name, args, context)) return finish(call, cache.get(key), true);
     let result;
     try { result = await runTool(name, args, provider, { ...context, ...context.materials, ...context.writes }); }
-    catch { assertCurrent(); result = { status: "unavailable" }; }
+    catch (error) {
+      assertCurrent();
+      result = { status: "unavailable", ...(isPublicWebTool(name) ? { reason: publicWebRequestFailure(error) } : {}) };
+    }
     assertCurrent();
     return finish(call, result, false, key);
   };
@@ -199,7 +203,7 @@ function toolCacheable(name) {
 }
 
 function cacheAuthorized(name, args, context) {
-  return !["web_search", "read_public_page"].includes(name) || context.publicSources.canReuse(name, args);
+  return !isPublicWebTool(name) || context.publicSources.canReuse(name, args);
 }
 
 function callAllowed(name, declared, context) {
@@ -240,7 +244,7 @@ function knownTool(name) { return registeredTool(name)?.definition.function; }
 function allowedDefinitions(scope, cfg, options, initiallyAllowed, toolCalls, publicSources, enabled = true, materials, policy, context) {
   if (!enabled || !initiallyAllowed || options.allowTools === false || (!policy.autonomy && options.task === "interjection") || toolCalls >= policy.limits.toolCalls || !toolScopeAllowed(scope, cfg)) return [];
   if (policy.autonomy) return autonomousDefinitions(scope, cfg, options, publicSources, materials, policy, context);
-  return [...READ_TOOLS, ...(permitsPublicSearch(options.userMessage, options.task) ? [WEB_TOOL] : []),
+  return [...READ_TOOLS, ...(permitsPublicSearch(options.userMessage, options.task) && publicSources.available ? [WEB_TOOL] : []),
     ...(agentScopeAllowed(scope, cfg, options) ? [CALCULATE_TOOL, ...(canReadPublicPage(options, publicSources) ? [PAGE_TOOL] : [])] : []),
     ...materials.definitions()];
 }
@@ -268,7 +272,7 @@ function toolAccessAllowed(name, scope, cfg, options, publicSources, policy, con
 function autonomousAccessAllowed(entry, scope, cfg, options, publicSources, policy) {
   const name = entry.definition.function.name;
   if (["recall_memory", "read_bot_status", "calculate"].includes(name)) return true;
-  if (["web_search", "read_public_page"].includes(name)) return policy.network && publicSources.available;
+  if (isPublicWebTool(name)) return policy.network && publicSources.available;
   return policy.preparations && phaseAccessAllowed(entry, scope, cfg, options);
 }
 
@@ -310,7 +314,7 @@ function toolArgumentsRejection(name, args, options, queryOptions) {
   if (name === "web_search" && !(queryOptions.autonomous
     ? authorizePublicQuery(args.query, options.userMessage, options.task, queryOptions)
     : authorizedSearchQuery(args.query, options.userMessage, options.task))) {
-    return { status: "denied", reason: "query_not_in_current_message" };
+    return { status: "denied", reason: queryOptions.autonomous ? "query_not_allowed" : "query_not_in_current_message" };
   }
   if (name === "web_search" && !queryOptions.guard.allows(args.query)) return { status: "denied", reason: "private_query_not_authorized" };
   return null;
@@ -390,8 +394,9 @@ function boundedToolResult(name, result, state, limits) {
   return { ...packed, overBudget, content: overBudget ? JSON.stringify({ status: "unavailable", reason: "result_budget" }) : packed.content };
 }
 
-function toolResultDiagnostic(name, { status, content, overBudget }, reused, state, limits) {
+function toolResultDiagnostic(name, { status, content, overBudget, reason }, reused, state, limits) {
   return { status: !overBudget && status === "ok" ? "ok" : "skipped", toolName: name,
+    webReason: isPublicWebTool(name) && publicWebFailureCode(overBudget ? "result_budget" : reason),
     reason: overBudget ? "tool_budget" : reused ? "tool_reused" : toolReason(status), toolResultChars: content.length, ...state,
     modelRoundLimit: limits.modelRounds, toolLimit: limits.toolCalls };
 }

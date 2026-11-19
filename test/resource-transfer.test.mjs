@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
+import { CFG } from "../bridge/config.mjs";
 
 import {
   handleResourceTransferCommand,
@@ -42,7 +43,8 @@ describe("resource transfer", () => {
         isAtMe: true,
         text: "下载 https://example.com/a.zip",
         rawText: "@QQFriend 下载 https://example.com/a.zip",
-        group_id: 111,
+        group_id: CFG.groupWhitelist[0],
+        user_id: 601111,
       }, {
         groupWhitelist: [222],
         sender: async (groupId, text) => sent.push({ groupId, text }),

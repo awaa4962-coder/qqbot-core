@@ -1,11 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { CFG } from "../config.mjs";
-import { getSevenZipCommands } from "../seven-zip.mjs";
+import { getSevenZipCommands, isUnavailableArchiver } from "../seven-zip.mjs";
 import { spawn } from "node:child_process";
 import { monotonicNow } from "../runtime-clock.mjs";
 
 const DEFAULT_ZIP_TIMEOUT_MS = 120000;
+const STAT_BATCH_SIZE = 16;
 
 export function getJmZipPassword(options) {
   if (Object.prototype.hasOwnProperty.call(options, "zipPassword")) {
@@ -26,24 +27,28 @@ export function buildSevenZipArgs(zipPath, password) {
 
 export async function zipDirectory(sourceDir, zipPath, options = {}) {
   const deadline = monotonicNow() + zipTimeout(options.timeoutMs);
-  const run = (command, args) => {
+  const run = (command, args, allowUnavailableExecutable = false) => {
     options.signal?.throwIfAborted();
     const remaining = deadline - monotonicNow();
     if (remaining <= 0) throw new Error("zip_timeout");
-    return runZipCommand(sourceDir, zipPath, command, args, { ...options, timeoutMs: remaining });
+    return runZipCommand(sourceDir, zipPath, command, args, { ...options, timeoutMs: remaining, allowUnavailableExecutable });
   };
   const password = String(options.password || "").trim();
   options.signal?.throwIfAborted();
   if (password) {
-    const commands = getSevenZipCommands({ configured: options.sevenZipPath });
+    const configured = String(options.sevenZipPath || "").trim();
+    const commands = getSevenZipCommands({ configured });
     for (const command of commands) {
-      const ok = await run(command, buildSevenZipArgs(zipPath, password));
+      const ok = await run(command, buildSevenZipArgs(zipPath, password), !configured);
       if (ok) return;
     }
     throw new Error("zip_tool_missing");
   }
 
-  const ok = await run("tar", ["-a", "-cf", zipPath, "."]);
+  const ok = await run("tar", ["-a", "-cf", zipPath, "."]).catch(error => {
+    if (error.message === "zip_failed") return false;
+    throw error;
+  });
   if (ok) return;
   const ps = [
     "Compress-Archive",
@@ -64,6 +69,7 @@ export function runZipCommand(cwd, zipPath, command, args, options = {}) {
     const child = (options.spawnImpl || spawn)(command, args, { cwd, windowsHide: true, detached });
     let settled = false;
     let stopped = false;
+    let closed = false;
     const finish = (value, error) => {
       if (settled) return;
       settled = true;
@@ -75,6 +81,7 @@ export function runZipCommand(cwd, zipPath, command, args, options = {}) {
     const abort = () => {
       if (settled || stopped) return;
       stopped = true;
+      if (closed) return;
       try {
         if (detached && Number.isSafeInteger(child.pid) && child.pid > 0) process.kill(-child.pid, "SIGKILL");
         else child.kill("SIGKILL");
@@ -85,22 +92,26 @@ export function runZipCommand(cwd, zipPath, command, args, options = {}) {
     if (options.signal?.aborted) abort();
     child.stdout?.resume();
     child.stderr?.resume();
-    child.on("error", () => {
+    child.on("error", error => {
       if (stopped || (Number.isSafeInteger(child.pid) && child.pid > 0)) return;
-      finish(false);
+      const unavailable = isUnavailableArchiver(error, options.allowUnavailableExecutable);
+      finish(false, unavailable ? undefined : new Error("zip_failed"));
     });
     child.on("close", async code => {
+      closed = true;
       if (settled) return;
       if (stopped) { finish(false, new Error("zip_timeout")); return; }
       if (code !== 0) {
-        finish(false);
+        finish(false, new Error("zip_failed"));
         return;
       }
       try {
-        const stat = await fs.stat(zipPath);
-        finish(stat.size > 0);
+        const stat = await fs.lstat(zipPath);
+        if (stopped) { finish(false, new Error("zip_timeout")); return; }
+        if (!stat.isFile() || stat.size <= 0) { finish(false, new Error("zip_failed")); return; }
+        finish(true);
       } catch {
-        finish(false);
+        finish(false, new Error(stopped ? "zip_timeout" : "zip_failed"));
       }
     });
   });
@@ -114,20 +125,31 @@ function zipTimeout(value) {
 export async function summarizeDirectory(dir, options = {}) {
   let files = 0;
   let bytes = 0;
+  async function count(paths) {
+    if (!paths.length) return;
+    options.signal?.throwIfAborted();
+    const stats = await Promise.all(paths.map(file => fs.lstat(file)));
+    for (const stat of stats) {
+      if (!stat.isFile() || stat.size <= 0) throw new Error("incomplete_result");
+      files++;
+      bytes += stat.size;
+    }
+  }
   async function walk(current) {
     options.signal?.throwIfAborted();
     const items = await fs.readdir(current, { withFileTypes: true });
+    let batch = [];
     for (const item of items) {
       options.signal?.throwIfAborted();
       const full = path.join(current, item.name);
       if (item.isDirectory()) {
         await walk(full);
       } else if (item.isFile()) {
-        const stat = await fs.stat(full);
-        files++;
-        bytes += stat.size;
-      }
+        batch.push(full);
+        if (batch.length === STAT_BATCH_SIZE) { await count(batch); batch = []; }
+      } else throw new Error("incomplete_result");
     }
+    await count(batch);
   }
   await walk(dir);
   return { files, bytes };

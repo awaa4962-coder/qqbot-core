@@ -2,16 +2,17 @@ import { randomBytes } from "node:crypto";
 import { isIP } from "node:net";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
+import TurndownService from "turndown";
 import { fetchSafeResponse, readBoundedResponseBuffer, validateSafeUrl } from "../safe-url.mjs";
 import { containsSensitiveText, redactSensitiveText } from "../privacy.mjs";
 import { monotonicNow } from "../runtime-clock.mjs";
 import { webSearchResults } from "../search.mjs";
 import { authorizePublicQuery, publicToolsAllowed, publicTextSafe } from "./public-query-policy.mjs";
-import { registeredTool } from "./registry.mjs";
+import { PUBLIC_WEB_TIMEOUTS, publicWebFailureCode, publicWebRequestFailure, publicWebResponseFailure } from "./public-web-plugin.mjs";
 
 const TTL_MS = 90000;
-const READ_MS = registeredTool("read_public_page").timeoutMs;
-const SEARCH_MS = registeredTool("web_search").timeoutMs;
+const READ_MS = PUBLIC_WEB_TIMEOUTS.page;
+const SEARCH_MS = PUBLIC_WEB_TIMEOUTS.search;
 const MAX_BYTES = 128 * 1024;
 const MAX_REFS = 8;
 const MAX_URL = 700;
@@ -20,10 +21,18 @@ const MAX_RESULT = 1899;
 const REF = /^src_[a-f0-9]{32}$/;
 const SECRET_PARAMETER = /(?:token|secret|password|passwd|credential|authorization|session|signature|api.?key|access.?key|private.?key|^auth$|^key$|^code$|^sig$|^jwt$)/i;
 const CONTENT_TYPES = new Set(["text/plain", "text/html", "text/markdown", "text/x-markdown", "application/json"]);
+const OMIT_HTML = new Set(["HEAD", "SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "IFRAME", "OBJECT", "EMBED", "SVG", "IMG", "PICTURE"]);
+const htmlConverter = new TurndownService({ headingStyle: "atx" });
+htmlConverter.addRule("public-link-text", { filter: "a", replacement: content => content });
+htmlConverter.addRule("omit-hidden-or-active", {
+  filter: node => OMIT_HTML.has(node.nodeName) || node.hasAttribute("hidden") || node.getAttribute("aria-hidden") === "true" ||
+    /\b(?:display\s*:\s*none|visibility\s*:\s*hidden)\b/i.test(node.getAttribute("style") || ""),
+  replacement: () => "",
+});
 
 // read is fetchSafeResponse(url, options), including its per-hop pinned DNS contract.
 // Privacy inputs are backend-owned: values may be a synchronous supplier; the query guard must return true synchronously.
-export function createPublicSourceSession({ userMessage, task, autonomous = false, scope = {}, protectedValues = [], isPublicQueryAllowed,
+export function createPublicSourceSession({ userMessage, task, autonomous = false, scope = {}, protectedValues = [], isPublicQueryAllowed, assertCurrent,
   signal, now = monotonicNow, search = webSearchResults, searchTextAdapter, read = fetchSafeResponse } = {}) {
   const boundScope = Object.freeze({ ...scope });
   const policy = Object.freeze({ autonomous: autonomous === true, scope: boundScope });
@@ -45,12 +54,8 @@ export function createPublicSourceSession({ userMessage, task, autonomous = fals
   let invalid = "";
 
   function rejection() {
-    const time = Number(now());
     if (!available || !currentMessageAllowed()) return "not_allowed";
-    if (invalid) return invalid;
-    if (turnSignal.aborted) return invalid = "cancelled";
-    if (!Number.isFinite(time) || time < startedAt || time >= deadline) return invalid = "expired";
-    return "";
+    return invalid ||= publicSessionExpired(turnSignal, Number(now()), startedAt, deadline, assertCurrent);
   }
 
   function register(value, title) {
@@ -99,18 +104,22 @@ export function createPublicSourceSession({ userMessage, task, autonomous = fals
     let dispatchDenied = false;
     try {
       const operation = operationSignal(SEARCH_MS, options.signal);
-      const result = await abortable(() => {
+      const beforeRequest = () => {
+        operation.throwIfAborted();
         if (rejection() || !authorizedQuery(authorized)) {
           dispatchDenied = true;
           throw new Error("query_not_allowed");
         }
-        return (searchTextAdapter || search)(authorized, { signal: operation });
+      };
+      const result = await abortable(() => {
+        beforeRequest();
+        return (searchTextAdapter || search)(authorized, { signal: operation, beforeRequest });
       }, operation);
       const stale = rejection();
       if (stale) return failure("denied", stale);
       if (!authorizedQuery(authorized)) return failure("denied", "query_not_allowed");
       return searchTextAdapter ? textSearchEvidence(result) : searchEvidence(result, register);
-    } catch { return searchFailure(rejection(), dispatchDenied); }
+    } catch (error) { return searchFailure(rejection(), dispatchDenied, error); }
   }
 
   async function readPublic(sourceRef, callerOptions = {}) {
@@ -128,7 +137,7 @@ export function createPublicSourceSession({ userMessage, task, autonomous = fals
         method: "GET", signal: operation, timeoutMs: Math.min(READ_MS, Math.max(1, deadline - Number(now()))),
         maxBytes: MAX_BYTES, maxRedirects: 3,
         requestImpl: (url, options, callback) => {
-          if (!protectedTextAllowed(url.href)) throw new Error("unsafe_public_url");
+          if (rejection() || !publicFinalUrlAllowed(url, protectedTextAllowed)) throw new Error("unsafe_public_url");
           return publicPinnedRequest(url, options, callback);
         },
         headers: { Accept: "text/html, text/plain, text/markdown, application/json" },
@@ -137,7 +146,10 @@ export function createPublicSourceSession({ userMessage, task, autonomous = fals
       if (stale) return failure("denied", stale);
       if (!protectedTextAllowed(source.url)) return failure("denied", "sensitive_source");
       return result.status ? result : boundedResult("ok", result.text, [source], "excerpt");
-    } catch { return failure(rejection() ? "denied" : "unavailable", rejection() || "read_failed"); }
+    } catch (error) {
+      const stale = rejection();
+      return failure(stale ? "denied" : "unavailable", stale || publicWebRequestFailure(error));
+    }
   }
 
   function operationSignal(maxMs = READ_MS, callerSignal) {
@@ -150,9 +162,16 @@ export function createPublicSourceSession({ userMessage, task, autonomous = fals
   return { available, canReuse, initialSources: () => rejection() ? [] : initial.filter(source => protectedTextAllowed(source.url)).map(source => ({ ...source })), search: searchPublic, read: readPublic };
 }
 
-function searchFailure(reason, dispatchDenied) {
+function publicSessionExpired(signal, time, startedAt, deadline, assertCurrent) {
+  if (signal.aborted) return "cancelled";
+  if (!Number.isFinite(time) || time < startedAt || time >= deadline) return "expired";
+  try { assertCurrent?.(); } catch { return "cancelled"; }
+  return "";
+}
+
+function searchFailure(reason, dispatchDenied, error) {
   const denied = reason || (dispatchDenied ? "query_not_allowed" : "");
-  return failure(denied ? "denied" : "unavailable", denied || "search_failed");
+  return failure(denied ? "denied" : "unavailable", denied || publicWebRequestFailure(error));
 }
 
 function publicCacheAllowed(name, args, { rejection, authorizedQuery, references, protectedTextAllowed }) {
@@ -171,7 +190,8 @@ function textSearchEvidence(value) {
 }
 
 function searchEvidence(result, register) {
-  if (!result || result.status !== "ok") return failure(result?.status === "empty" ? "empty" : "unavailable", "search_empty");
+  if (result?.status === "empty") return failure("empty", "search_empty");
+  if (result?.status !== "ok") return failure("unavailable", publicWebFailureCode(result?.reason) || "search_failed");
   const candidates = Array.isArray(result.sources) ? result.sources.slice(0, MAX_REFS) : [];
   const sources = candidates.flatMap(item => {
     const source = register(item?.url, item?.title);
@@ -189,18 +209,21 @@ async function pageContent(url, read, options, rejection, protectedTextAllowed) 
     response = result?.response;
     const stale = rejection();
     if (stale) return failure("denied", stale);
-    if (!publicResponse(result) || !protectedTextAllowed(result.url?.href || result.url)) return failure("unavailable", "unsafe_response");
+    const rejected = publicWebResponseFailure(result);
+    if (rejected) return failure("unavailable", rejected);
+    if (!publicFinalUrlAllowed(result.url, protectedTextAllowed)) return failure("unavailable", "unsafe_response");
     const type = (response.headers.get("content-type") || "").split(";", 1)[0].trim().toLowerCase();
     if (!CONTENT_TYPES.has(type)) return failure("unavailable", "content_type");
     const buffer = await abortable(() => readBoundedResponseBuffer(response, MAX_BYTES), options.signal);
     if (buffer === null) return failure("unavailable", "response_too_large");
     const body = buffer.toString("utf8");
-    return { text: cleanText(type === "text/html" ? htmlText(body) : body, MAX_TEXT) };
+    return { text: cleanText(type === "text/html" ? htmlConverter.turndown(body) : body, MAX_TEXT) };
   } finally { try { response?.body?.cancel()?.catch(() => {}); } catch {} }
 }
 
-function publicResponse(result) {
-  return result?.ok && result.response?.ok && Boolean(publicUrl(result.url?.href || result.url));
+function publicFinalUrlAllowed(url, allowed) {
+  const value = url?.href || url;
+  return Boolean(publicUrl(value)) && allowed(value);
 }
 
 function publicPinnedRequest(url, options, callback) {
@@ -246,11 +269,14 @@ function unsafeQueryUrl(query) {
 }
 
 function requestedLinks(message) {
-  if (/(?:不|别|勿|禁止|取消|停止|无需).{0,16}(?:读|看|总结|分析)|\b(?:don't|do not|never|without|cancel)\b.{0,24}\b(?:read|summarize|analyse|analyze)\b/i.test(message)) return [];
+  if (/(?:不要|不用|不必|不允许|不准|不许|别|勿|禁止|取消|停止|无需).{0,16}(?:读|看|打开|总结|分析)|\b(?:don't|do not|never|without|cancel)\b.{0,24}\b(?:read|open|summarize|analyse|analyze)\b/i.test(message)) return [];
   const links = [];
-  for (const clause of message.split(/[，；;\n]/)) {
-    if (!/^\s*(?:(?:请|麻烦|帮我|替我|为我|给我|你|please)\s*)*(?:读(?:一下)?|看看|总结|分析|read\b|summarize\b|analy[sz]e\b)/i.test(clause)) continue;
-    for (const match of clause.matchAll(/https?:\/\/[^\s<>"']+/gi)) {
+  const clauses = message.split(/[，。；;\n]/);
+  for (const [index, clause] of clauses.entries()) {
+    if (!/^\s*(?:(?:请|麻烦|帮我|替我|为我|给我|你|please)\s*)*(?:读(?:一下)?|阅读|看一下|看看|打开|总结|分析|read\b|open\b|summarize\b|analy[sz]e\b)/i.test(clause)) continue;
+    const next = clauses[index + 1] || "";
+    const linkText = !/https?:\/\//i.test(clause) && /^\s*(?:链接|网址|地址|说明主要结论)\s*[:：]\s*https?:\/\//i.test(next) ? next : clause;
+    for (const match of linkText.matchAll(/https?:\/\/[^\s<>"']+/gi)) {
       const url = publicUrl(match[0].replace(/[)\]},.。！？!，；]+$/u, ""));
       if (url && !links.includes(url)) links.push(url);
       if (links.length >= MAX_REFS) return links;
@@ -259,22 +285,11 @@ function requestedLinks(message) {
   return links;
 }
 
-function htmlText(value) {
-  return value.replace(/<!--[\s\S]*?(?:-->|$)/g, " ")
-    .replace(/<(script|style|noscript|template)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi, " ")
-    .replace(/<[^>]*(?:>|$)/g, " ")
-    .replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (_entity, code) => {
-      if (code[0] !== "#") return ({ amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " })[code.toLowerCase()];
-      const point = code[1].toLowerCase() === "x" ? parseInt(code.slice(2), 16) : Number(code.slice(1));
-      return point > 0 && point <= 0x10ffff && !(point >= 0xd800 && point <= 0xdfff) ? String.fromCodePoint(point) : " ";
-    });
-}
-
 function cleanText(value, limit) {
   return redactSensitiveText(typeof value === "string" ? value : "").replace(/\p{Cc}/gu, " ").replace(/\s+/g, " ").trim().slice(0, limit).replace(/[\uD800-\uDBFF]$/u, "");
 }
 
-function failure(status, reason) { return { status, text: reason, untrusted: true, sources: [] }; }
+function failure(status, reason) { return { status, reason, text: reason, untrusted: true, sources: [] }; }
 
 function boundedResult(status, text, sources, coverage) {
   const result = { status, text: cleanText(text, MAX_TEXT), untrusted: true, sources: [...new Map(sources.map(source => [source.source_ref, { ...source }])).values()] };

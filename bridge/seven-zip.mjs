@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
+const UNAVAILABLE_AUTO_ARCHIVER = new Set(["EACCES", "EPERM", "ENOEXEC"]);
 const COMMON_COMMANDS = [
   "C:\\Program Files\\7-Zip\\7z.exe",
   "C:\\Program Files (x86)\\7-Zip\\7z.exe",
@@ -29,6 +30,7 @@ export function getSevenZipCommands(options = {}) {
 
 export function findUsableSevenZip(options = {}) {
   const runner = options.runner || spawnSync;
+  const automatic = !String(options.configured || "").trim();
   for (const command of getSevenZipCommands(options)) {
     const result = runner(command, ["i"], {
       stdio: "ignore",
@@ -36,6 +38,12 @@ export function findUsableSevenZip(options = {}) {
       windowsHide: true,
     });
     if (!result?.error && result?.status === 0) return command;
+    if (result?.pid > 0 || !isUnavailableArchiver(result?.error, automatic)) return "";
   }
   return "";
+}
+
+export function isUnavailableArchiver(error, automatic) {
+  const code = error?.code;
+  return code === "ENOENT" || code === "ENOTDIR" || (automatic && UNAVAILABLE_AUTO_ARCHIVER.has(code));
 }

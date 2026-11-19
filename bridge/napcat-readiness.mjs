@@ -9,17 +9,21 @@ let cacheExpiresAt = 0;
 let probePromise = null;
 
 export async function refreshNapCatReadiness(options = {}) {
+  if (probePromise) return { ...await probePromise };
   const cacheNow = Number(options.cacheNow ?? monotonicNow());
   if (!options.force && cacheExpiresAt > cacheNow) return { ...cached };
-  if (probePromise) return await probePromise;
-  probePromise = runProbe(options)
-    .then(result => {
+  const pending = Promise.resolve().then(() => runProbe(options));
+  probePromise = pending;
+  try {
+    const result = await pending;
+    if (probePromise === pending) {
       cached = result;
       cacheExpiresAt = cacheNow + CACHE_MS;
-      return { ...cached };
-    })
-    .finally(() => { probePromise = null; });
-  return await probePromise;
+    }
+    return { ...result };
+  } finally {
+    if (probePromise === pending) probePromise = null;
+  }
 }
 
 export function getCachedNapCatReadiness() {

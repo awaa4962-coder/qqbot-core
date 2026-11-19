@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { monotonicNow } from "../runtime-clock.mjs";
 import { isRegisteredToolName } from "../chat-tools/registry.mjs";
+import { isPublicWebTool, publicWebFailureCode } from "../chat-tools/public-web-plugin.mjs";
 
 const storage = new AsyncLocalStorage();
 const STAGES = new Set(["received", "admission", "route", "context", "vision", "model", "tool", "output", "send", "complete"]);
@@ -88,6 +89,10 @@ function safePromptIdentity(details) {
   const safe = {};
   if (typeof details.promptTagged === "boolean") safe.promptTagged = details.promptTagged;
   if (isRegisteredToolName(details.toolName)) safe.toolName = details.toolName;
+  if (isPublicWebTool(safe.toolName)) {
+    const reason = publicWebFailureCode(ownDetailValue(details, "webReason"));
+    if (reason) safe.webReason = reason;
+  }
   if (/^[a-f0-9]{16}$/.test(details.promptFingerprint || "")) safe.promptFingerprint = details.promptFingerprint;
   if (/^[a-z][a-z0-9-]{0,47}-v\d{1,4}$/.test(details.promptVersion || "") && !/^(sk-|token|secret)/i.test(details.promptVersion)) safe.promptVersion = details.promptVersion;
   return safe;

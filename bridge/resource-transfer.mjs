@@ -7,8 +7,9 @@ import { prepareCommandText } from "./commands/normalize.mjs";
 import { fetchSafeResponse, validateSafeUrl } from "./safe-url.mjs";
 import { sendMsg, uploadGroupFile } from "./napcat.mjs";
 import { log, logE } from "./logger.mjs";
-import { classifyOneBotReceipt, isDefiniteOneBotRejection, isOneBotResponseSuccessful } from "./onebot-receipt.mjs";
+import { classifyOneBotReceipt } from "./onebot-receipt.mjs";
 import { createTaskRunner, taskEventKey } from "./tasks/runner.mjs";
+import { messageRouteRejection } from "./event-admission.mjs";
 
 const COMMAND_RE = /^(download|dl|fetch|下载)\s*(.*)$/i;
 const DEFAULT_TIMEOUT_MS = 120000;
@@ -16,12 +17,19 @@ const RESOURCE_TEMP_PREFIX = "qqfriend-resource-";
 const DEFAULT_TEMP_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const FUTURE_SKEW_MS = 5 * 60 * 1000;
 const activeResourceTempDirs = new Set();
+const resourceShutdown = new AbortController();
 const resourceTasks = createTaskRunner({ filename: path.join(CFG.dataRoot, ".qqfriend", "tasks",
   process.env.NODE_ENV === "test" ? `resource-transfers-${process.pid}.json` : "resource-transfers.json"),
-  maxConcurrent: 1, historyLimit: 256, busyMessage: "已有资源转发任务在运行，请稍后再试。" });
+  maxConcurrent: 1, historyLimit: 256, busyMessage: "已有资源转发任务在运行，请稍后再试。",
+  resultError: result => resourceErrorText(result.reason) });
 
 export function waitResourceTasks() { return resourceTasks.wait(); }
 export function listResourceTasks() { return resourceTasks.list(); }
+export async function stopResourceTasks() {
+  resourceShutdown.abort();
+  await waitResourceTasks();
+  return true;
+}
 
 export function isResourceGroupAllowed(groupId, whitelist = CFG.resourceGroupWhitelist) {
   return whitelist.map(Number).includes(Number(groupId));
@@ -48,99 +56,152 @@ export async function handleResourceTransferCommand(ctx, options = {}) {
     botNames: options.botNames ?? CFG.botNames,
   });
   if (!parsed) return false;
+  if (resourceShutdown.signal.aborted) return true;
 
-  const sender = options.sender || sendMsg;
-  if (!isResourceGroupAllowed(ctx.group_id, options.groupWhitelist || CFG.resourceGroupWhitelist)) {
-    await sender(ctx.group_id, "这个群没有开启资源转发白名单。", options.replyToId);
+  const scope = { message_type: "group", group_id: ctx.group_id, user_id: ctx.user_id };
+  const routeAllowed = () => !messageRouteRejection(scope);
+  const groupAllowed = () => isResourceGroupAllowed(scope.group_id, options.groupWhitelist || CFG.resourceGroupWhitelist);
+  const delivery = { groupId: scope.group_id, replyToId: options.replyToId, sender: options.sender, signal: resourceShutdown.signal };
+  if (!routeAllowed()) return true;
+  if (!groupAllowed()) {
+    await notifyResource({ ...delivery, assertAllowed: () => requireResourcePermission(routeAllowed) }, "这个群没有开启资源转发白名单。");
     return true;
   }
+  delivery.assertAllowed = () => requireResourcePermission(() => routeAllowed() && groupAllowed());
 
   if (!parsed.ok) {
-    await sender(ctx.group_id, resourceErrorText(parsed.reason), options.replyToId);
+    await notifyResource(delivery, resourceErrorText(parsed.reason));
     return true;
   }
 
-  await launchResourceTask(ctx, parsed, options, sender);
+  await launchResourceTask(ctx.message_id, { ...delivery, url: parsed.url, uploader: options.uploader,
+    trackUploadDispatch: options.trackUploadDispatch, maxBytes: options.maxBytes });
   return true;
 }
 
-async function launchResourceTask(ctx, parsed, options, sender) {
-  const eventKey = taskEventKey("group", ctx.group_id, ctx.message_id);
+function requireResourcePermission(allowed) {
+  if (!allowed()) throw new Error("permission_changed");
+}
+
+async function launchResourceTask(messageId, options) {
+  const eventKey = taskEventKey("group", options.groupId, messageId);
   try {
     if (resourceTasks.hasEvent(eventKey)) {
-      await notifyResource(sender, ctx.group_id, "这条资源任务已经受理过，请先核实原任务结果，不会自动重做。", options.replyToId);
+      await notifyResource(options, "这条资源任务已经受理过，请先核实原任务结果，不会自动重做。");
       return;
     }
   } catch {
-    await notifyResource(sender, ctx.group_id, "资源任务没能启动，请稍后检查运行状态。", options.replyToId);
+    await notifyResource(options, "资源任务没能启动，请稍后检查运行状态。");
     return;
   }
   let release;
   const gate = new Promise(resolve => { release = resolve; });
   try {
     resourceTasks.start({ scope: "resource", action: "transfer", meta: { kind: "group", eventKey }, run: async ({ signal }) => {
-      await gate;
-      return transferResourceToGroup({
-        groupId: ctx.group_id, url: parsed.url, replyToId: options.replyToId, sender, signal,
-        uploader: options.uploader || uploadGroupFile, maxBytes: options.maxBytes || CFG.resourceMaxBytes,
-        assertAllowed: () => {
-          signal.throwIfAborted();
-          if (!isResourceGroupAllowed(ctx.group_id, options.groupWhitelist || CFG.resourceGroupWhitelist)) throw new Error("permission_changed");
-        },
-      });
+      const taskSignal = AbortSignal.any([signal, resourceShutdown.signal]);
+      if (taskSignal.aborted) return { ok: false, reason: "cancelled" };
+      // Cancellation also opens the gate when a start notice has not settled yet.
+      taskSignal.addEventListener("abort", release, { once: true });
+      try { await gate; }
+      finally { taskSignal.removeEventListener("abort", release); }
+      return transferResourceToGroup({ ...options, signal: taskSignal });
     } });
   } catch (error) {
     const busy = error.message === "已有资源转发任务在运行，请稍后再试。" || error.message === "后台任务已满，请稍后再试";
-    await notifyResource(sender, ctx.group_id, busy ? "已有资源转发任务在运行，请稍后再试。" :
-      "资源任务没能启动，请稍后检查运行状态。", options.replyToId);
+    await notifyResource(options, busy ? "已有资源转发任务在运行，请稍后再试。" :
+      "资源任务没能启动，请稍后检查运行状态。");
     return;
   }
-  try { await notifyResource(sender, ctx.group_id, "资源下载已开始，完成后会转发到群。", options.replyToId); }
+  try { await notifyResource(options, "资源下载已开始，完成后会转发到群。"); }
   finally { release(); }
 }
 
-async function notifyResource(sender, groupId, text, replyTo) {
-  try { await sender(groupId, text, replyTo); } catch {}
+function assertResourceAllowed(options) {
+  options.signal?.throwIfAborted();
+  options.assertAllowed?.();
+  options.signal?.throwIfAborted();
+}
+
+async function notifyResource(options, text) {
+  try {
+    assertResourceAllowed(options);
+    const receipt = await (options.sender || sendMsg)(options.groupId, text, options.replyToId, {
+      signal: options.signal, maxAttempts: 1, stopReason: () => {
+        try { assertResourceAllowed(options); return ""; }
+        catch { return options.signal?.aborted ? "cancelled" : "permission_changed"; }
+      },
+    });
+    return classifyOneBotReceipt(receipt) === "sent";
+  } catch { return false; }
 }
 
 export async function transferResourceToGroup(options) {
-  const sender = options.sender || sendMsg;
-  const uploader = options.uploader || uploadGroupFile;
   let downloaded = null;
+  let reason = "";
   try {
-    options.assertAllowed?.();
+    assertResourceAllowed(options);
     downloaded = await downloadResourceToTemp(options.url, {
       maxBytes: options.maxBytes || CFG.resourceMaxBytes,
       timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS,
       signal: options.signal,
     });
-    options.assertAllowed?.();
-    const uploadResult = await uploader(options.groupId, downloaded.filePath, downloaded.fileName);
-    if (!isOneBotResponseSuccessful(uploadResult)) throw new Error(isDefiniteOneBotRejection(uploadResult) ? "upload_failed" : "upload_unconfirmed");
-    const noticeConfirmed = await sendResourceSuccessNotice(options, sender, downloaded.bytes);
-    return { ok: true, bytes: downloaded.bytes, fileName: downloaded.fileName, noticeConfirmed };
+    await uploadResource(options, downloaded);
   } catch (error) {
-    logE("resource transfer failed:", error.message);
-    if (error.message !== "permission_changed" && !options.signal?.aborted) await sender(options.groupId, resourceErrorText(error.message), options.replyToId);
-    return { ok: false, reason: error.message };
+    reason = resourceFailureReason(error, options.signal);
   } finally {
-    if (downloaded?.tempDir) await cleanupTempDir(downloaded.tempDir);
+    if (downloaded?.tempDir) await tryCleanupTempDir(downloaded.tempDir);
   }
+  if (reason) {
+    logE("resource transfer failed:", reason);
+    if (reason !== "permission_changed" && reason !== "cancelled") await notifyResource(options, resourceErrorText(reason));
+    return { ok: false, reason };
+  }
+  const noticeConfirmed = await notifyResource(options, "资源已转发，大小 " + formatBytes(downloaded.bytes) + "。");
+  return { ok: true, bytes: downloaded.bytes, fileName: downloaded.fileName, noticeConfirmed };
 }
 
-async function sendResourceSuccessNotice(options, sender, bytes) {
+async function uploadResource(options, downloaded) {
+  assertResourceAllowed(options);
+  const uploader = options.uploader || uploadGroupFile;
+  // Without a transport dispatch hook, invoking a custom uploader may already submit the file.
+  let mayHaveDispatched = uploader !== uploadGroupFile && options.trackUploadDispatch !== true;
+  let blocked = false;
+  let receipt;
   try {
-    options.assertAllowed?.();
-    options.signal?.throwIfAborted();
-    const receipt = await sender(options.groupId, "资源已转发，大小 " + formatBytes(bytes) + "。临时文件已清理。", options.replyToId);
-    return classifyOneBotReceipt(receipt) === "sent";
-  } catch { return false; }
+    receipt = await uploader(options.groupId, downloaded.filePath, downloaded.fileName, {
+      signal: options.signal,
+      onRequestDispatched() {
+        try { assertResourceAllowed(options); }
+        catch (error) { blocked = true; throw error; }
+        mayHaveDispatched = true;
+      },
+    });
+  } catch { /* Classify transport failures using the dispatch boundary. */ }
+  if (blocked) throw new Error(options.signal?.aborted ? "cancelled" : "permission_changed");
+  requireUploadReceipt(receipt, mayHaveDispatched, options.signal);
+}
+
+function requireUploadReceipt(receipt, mayHaveDispatched, signal) {
+  const delivery = classifyOneBotReceipt(receipt, { allowIdOnly: false });
+  if (delivery === "sent") return;
+  if (delivery === "failed") throw new Error("upload_failed");
+  if (delivery === "cancelled" && receipt.uploadDispatched === false) throw new Error("cancelled");
+  if (mayHaveDispatched || receipt?.uploadDispatched === true) throw new Error("upload_unconfirmed");
+  throw new Error(signal?.aborted ? "cancelled" : "upload_failed");
+}
+
+function resourceFailureReason(error, signal) {
+  const reason = error?.message;
+  if (reason === "upload_unconfirmed" || reason === "upload_failed") return reason;
+  if (signal?.aborted) return "cancelled";
+  return /^[a-z_]{1,64}$/.test(reason || "") ? reason : "download_failed";
 }
 
 export async function downloadResourceToTemp(url, options = {}) {
   const maxBytes = options.maxBytes || CFG.resourceMaxBytes;
+  options.signal?.throwIfAborted();
   const result = await fetchSafeResponse(url, { timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS, signal: options.signal });
-  const response = await validateDownloadResponse(result, maxBytes);
+  const response = await validateDownloadResponse(result, maxBytes, options.signal);
 
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), RESOURCE_TEMP_PREFIX));
   activeResourceTempDirs.add(path.resolve(tempDir));
@@ -150,29 +211,34 @@ export async function downloadResourceToTemp(url, options = {}) {
   try {
     bytes = await writeBodyToFile(response.body, filePath, maxBytes, options.signal);
   } catch (error) {
-    await cleanupTempDir(tempDir);
+    await tryCleanupTempDir(tempDir);
     throw error;
   }
 
   if (bytes <= 0) {
-    await cleanupTempDir(tempDir);
+    await tryCleanupTempDir(tempDir);
     throw new Error("empty_body");
   }
   log("resource downloaded:", fileName, formatBytes(bytes));
   return { tempDir, filePath, fileName, bytes, url: result.url?.href || url };
 }
 
-async function validateDownloadResponse(result, maxBytes) {
+async function validateDownloadResponse(result, maxBytes, signal) {
   if (!result.ok) throw new Error(result.reason || "blocked_url");
-  if (!result.response?.ok) throw new Error("download_failed");
-
-  const contentLength = Number(result.response.headers.get("content-length") || 0);
-  if (contentLength > maxBytes) {
-    try { await result.response.body?.cancel(); } catch {}
-    throw new Error("size_limit");
+  const { response } = result;
+  const rejection = resourceResponseRejection(response, maxBytes);
+  if (signal?.aborted || rejection) {
+    try { await response?.body?.cancel(); } catch {}
+    signal?.throwIfAborted();
+    throw new Error(rejection);
   }
-  if (!result.response.body) throw new Error("empty_body");
-  return result.response;
+  return response;
+}
+
+function resourceResponseRejection(response, maxBytes) {
+  if (!response?.ok || response.status !== 200 || response.headers.has("content-range")) return "download_failed";
+  if (Number(response.headers.get("content-length") || 0) > maxBytes) return "size_limit";
+  return response.body ? "" : "empty_body";
 }
 
 async function writeBodyToFile(body, filePath, maxBytes, signal) {
@@ -198,6 +264,11 @@ export async function cleanupTempDir(tempDir) {
   } finally {
     activeResourceTempDirs.delete(path.resolve(tempDir));
   }
+}
+
+async function tryCleanupTempDir(tempDir) {
+  try { await cleanupTempDir(tempDir); }
+  catch { logE("resource temp cleanup failed"); }
 }
 
 export async function cleanupExpiredResourceTempDirs(options = {}) {
@@ -227,10 +298,12 @@ export function resourceErrorText(reason) {
   if (reason === "invalid_url" || reason === "unsupported_protocol") return "这个链接格式不支持，只能转发 http/https 资源。";
   if (reason === "private_address" || reason === "blocked_url") return "这个链接被安全策略拦截。";
   if (reason === "size_limit") return "资源超过 500MB 上限，已取消转发。";
-  if (reason === "upload_failed") return "资源已下载但转发失败，临时文件已删除。";
-  if (reason === "upload_unconfirmed") return "资源转发结果未确认，请先在 QQ 核实，不会自动重发。本机临时文件已清理。";
-  if (reason === "download_failed" || reason === "empty_body") return "资源下载失败，未保存文件。";
-  return "资源转发失败，临时文件已删除。";
+  if (reason === "upload_failed") return "资源已下载但转发失败。";
+  if (reason === "upload_unconfirmed") return "资源转发结果未确认，请先在 QQ 核实，不会自动重发。";
+  if (reason === "permission_changed") return "资源转发权限已变化，后续处理已停止。";
+  if (reason === "cancelled") return "资源任务已取消，没有提交文件转发。";
+  if (reason === "download_failed" || reason === "empty_body") return "资源下载失败，未转发文件。";
+  return "资源转发失败。";
 }
 
 function extractFirstUrl(text) {

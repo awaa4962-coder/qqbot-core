@@ -42,6 +42,21 @@ test("natural Chinese public questions do not need fixed search prefixes", () =>
   assert.equal(authorizePublicQuery(query, message, "group_chat"), "");
 });
 
+test("polite requests and network trouble as a topic do not become vetoes", async () => {
+  for (const userMessage of ["能不能帮我搜一下 Debian 官方文档？", "搜一下为什么 Debian 不能联网。"]) {
+    let calls = 0;
+    const session = create({ userMessage, search: async () => { calls++; return evidence; } });
+    assert.equal((await session.search("Debian")).status, "ok");
+    assert.equal(calls, 1);
+    for (const veto of ["本轮不联网", "不许联网", "不能联网，直接回答"]) {
+      const vetoed = create({ userMessage: userMessage + "；" + veto, search: noNetwork });
+      checkDenied(await vetoed.search("Debian"));
+    }
+  }
+  assert.equal(publicSearchPhrase("请联网查一下 Debian 发布说明", "group_chat"), "Debian 发布说明");
+  assert.equal(publicSearchPhrase("请不要联网查 Debian 发布说明", "group_chat"), "");
+});
+
 test("legacy helpers and omitted or false autonomy retain explicit substring search", async () => {
   const message = "search lunar horizon";
   assert.equal(publicSearchPhrase(message, "group_chat"), "lunar horizon");
@@ -78,7 +93,7 @@ test("interjection, file_chat and unknown tasks never enable autonomous network"
 });
 
 test("network vetoes anywhere in the current message override autonomy", async () => {
-  for (const veto of ["do not search", "don't browse", "never send requests", "without network", "stop searching",
+  for (const veto of ["do not search", "don't browse", "you should not search", "you must not look up", "please not search", "not sending network requests", "never send requests", "without network", "stop searching",
     "\u4e0d\u8981\u8054\u7f51", "\u4e0d\u7528\u641c\u7d22", "\u522b\u4e0a\u7f51\u67e5", "\u65e0\u9700\u641c\u7d22", "\u7981\u6b62\u5916\u53d1", "\u7b97\u4e86"]) {
     const userMessage = topic + "; " + veto;
     const session = create({ userMessage, search: noNetwork });
@@ -188,6 +203,26 @@ test("privacy changes during search discard late evidence and do not mint refs",
   const session = create({ isPublicQueryAllowed: () => allowed, search: async () => { allowed = false; return evidence; } });
   checkDenied(await session.search(query));
   assert.deepEqual(session.initialSources(), []);
+});
+
+test("public search and each read hop share the late session guard", async () => {
+  for (const kind of ["search", "read"]) {
+    let current = true, dispatched = 0;
+    const hop = async (_input, options) => {
+      await Promise.resolve();
+      current = false;
+      if (kind === "search") options.beforeRequest();
+      else options.requestImpl(new globalThis.URL("https://example.com/moon"), {}, noNetwork);
+      dispatched++;
+      return evidence;
+    };
+    const session = create({ userMessage: "read https://example.com/moon", search: hop, read: hop,
+      assertCurrent: () => { if (!current) throw new Error("synthetic source invalid"); } });
+    const result = kind === "search" ? await session.search(query) : await session.read(session.initialSources()[0].source_ref);
+    assert.equal(dispatched, 0);
+    checkDenied(result);
+    assert.equal(result.reason, "cancelled");
+  }
 });
 
 test("malformed arguments and unsafe query URLs never dispatch", async () => {

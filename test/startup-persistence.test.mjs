@@ -3,9 +3,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { Buffer } from "node:buffer";
-import { setTimeout, setInterval } from "node:timers";
+import { setTimeout, clearTimeout, setInterval, clearInterval } from "node:timers";
 import { URL } from "node:url";
 import test from "node:test";
 
@@ -15,14 +15,23 @@ const entry = name => JSON.stringify(new URL("../bridge/" + name, import.meta.ur
 // request parsing and receipt classification. No sockets or external services.
 async function exercise(scenario, modules, source) {
   const { vm, EventEmitter, readRequestJson, isAuthorizedAdminRequest, isAllowedBrowserOrigin,
-    isAuthorizedOneBotRequest, classifyOutboundDelivery, sendMsg: nativeSendMsg } = modules;
+    isAuthorizedOneBotRequest, classifyOutboundDelivery, sendMsg: nativeSendMsg, writeSync } = modules;
   const calls = [];
   const logs = [];
   const responses = [];
   const sends = [];
   const physicalSends = [];
+  const drainBudgets = [];
+  const deadlines = [];
+  const probes = [];
   const dirty = { "storage save": true, "profiles save": true, "stickers save": true };
+  let elapsed = 0;
+  let linkReady = scenario.readyRace || false;
+  let finishProbe;
+  let checkCatchUp;
   let requestHandler;
+  const serverHandlers = {};
+  const signal = () => process.emit(scenario.exit || "SIGTERM");
   const step = name => {
     calls.push(name);
     if (scenario.fail?.[name] === "throw") throw new Error("PRIVATE_FAILURE_SENTINEL");
@@ -31,8 +40,11 @@ async function exercise(scenario, modules, source) {
     if (name in dirty) dirty[name] = false;
     return true;
   };
-  const drain = name => {
+  const drain = (name, settings) => {
+    if (settings) drainBudgets.push({ name, drainMs: settings.drainMs });
+    elapsed += scenario.consume?.[name] || 0;
     const result = step(name);
+    if (scenario.fail?.[name] === "hang") return new Promise(() => {});
     if (scenario.fail?.[name] === "reject") return Promise.reject(new Error("PRIVATE_FAILURE_SENTINEL"));
     if (scenario.lateDrain !== name) return result;
     return new Promise(resolve => setTimeout(() => {
@@ -55,20 +67,44 @@ async function exercise(scenario, modules, source) {
   }
   const cfg = { listenHost: "127.0.0.1", listenPort: 0, selfUin: 10000, groupWhitelist: [],
     napcatAccessToken: "synthetic-onebot-token", legacyProfileRefreshEnabled: false };
-  const inertServer = { on() {}, listen(_port, _host, callback) { callback(); },
-    close(callback) { calls.push("server close"); callback(); } };
+  const close = (name, callback) => {
+    calls.push(name);
+    if (scenario.fail?.[name] === "hang") return;
+    callback(scenario.fail?.[name] === "error" ? new Error("PRIVATE_FAILURE_SENTINEL") : undefined);
+  };
+  const inertServer = {
+    on(event, handler) { serverHandlers[event] = handler; },
+    listen(_port, _host, callback) { callback(); },
+    close(callback) { close("server close", callback); },
+    closeAllConnections() { calls.push("server force close"); },
+  };
   const deps = {
     "node:http": { default: { createServer(handler) { requestHandler = handler; return inertServer; } } },
-    "node:fs": { default: {} },
-    ws: { WebSocketServer: class extends EventEmitter {} },
+    "node:fs": { default: { writeSync(fd, line) {
+      logs.push(line.trimEnd());
+      return writeSync(fd, line);
+    } } },
+    "node:timers": { clearTimeout, setInterval, clearInterval, setTimeout(callback, delay) {
+      deadlines.push(elapsed + delay);
+      return setTimeout(() => {
+        elapsed += delay;
+        calls.push("deadline elapsed");
+        callback();
+      }, scenario.fastDeadline ? 50 : delay);
+    } },
+    ws: { WebSocketServer: class extends EventEmitter {
+      clients = new Set([{ terminate: () => step("websocket force close") }]);
+      close(callback) { close("websocket close", callback); }
+      handleUpgrade() { throw new Error("unexpected upgrade"); }
+    } },
     "./config.mjs": { CFG: cfg },
     "./logger.mjs": { log: (...args) => logs.push(args.join(" ")), logE: (...args) => logs.push(args.join(" ")),
       cleanupLogger: () => step("logger cleanup"), getStormStatus: () => ({}) },
     "./cognition/chat-run.mjs": { stopChatRuns: () => step("chat stop") },
-    "./cognition/chat-work.mjs": { chatWorkScheduler: { status: () => ({}), stop: () => drain("work drain") } },
-    "./chat-tools/draft-tasks.mjs": { agentDraftTasks: { stop: () => drain("draft drain") } },
+    "./cognition/chat-work.mjs": { chatWorkScheduler: { status: () => ({}), stop: settings => drain("work drain", settings) } },
+    "./chat-tools/draft-tasks.mjs": { agentDraftTasks: { stop: settings => drain("draft drain", settings) } },
     "./chat-tools/write-coordinator.mjs": { agentWriteCoordinator: {
-      start() { calls.push("reminder start"); return false; }, stop: () => drain("reminder drain"),
+      start() { calls.push("reminder start"); return false; }, stop: settings => drain("reminder drain", settings),
     } },
     "./mcp/index.mjs": {
       initializeMcpServices: async ({ cfg: startupCfg }) => {
@@ -83,6 +119,7 @@ async function exercise(scenario, modules, source) {
     "./memory-profile/store.mjs": { persistLoadedProfileRepairs() {} },
     "./napcat.mjs": { sendMsg: async (gid, message, replyTo, options) => {
       sends.push({ gid, replyTo, options });
+      if (scenario.sendHangs) return new Promise(() => {});
       if (scenario.transport) return nativeSendMsg(gid, message, replyTo, options);
       if (scenario.sendThrows) throw new Error("PRIVATE_SEND_SENTINEL");
       if ((typeof message === "string" && !message.trim()) || (Array.isArray(message) && !message.length)) return null;
@@ -90,25 +127,40 @@ async function exercise(scenario, modules, source) {
     }, getImages() {}, getFiles() {}, getReplyData() {} },
     "./reply.mjs": { processEvent() { throw new Error("events forbidden in fixture"); } },
     "./event-admission.mjs": { getAdmissionStatus: () => ({}) },
-    "./onebot-link.mjs": { createOneBotLinkManager: () => ({ status: () => ({}),
-      stop: () => drain("link drain") }) },
+    "./onebot-link.mjs": { createOneBotLinkManager: () => ({ status: () => ({ ready: linkReady }),
+      stop: settings => drain("link drain", settings) }) },
     "./pipeline-state.mjs": { getPipelineStatus: () => ({}) },
-    "./group-summary/catchup.mjs": { createDailySummaryCatchUp: () => ({ start() {}, stop: () => step("summary stop") }) },
+    "./group-summary/catchup.mjs": { createDailySummaryCatchUp: ({ isReady }) => {
+      checkCatchUp = isReady;
+      return { start() {}, stop: () => drain("summary stop") };
+    } },
+    "./group-summary/commands.mjs": { stopSummaryCommandTasks: () => drain("summary command stop") },
     "./runtime-maintenance.mjs": { createRuntimeMaintenance: () => ({ start() {}, stop: () => step("maintenance stop") }) },
-    "./napcat-readiness.mjs": { getCachedNapCatReadiness: () => ({}), refreshNapCatReadiness: async () => ({}) },
+    "./napcat-readiness.mjs": {
+      getCachedNapCatReadiness: () => ({ ready: true }),
+      refreshNapCatReadiness: async options => {
+        probes.push(options?.force === true);
+        return new Promise(resolve => { finishProbe = resolve; });
+      },
+    },
     "./profile.mjs": { generateProfile() { throw new Error("model calls forbidden in fixture"); } },
     "./context/messages.mjs": { cleanText: value => value },
     "./version.mjs": { VERSION: "fixture" },
     "./jm-provider.mjs": { refreshJmRuntimeHealth: async () => ({health:"fixture", reason:"fixture"}) },
+    "./jm/commands.mjs": { stopJmTasks: settings => drain("jm stop", settings) },
+    "./resource-transfer.mjs": { stopResourceTasks: settings => drain("resource stop", settings) },
+    "./runtime-clock.mjs": { monotonicNow: () => elapsed },
     "./memory-profile.mjs": { cleanupExpiredMemoryProfiles() {}, flushMemoryProfilesSync: () => step("profiles save") },
     "./admin-api/index.mjs": { handleAdminApiRequest: async () => false },
+    "./admin-api/summary-manager.mjs": { summaryManager: { stop: () => drain("admin summary stop") } },
+    "./admin-api/task-manager.mjs": { adminTaskManager: { stop: () => drain("admin task stop") } },
     "./admin-api/auth.mjs": { isAuthorizedAdminRequest },
     "./http-ingress.mjs": { isAllowedBrowserOrigin, isAuthorizedOneBotRequest, readRequestJson },
     "./web-console.mjs": { handleWebConsoleRequest: async () => false },
     "./features/stickers/index.mjs": { initializeStickerSystem: () => ({}),
       shutdownStickerSystem: () => { step("stickers save"); } },
   };
-  const context = vm.createContext({ process, URL, setTimeout, setInterval });
+  const context = vm.createContext({ process, URL });
   const startup = new vm.SourceTextModule(source, { context, identifier: "startup-fixture.mjs" });
   await startup.link(specifier => {
     const exports = deps[specifier];
@@ -118,29 +170,56 @@ async function exercise(scenario, modules, source) {
     }, { context });
   });
   process.on("exit", () => {
-    process.stdout.write("REPORT " + JSON.stringify({ calls, logs, dirty, sends, physicalSends, responses }) + "\n");
+    process.stdout.write("REPORT " + JSON.stringify({ calls, logs, dirty, sends, physicalSends, responses,
+      drainBudgets, deadlines, probes }) + "\n");
   });
   await startup.evaluate();
+  if (scenario.nativeSignal) {
+    setInterval(() => {}, 1000);
+    process.stdout.write("ARMED\n");
+    return;
+  }
+  if (scenario.readyRace === "catchup") {
+    const check = checkCatchUp();
+    if (!finishProbe) throw new Error("catch-up did not refresh readiness");
+    linkReady = false;
+    finishProbe({ ready: true });
+    responses.push(await check);
+  }
   for (const request of scenario.requests || []) {
     const req = new EventEmitter();
-    Object.assign(req, { url: "/reply", method: "POST", socket: {remoteAddress:"127.0.0.1"},
+    Object.assign(req, { url: request.path || "/reply", method: request.method || "POST", socket: {remoteAddress:"127.0.0.1"},
       headers: request.auth ? {authorization:"Bearer synthetic-admin-token"} : {}, pause() {}, destroy() {} });
     let response;
     const res = new EventEmitter();
     Object.assign(res, { setHeader() {}, writeHead(code) { this.code = code; },
       end(text) { response = {code:this.code, body:JSON.parse(text)}; this.emit("finish"); } });
     const handling = requestHandler(req, res);
+    if (scenario.readyRace === "http") {
+      while (!finishProbe) await new Promise(resolve => setTimeout(resolve, 0));
+      linkReady = false;
+      finishProbe({ ready: true });
+    }
     // Wait until the actual body parser attaches; unauthorized requests never parse.
     while (!response && !req.listenerCount("data")) await new Promise(resolve => setTimeout(resolve, 0));
+    if (scenario.shutdownWithBodyPending) {
+      signal();
+      serverHandlers.upgrade(req, { end: text => calls.push(text.split("\r\n")[0]) });
+    }
     if (!response) { req.emit("data", Buffer.from(JSON.stringify(request.body))); req.emit("end"); }
+    if (scenario.sendHangs) {
+      while (!sends.length) await new Promise(resolve => setTimeout(resolve, 0));
+      signal();
+      return;
+    }
     await handling;
     responses.push(response);
   }
   if (scenario.exit === "fatal") process.emit("qqfriend:fatal");
-  else if (scenario.exit !== "beforeExit") process.emit(scenario.exit || "SIGTERM");
+  else if (scenario.exit !== "beforeExit") signal();
 }
 
-function run(t, scenario) {
+function fixture(t, scenario) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "qqfriend-startup-persistence-"));
   t.after(() => {
     assert.equal(path.dirname(path.resolve(root)), path.resolve(os.tmpdir()));
@@ -157,22 +236,33 @@ function run(t, scenario) {
     globalThis.fetch = async () => { throw new Error('network forbidden in startup fixture'); };
     await (${exercise.toString()})(${JSON.stringify(scenario)},
       {vm, EventEmitter, readRequestJson, isAuthorizedAdminRequest, isAllowedBrowserOrigin,
-        isAuthorizedOneBotRequest, classifyOutboundDelivery, sendMsg}, fs.readFileSync(new URL(${entry("startup.mjs")}), 'utf8'));
+        isAuthorizedOneBotRequest, classifyOutboundDelivery, sendMsg, writeSync: fs.writeSync},
+      fs.readFileSync(new URL(${entry("startup.mjs")}), 'utf8'));
   `;
-  const child = spawnSync(process.execPath, ["--experimental-vm-modules", "--input-type=module", "-e", script], {
-    cwd: root, encoding: "utf8", windowsHide: true, timeout: 15000,
+  return { args: ["--experimental-vm-modules", "--input-type=module", "-e", script], options: {
+    cwd: root, windowsHide: true, timeout: 15000,
     env: { ...process.env, NODE_ENV:"test", QQBOT_CONFIG_ROOT:root, QQBOT_DATA_DIR:root,
       QQBOT_LOG_DIR:path.join(root, "logs"), QQBOT_TEMP_DIR:root,
       QQBOT_MEMORY_PROFILE_FILE:path.join(root, "profiles.json"), QQFRIEND_ADMIN_TOKEN:"synthetic-admin-token" },
-  });
-  assert.equal(child.error, undefined);
-  const report = child.stdout.split("\n").find(line => line.startsWith("REPORT "));
-  assert.ok(report, child.stdout + child.stderr);
-  assert.doesNotMatch(child.stdout + child.stderr, /PRIVATE_(FAILURE|SEND)_SENTINEL/);
-  return { code:child.status, ...JSON.parse(report.slice(7)) };
+  } };
 }
 
-const flushes = ["summary stop", "maintenance stop", "stickers save", "storage save", "profiles save", "logger cleanup"];
+function run(t, scenario) {
+  const { args, options } = fixture(t, scenario);
+  const child = spawnSync(process.execPath, args, { ...options, encoding: "utf8" });
+  assert.equal(child.error, undefined);
+  return report(child.status, child.stdout, child.stderr);
+}
+
+function report(code, stdout, stderr) {
+  const line = stdout.split("\n").find(line => line.startsWith("REPORT "));
+  assert.ok(line, stdout + stderr);
+  assert.doesNotMatch(stdout + stderr, /PRIVATE_(FAILURE|SEND)_SENTINEL/);
+  return { code, ...JSON.parse(line.slice(7)) };
+}
+
+const flushes = ["stickers save", "storage save", "profiles save", "logger cleanup"];
+const incomplete = result => result.logs.find(line => line.startsWith("shutdown drain incomplete"));
 
 for (const exit of ["SIGINT", "SIGTERM", "beforeExit", "fatal"]) {
   test(`${exit}: complete saves attempt every step and exit with the appropriate code`, t => {
@@ -180,6 +270,8 @@ for (const exit of ["SIGINT", "SIGTERM", "beforeExit", "fatal"]) {
     assert.equal(result.code, exit === "fatal" ? 1 : 0);
     assert.equal(result.calls.filter(name => name === "mcp initialize").length, 1);
     assert.equal(result.calls.filter(name => name === "mcp drain").length, ["SIGINT", "SIGTERM"].includes(exit) ? 1 : 0);
+    assert.equal(result.calls.filter(name => name === "summary stop").length, 1);
+    assert.equal(result.calls.filter(name => name === "maintenance stop").length, 1);
     assert.deepEqual(result.calls.slice(-flushes.length), flushes);
     assert.ok(Object.values(result.dirty).every(value => !value));
   });
@@ -223,7 +315,7 @@ for (const [failedDrain, lateDrain, failure = "throw"] of [["link drain", "work 
     assert.equal(result.code, 1);
     const settled = result.calls.indexOf(lateDrain + " settled");
     assert.ok(settled >= 0);
-    assert.ok(result.calls.indexOf("server close") > settled);
+    assert.ok(result.calls.indexOf("server close") < settled);
     assert.ok(result.calls.indexOf("storage save") > settled);
     assert.equal(result.dirty["storage save"], false);
     assert.deepEqual(result.calls.slice(-flushes.length), flushes);
@@ -243,27 +335,27 @@ for (const exit of ["SIGINT", "SIGTERM"]) {
       assert.equal(result.calls.filter(name => name === "mcp drain").length, 1);
       assert.deepEqual(result.calls.slice(-flushes.length), flushes);
       assert.ok(Object.values(result.dirty).every(value => !value));
-      assert.ok(result.logs.includes("shutdown drain incomplete"));
+      assert.ok(incomplete(result));
     });
   }
 }
 
-for (const drain of ["link drain", "mcp drain"]) {
+for (const drain of ["mcp drain"]) {
   test(`a void ${drain} retains the existing successful stop contract`, t => {
     const result = run(t, { fail: { [drain]: "undefined" } });
     assert.equal(result.code, 0);
     assert.deepEqual(result.calls.slice(-flushes.length), flushes);
-    assert.equal(result.logs.includes("shutdown drain incomplete"), false);
+    assert.equal(incomplete(result), undefined);
   });
 }
 
-test("successful MCP close settles exactly once before server close and persistence", t => {
+test("successful MCP close settles exactly once after ingress closes and before persistence", t => {
   const result = run(t, { lateDrain: "mcp drain" });
   assert.equal(result.code, 0);
   assert.equal(result.calls.filter(name => name === "mcp drain").length, 1);
   const settled = result.calls.indexOf("mcp drain settled");
   assert.ok(settled >= 0);
-  assert.ok(result.calls.indexOf("server close") > settled);
+  assert.ok(result.calls.indexOf("server close") < settled);
   assert.ok(result.calls.indexOf("storage save") > settled);
   assert.equal(result.dirty["storage save"], false);
   assert.deepEqual(result.calls.slice(-flushes.length), flushes);
@@ -275,8 +367,122 @@ test("an incomplete drain and failed storage still attempt every remaining save"
   assert.deepEqual(result.calls.slice(-flushes.length), flushes);
   assert.equal(result.dirty["storage save"], true);
   assert.equal(result.dirty["profiles save"], false);
-  assert.ok(result.logs.includes("shutdown drain incomplete"));
+  assert.ok(incomplete(result));
   assert.ok(result.logs.includes("shutdown state incomplete: storage save"));
+});
+
+test("one deadline bounds hung transports and detached workers", t => {
+  const result = run(t, { fastDeadline: true, consume: { "link drain": 2400, "work drain": 1300 },
+    fail: { "mcp drain": "hang", "server close": "hang", "websocket close": "hang", "summary stop": "hang",
+      "admin summary stop": "hang", "admin task stop": "hang", "summary command stop": "hang" } });
+  assert.equal(result.code, 1);
+  assert.deepEqual(result.deadlines, [8000]);
+  assert.deepEqual(result.drainBudgets, [
+    { name: "link drain", drainMs: 8000 }, { name: "work drain", drainMs: 5600 },
+    { name: "draft drain", drainMs: 4300 }, { name: "reminder drain", drainMs: 4300 },
+  ]);
+  for (const name of ["MCP close", "HTTP close", "WebSocket close", "summary stop",
+    "admin summary drain", "admin task drain", "summary command drain"]) {
+    assert.ok(incomplete(result)?.includes(name), result.logs.join("\n"));
+  }
+  assert.ok(result.calls.indexOf("server close") < result.calls.indexOf("mcp drain"));
+  assert.ok(result.calls.indexOf("server force close") > result.calls.indexOf("deadline elapsed"));
+  assert.ok(result.calls.indexOf("websocket force close") > result.calls.indexOf("deadline elapsed"));
+  assert.deepEqual(result.calls.slice(-flushes.length), flushes);
+  assert.ok(Object.values(result.dirty).every(value => !value));
+});
+
+test("Linux SIGTERM logs a timed-out drain and persists before exiting", {
+  skip: process.platform !== "linux" && "requires native Linux signal delivery",
+}, async t => {
+  const { args, options } = fixture(t, { nativeSignal: true, fastDeadline: true, fail: { "mcp drain": "hang" } });
+  const child = spawn(process.execPath, args, { ...options, killSignal: "SIGKILL" });
+  let stdout = "";
+  let stderr = "";
+  let signaled = false;
+  child.stdout.setEncoding("utf8").on("data", chunk => {
+    stdout += chunk;
+    if (!signaled && stdout.includes("ARMED\n")) signaled = child.kill("SIGTERM");
+  });
+  child.stderr.setEncoding("utf8").on("data", chunk => { stderr += chunk; });
+  const result = await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (code, signal) => {
+      try {
+        assert.equal(signal, null, stderr);
+        resolve(report(code, stdout, stderr));
+      } catch (error) { reject(error); }
+    });
+  });
+  assert.equal(signaled, true);
+  assert.equal(result.code, 1);
+  assert.ok(result.logs.includes("shutdown requested: SIGTERM"));
+  assert.match(incomplete(result), /MCP close/);
+  assert.match(stderr, /shutdown drain incomplete: MCP close/);
+  assert.deepEqual(result.calls.slice(-flushes.length), flushes);
+});
+
+test("an HTTP close callback error counts as incomplete even without a timeout", t => {
+  const result = run(t, { fail: { "server close": "error" } });
+  assert.equal(result.code, 1);
+  assert.match(incomplete(result), /HTTP close/);
+  assert.ok(!result.calls.includes("deadline elapsed"));
+  assert.ok(result.calls.includes("server force close"));
+  assert.deepEqual(result.calls.slice(-flushes.length), flushes);
+});
+
+for (const [label, call] of [["JM drain", "jm stop"], ["resource drain", "resource stop"]]) {
+  test(`${label}: stop starts before event handlers settle and cannot extend the shared deadline`, t => {
+    const result = run(t, { fastDeadline: true, lateDrain: "link drain", fail: { [call]: "hang" } });
+    assert.equal(result.code, 1);
+    assert.ok(result.calls.indexOf(call) < result.calls.indexOf("link drain settled"));
+    assert.ok(incomplete(result)?.includes(label));
+    assert.deepEqual(result.deadlines, [8000]);
+    assert.deepEqual(result.calls.slice(-flushes.length), flushes);
+  });
+
+  test(`${label}: stop is called once without a private timeout and must confirm completion`, t => {
+    const result = run(t, { fail: { [call]: "undefined" } });
+    assert.equal(result.code, 1);
+    assert.equal(result.calls.filter(name => name === call).length, 1);
+    assert.ok(!result.drainBudgets.some(entry => entry.name === call));
+    assert.ok(incomplete(result)?.includes(label));
+  });
+}
+
+test("shutdown rejects late HTTP dispatch and upgrades without a send", t => {
+  const result = run(t, { shutdownWithBodyPending: true,
+    requests: [{ auth: true, body: { group_id: 50100, message: "synthetic reply" } }] });
+  assert.equal(result.code, 0);
+  assert.deepEqual(result.responses, [{ code: 503, body: { error: "bridge stopping" } }]);
+  assert.ok(result.calls.includes("HTTP/1.1 503 Service Unavailable"));
+  assert.deepEqual(result.sends, []);
+});
+
+test("an already-dispatched reply with no receipt is bounded and never sent again", t => {
+  const result = run(t, { sendHangs: true, fastDeadline: true,
+    requests: [{ auth: true, body: { group_id: 50100, message: "synthetic reply" } }] });
+  assert.equal(result.code, 1);
+  assert.match(incomplete(result), /HTTP requests/);
+  assert.equal(result.sends.length, 1);
+  assert.ok(!result.calls.includes("server force close"));
+  assert.deepEqual(result.calls.slice(-flushes.length), flushes);
+});
+
+test("/ready samples the live OneBot connection after readiness settles", t => {
+  const result = run(t, { readyRace: "http", requests: [{ path: "/ready", method: "GET" }] });
+  assert.equal(result.code, 0);
+  assert.equal(result.responses[0].code, 503);
+  assert.equal(result.responses[0].body.onebot.ready, false);
+  assert.equal(result.responses[0].body.napcat.ready, true);
+  assert.deepEqual(result.probes, [false]);
+});
+
+test("catch-up forces readiness and rechecks the connection after probing", t => {
+  const result = run(t, { readyRace: "catchup" });
+  assert.equal(result.code, 0);
+  assert.deepEqual(result.responses, [false]);
+  assert.deepEqual(result.probes, [true]);
 });
 
 const sent = {status:"ok", retcode:0, data:{message_id:70100}};

@@ -1,6 +1,7 @@
 // bridge/startup.mjs — 入口（HTTP Server + WebSocket Server + 启动逻辑）
 import http from "node:http";
 import fs from "node:fs";
+import { clearInterval, clearTimeout, setInterval, setTimeout } from "node:timers";
 import { WebSocketServer } from "ws";
 import { CFG } from "./config.mjs";
 import { log, logE, cleanupLogger, getStormStatus } from "./logger.mjs";
@@ -18,6 +19,7 @@ import { getAdmissionStatus } from "./event-admission.mjs";
 import { createOneBotLinkManager } from "./onebot-link.mjs";
 import { getPipelineStatus } from "./pipeline-state.mjs";
 import { createDailySummaryCatchUp } from "./group-summary/catchup.mjs";
+import { stopSummaryCommandTasks } from "./group-summary/commands.mjs";
 import { createRuntimeMaintenance } from "./runtime-maintenance.mjs";
 import {
   getCachedNapCatReadiness,
@@ -27,9 +29,14 @@ import { generateProfile } from "./profile.mjs";
 import { cleanText } from "./context/messages.mjs";
 import { VERSION } from "./version.mjs";
 import { refreshJmRuntimeHealth } from "./jm-provider.mjs";
+import { stopJmTasks } from "./jm/commands.mjs";
+import { stopResourceTasks } from "./resource-transfer.mjs";
+import { monotonicNow } from "./runtime-clock.mjs";
 import { cleanupExpiredMemoryProfiles, flushMemoryProfilesSync } from "./memory-profile.mjs";
 import { handleAdminApiRequest } from "./admin-api/index.mjs";
 import { isAuthorizedAdminRequest } from "./admin-api/auth.mjs";
+import { summaryManager } from "./admin-api/summary-manager.mjs";
+import { adminTaskManager } from "./admin-api/task-manager.mjs";
 import { isAllowedBrowserOrigin, isAuthorizedOneBotRequest, readRequestJson } from "./http-ingress.mjs";
 import { handleWebConsoleRequest } from "./web-console.mjs";
 import {
@@ -38,6 +45,11 @@ import {
 } from "./features/stickers/index.mjs";
 
 const MAX_BODY_BYTES = 1024 * 1024; // 1MB 请求体上限
+const SHUTDOWN_DRAIN_MS = 8_000; // Leave time for synchronous saves before Docker's default stop timeout.
+const activeHttpRequests = new Set();
+let shuttingDown = false;
+let profileRefreshTimer = null;
+let profileRefresh = null;
 
 // ── HTTP Server ──
 function applyCors(req, res) {
@@ -92,9 +104,9 @@ function handleHealth(res) {
 }
 
 async function handleReady(res) {
-  const onebot = oneBotLink.status();
   const napcat = await refreshNapCatReadiness();
-  const ready = onebot.ready && napcat.ready;
+  const onebot = oneBotLink.status();
+  const ready = !shuttingDown && onebot.ready && napcat.ready;
   sendJson(res, ready ? 200 : 503, {
     status: ready ? 'ready' : 'not_ready',
     onebot,
@@ -108,6 +120,7 @@ async function handleReady(res) {
 async function handleReply(req, res) {
   try {
     const data = await readRequestJson(req);
+    if (rejectIfStopping(res)) return;
     const { group_id, message, reply_to } = data;
     if (!group_id || !message) {
       sendJson(res, 400, { error: 'group_id and message required' });
@@ -142,6 +155,7 @@ async function handleInspectMsg(req, res) {
 async function handleEventPost(req, res) {
   try {
     const ev = await readRequestJson(req);
+    if (rejectIfStopping(res)) return;
     const outcome = await processEvent(ev);
     sendJson(res, 200, { status: outcome.ok ? 'processed' : 'ignored', outcome });
   } catch (e) {
@@ -152,10 +166,10 @@ async function handleEventPost(req, res) {
 
 async function routeHttpRequest(req, res, pathname) {
   const url = new URL(req.url, 'http://localhost');
-  if (await handleWebConsoleRequest(req, res, { pathname })) return;
-  if (await handleAdminApiRequest(req, res, { pathname, url, sendJson })) return;
+  if (await handleWebConsoleRequest(req, res, { pathname }) || rejectIfStopping(res)) return;
+  if (await handleAdminApiRequest(req, res, { pathname, url, sendJson }) || rejectIfStopping(res)) return;
   if (!authorizeHttpAction(req, res, pathname)) return;
-  if (await handlePublicGet(req, res, pathname)) return;
+  if (await handlePublicGet(req, res, pathname) || rejectIfStopping(res)) return;
   if (req.method === 'POST' && pathname === '/reply') {
     await handleReply(req, res);
     return;
@@ -200,15 +214,31 @@ function authorizeHttpAction(req, res, pathname) {
   return true;
 }
 
-const server = http.createServer(async function(req, res) {
+function rejectIfStopping(res) {
+  if (!shuttingDown) return false;
+  if (!res.destroyed) {
+    res.setHeader('Connection', 'close');
+    sendJson(res, 503, { error: 'bridge stopping' });
+  }
+  return true;
+}
+
+async function handleHttpRequest(req, res) {
   if (!isAllowedBrowserOrigin(req.headers.origin)) { sendJson(res, 403, { error: 'origin forbidden' }); return; }
   applyCors(req, res);
+  if (rejectIfStopping(res)) return;
   if (handleOptions(req, res)) return;
 
   try {
     const url = new URL(req.url, 'http://localhost');
     await routeHttpRequest(req, res, url.pathname);
   } catch (error) { sendRequestError(req, res, error); }
+}
+
+const server = http.createServer((req, res) => {
+  const pending = handleHttpRequest(req, res);
+  activeHttpRequests.add(pending);
+  return pending.finally(() => activeHttpRequests.delete(pending));
 });
 
 function sendRequestError(req, res, error) {
@@ -230,6 +260,10 @@ server.on('error', function(error) {
 // ── WebSocket Server ──
 const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_BODY_BYTES });
 server.on('upgrade', (req, socket, head) => {
+  if (shuttingDown) {
+    socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
+    return;
+  }
   if (!isAuthorizedOneBotRequest(req, CFG.napcatAccessToken)) {
     socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
     return;
@@ -238,23 +272,36 @@ server.on('upgrade', (req, socket, head) => {
 });
 const oneBotLink = createOneBotLinkManager({ processor: ev => processEvent(ev, { detachChat: true }), log, logError: logE });
 const dailySummaryCatchUp = createDailySummaryCatchUp({
-  isReady: () => oneBotLink.status().ready && getCachedNapCatReadiness().ready,
+  isReady: async () => {
+    if (shuttingDown || !oneBotLink.status().ready) return false;
+    const napcat = await refreshNapCatReadiness({ force: true });
+    return !shuttingDown && napcat.ready && oneBotLink.status().ready;
+  },
   log: (event, detail) => log('summary catch-up', event, JSON.stringify(detail || {})),
 });
 const runtimeMaintenance = createRuntimeMaintenance({ log, logError: logE });
 
 wss.on('connection', function(ws) {
-  oneBotLink.attach(ws);
+  if (!oneBotLink.attach(ws)) return;
   refreshNapCatReadiness({ force: true }).catch(error => logE('NapCat readiness probe failed:', error.message));
 });
 
 // ── Start ──
+function stopProfileRefresh() {
+  clearInterval(profileRefreshTimer);
+  profileRefreshTimer = null;
+  return profileRefresh;
+}
+
 // 进程退出前强制存档
-function flushRuntimeState() {
-  let complete = true;
+function flushRuntimeState({ stopBackground = true } = {}) {
+  const failed = [];
   const steps = [
-    ['summary stop', () => dailySummaryCatchUp.stop()],
-    ['maintenance stop', () => runtimeMaintenance.stop()],
+    ...(stopBackground ? [
+      ['summary stop', () => dailySummaryCatchUp.stop()],
+      ['maintenance stop', () => runtimeMaintenance.stop()],
+      ['profile refresh stop', stopProfileRefresh],
+    ] : []),
     ['stickers save', shutdownStickerSystem],
     ['storage save', flushSavesSync],
     ['profiles save', flushMemoryProfilesSync],
@@ -264,47 +311,97 @@ function flushRuntimeState() {
     try {
       if (run() !== false) continue;
     } catch { /* A failed store must not prevent the remaining saves. */ }
-    complete = false;
-    logE('shutdown state incomplete:', label);
+    failed.push(label);
   }
-  if (!complete) process.exitCode = 1;
-  return complete;
+  if (failed.length) process.exitCode = 1;
+  for (const label of failed) reportShutdownFailure('shutdown state incomplete: ' + label);
+  return failed.length === 0;
 }
 
-let shuttingDown = false;
 async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
+  const deadline = monotonicNow() + SHUTDOWN_DRAIN_MS;
+  const remainingMs = () => Math.max(0, Math.floor(deadline - monotonicNow()));
+  const incomplete = new Set();
+  let timer;
   let drained = false;
-  try {
-    stopChatRuns();
-    log('shutdown requested:', signal);
-    const drainResults = await Promise.allSettled([
-      Promise.resolve().then(() => oneBotLink.stop({ drainMs: 10000 })),
-      Promise.resolve().then(() => chatWorkScheduler.stop({ drainMs: 10000 })),
-      Promise.resolve().then(() => agentDraftTasks.stop({ drainMs: 10000 })),
-      Promise.resolve().then(() => agentWriteCoordinator.stop({ drainMs: 10000 })),
-      Promise.resolve().then(() => closeMcpServices()),
-    ]);
-    await new Promise(resolve => server.close(resolve));
-    drained = drainResults.every(result => result.status === 'fulfilled' && result.value !== false);
-    if (!drained) logE('shutdown drain incomplete');
-  } catch { logE('shutdown drain incomplete'); }
-  finally {
-    const saved = flushRuntimeState();
-    process.exit(drained && saved ? 0 : 1);
+
+  async function drain(name, run) {
+    incomplete.add(name);
+    try {
+      if (await run() !== false && monotonicNow() < deadline) incomplete.delete(name);
+    } catch { /* Leave failed and timed-out drains in the same report. */ }
   }
+
+  try {
+    log('shutdown requested:', signal);
+    const allDrains = Promise.all([
+      drain('HTTP close', () => closeListener(server)),
+      drain('chat stop', stopChatRuns),
+      drain('OneBot drain', () => oneBotLink.stop({ drainMs: remainingMs() })),
+      drain('WebSocket close', () => closeListener(wss)),
+      drain('JM drain', async () => await stopJmTasks() === true),
+      drain('resource drain', async () => await stopResourceTasks() === true),
+      drain('admin summary drain', () => summaryManager.stop()),
+      drain('admin task drain', () => adminTaskManager.stop()),
+      drain('summary command drain', stopSummaryCommandTasks),
+      // A client disconnect can close its socket before the associated work finishes.
+      drain('HTTP requests', () => Promise.allSettled([...activeHttpRequests])),
+      drain('chat work drain', () => chatWorkScheduler.stop({ drainMs: remainingMs() })),
+      drain('summary stop', () => dailySummaryCatchUp.stop()),
+      drain('maintenance stop', () => runtimeMaintenance.stop()),
+      drain('profile refresh stop', stopProfileRefresh),
+      drain('draft drain', () => agentDraftTasks.stop({ drainMs: remainingMs() })),
+      drain('reminder drain', () => agentWriteCoordinator.stop({ drainMs: remainingMs() })),
+      drain('MCP close', closeMcpServices),
+    ]);
+    await Promise.race([allDrains, new Promise(resolve => {
+      timer = setTimeout(resolve, Math.max(0, Math.ceil(deadline - monotonicNow())));
+    })]);
+    drained = incomplete.size === 0;
+  } catch { incomplete.add('shutdown orchestration'); }
+  finally {
+    clearTimeout(timer);
+    try {
+      if (incomplete.has('HTTP close')) {
+        try { server.closeAllConnections(); } catch {}
+      }
+      if (incomplete.has('WebSocket close')) {
+        for (const ws of wss.clients) {
+          try { ws.terminate(); } catch {}
+        }
+      }
+    } finally {
+      const saved = flushRuntimeState({ stopBackground: false });
+      if (!drained) reportShutdownFailure('shutdown drain incomplete: ' + [...incomplete].join(', '));
+      process.exit(drained && saved ? 0 : 1);
+    }
+  }
+}
+
+function reportShutdownFailure(message) {
+  // The process exits explicitly; a buffered write to Docker's stderr pipe can be lost.
+  try { fs.writeSync(process.stderr.fd, message + '\n'); }
+  catch { try { logE(message); } catch {} }
+}
+
+function closeListener(listener) {
+  return new Promise((resolve, reject) => {
+    listener.close(error => error ? reject(error) : resolve());
+  });
 }
 
 process.on('SIGINT', () => { shutdown('SIGINT').catch(() => process.exit(1)); });
 process.on('SIGTERM', () => { shutdown('SIGTERM').catch(() => process.exit(1)); });
-process.on('beforeExit', flushRuntimeState);
+process.on('beforeExit', () => flushRuntimeState());
 process.once('qqfriend:fatal', () => {
   // A corrupted process must not advertise healthy; persist only synchronous state before exit.
   try { flushRuntimeState(); } finally { process.exit(1); }
 });
 
 server.listen(CFG.listenPort, CFG.listenHost, function() {
+  if (shuttingDown) return;
   // Secondary summary/replay processes may read these stores, but must not schedule snapshot writes on import.
   persistLoadedStorageRepairs();
   persistLoadedProfileRepairs();
@@ -334,17 +431,22 @@ server.listen(CFG.listenPort, CFG.listenHost, function() {
     log('profile refresh: scanning', uids.length, 'users...');
     let updated = 0;
     for (const uid of uids) {
+      if (shuttingDown) break;
       try {
         const desc = await generateProfile(uid);
         if (desc) updated++;
-        await new Promise(function(r) { setTimeout(r, 500); }); // 限流
+        if (!shuttingDown) await new Promise(function(r) { setTimeout(r, 500); }); // 限流
       } catch {}
     }
     log('profile refresh: updated', updated, '/', uids.length, 'users');
   }
   if (CFG.legacyProfileRefreshEnabled) {
-    refreshAllProfiles().catch(function() {});
-    setInterval(function() { refreshAllProfiles().catch(function() {}); }, 3600000);
+    const startProfileRefresh = () => {
+      if (shuttingDown || profileRefresh) return;
+      profileRefresh = refreshAllProfiles().catch(() => {}).finally(() => { profileRefresh = null; });
+    };
+    startProfileRefresh();
+    profileRefreshTimer = setInterval(startProfileRefresh, 3600000);
   } else {
     log('legacy profile refresh disabled');
   }

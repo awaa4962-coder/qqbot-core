@@ -11,6 +11,7 @@ export const PROGRESS_PREFIX = "QQFRIEND_JM_PROGRESS ";
 const TIMING_KEYS = new Set(["importMs", "clientInitMs", "albumReadyMs", "firstImageMs", "lastImageMs", "observedMs",
   "downloadFinishedMs", "imageRequestsCompleted", "imageRetriesCompleted", "imageRequestMs", "imageRequestMaxMs",
   "metadataCallsCompleted", "metadataMs", "metadataMaxMs", "imageSavesCompleted", "imageSaveMs", "imageSaveMaxMs"]);
+const REQUEST_FAILURE_KEY = /^(?:metadata|image)(?:Forbidden|NotFound|RateLimited|Timeouts|ClientErrors|ServerErrors|NetworkErrors|InvalidResponses)$/;
 
 export let jmHealthCache = null;
 
@@ -257,7 +258,7 @@ function dispatchJmProgress(text, callback) {
 
 export function sanitizeJmTimings(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const timings = Object.fromEntries(Object.entries(value).filter(([key, number]) => TIMING_KEYS.has(key) &&
+  const timings = Object.fromEntries(Object.entries(value).filter(([key, number]) => (TIMING_KEYS.has(key) || REQUEST_FAILURE_KEY.test(key)) &&
     Number.isSafeInteger(number) && number >= 0 && number <= (key.endsWith("Ms") ? 86400000 : 1000000)));
   return Object.keys(timings).length ? timings : null;
 }
@@ -281,12 +282,21 @@ export function parseRunnerResult(stdout, stderr, code) {
   if (line) {
     try {
       const parsed = JSON.parse(line.slice(RESULT_PREFIX.length));
-      if (parsed?.ok) return parsed;
+      if (parsed?.ok) return resolveWorkerSuccess(parsed, code);
       return normalizeRunnerFailure(parsed);
     } catch {}
   }
   log("jm runner exit:", code, "stdoutLength:", stdout.length, "stderrLength:", stderr.length);
-  return { ok: false, reason: code === 0 ? "download_failed" : "missing_dependency" };
+  return { ok: false, reason: "worker_exited" };
+}
+
+function resolveWorkerSuccess(parsed, code) {
+  if (code !== 0) return { ok: false, reason: "worker_exited" };
+  if (parsed.ok !== true || parsed.all_success !== true ||
+      ![parsed.files, parsed.bytes].every(value => Number.isSafeInteger(value) && value > 0)) {
+    return { ok: false, reason: "incomplete_result" };
+  }
+  return { ok: true, all_success: true, files: parsed.files, bytes: parsed.bytes, timings: sanitizeJmTimings(parsed.timings) };
 }
 
 function normalizeRunnerFailure(parsed) {

@@ -184,11 +184,21 @@ function abortableLookup(promise, signal) {
 }
 
 function fetchValidated(url, options) {
+  options.signal.throwIfAborted();
+  options.beforeRequest?.(url);
   // Existing isolated tests supply fetch fixtures; production always pins the validated addresses.
   if (process.env.NODE_ENV === "test" && !options.requestImpl) {
     return fetch(url.href, { method: options.method, headers: Object.fromEntries(options.headers), redirect: "manual", signal: options.signal });
   }
   return fetchPinnedResponse(url, options);
+}
+
+export async function resolveSafeHttpTarget(url, options = {}) {
+  const safe = validateSafeUrl(url);
+  if (!safe.ok) return safe;
+  const signal = options.signal || downloadSignal(10000);
+  const result = await validateResolvedHost(safe.url, { ...options, signal });
+  return { ...result, url: safe.url };
 }
 
 function withoutCredentials(headers) {

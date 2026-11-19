@@ -12,6 +12,8 @@ RESULT_PREFIX = "QQFRIEND_JM_RESULT "
 PROGRESS_PREFIX = "QQFRIEND_JM_PROGRESS "
 PROTOCOL_STDOUT = sys.stdout
 REQUEST_TIMEOUT = (3, 8)
+METADATA_TIMEOUT = (3, 4)
+METADATA_ATTEMPTS = 4
 IMAGE_ATTEMPTS = 2
 JM_DEPENDENCIES = [
     "jmcomic==2.7.4",
@@ -185,7 +187,7 @@ def build_option(JmOption, output_dir):
                     "impersonate": "chrome",
                     "headers": None,
                     "proxies": None,
-                    "timeout": REQUEST_TIMEOUT,
+                    "timeout": METADATA_TIMEOUT,
                 },
             },
             "retry_times": 1,
@@ -227,6 +229,68 @@ class DownloadTimings:
         with self.lock:
             return {**self.values, "observedMs": max(0, round((self.clock() - self.started) * 1000))}
 
+    def failure(self, phase, category):
+        key = phase + category
+        with self.lock:
+            self.values[key] = self.values.get(key, 0) + 1
+
+
+class MetadataRetryLimit(Exception):
+    pass
+
+
+def http_failure(response):
+    status = getattr(response, "status_code", None)
+    if not isinstance(status, int):
+        return None
+    if status in (401, 403):
+        return "Forbidden"
+    if status in (404, 410):
+        return "NotFound"
+    if status == 429:
+        return "RateLimited"
+    if status == 408:
+        return "Timeouts"
+    if 400 <= status < 500:
+        return "ClientErrors"
+    if 500 <= status < 600:
+        return "ServerErrors"
+    return None
+
+
+def request_failure(exc):
+    failure = http_failure(getattr(exc, "response", None))
+    if failure:
+        return failure
+    category = error_category(exc)
+    if category == "timeout" or getattr(exc, "code", None) == 28:
+        return "Timeouts"
+    if category == "network":
+        return "NetworkErrors"
+    return "InvalidResponses"
+
+
+def track_failure(timings, phase, failure):
+    if timings is not None and failure is not None:
+        timings.failure(phase, failure)
+
+
+def track_metadata_request(request, state, timings):
+    def tracked(url, **kwargs):
+        if state.attempts >= METADATA_ATTEMPTS:
+            raise MetadataRetryLimit()
+        state.attempts += 1
+        kwargs["timeout"] = METADATA_TIMEOUT
+        try:
+            response = request(url, **kwargs)
+        except Exception as exc:
+            track_failure(timings, "metadata", request_failure(exc))
+            raise
+        track_failure(timings, "metadata", http_failure(response))
+        return response
+
+    return tracked
+
 
 def bound_image_requests(client, timings=None):
     original_request = client.request_with_retry
@@ -236,6 +300,14 @@ def bound_image_requests(client, timings=None):
                            is_image=False, **kwargs):
         if not is_image:
             depth = getattr(metadata_state, "depth", 0)
+            if depth == 0:
+                metadata_state.attempts = 0
+                if callable(request):
+                    request = track_metadata_request(request, metadata_state, timings)
+            elif metadata_state.attempts >= METADATA_ATTEMPTS:
+                raise MetadataRetryLimit()
+            elif retry_count > 0 and url.startswith("/") and domain_index + 1 < len(self.domain_list):
+                domain_index, retry_count = domain_index + 1, 0
             metadata_state.depth = depth + 1
             started = timings.clock() if timings is not None else None
             try:
@@ -250,10 +322,15 @@ def bound_image_requests(client, timings=None):
         kwargs["timeout"] = REQUEST_TIMEOUT
         for attempt in range(IMAGE_ATTEMPTS):
             started = timings.clock() if timings is not None else None
+            failure = None
             try:
-                return self.raise_if_resp_should_retry(request(url, **kwargs), True)
-            except Exception:
-                if attempt + 1 == IMAGE_ATTEMPTS:
+                response = request(url, **kwargs)
+                failure = http_failure(response)
+                return self.raise_if_resp_should_retry(response, True)
+            except Exception as exc:
+                failure = failure or request_failure(exc)
+                track_failure(timings, "image", failure)
+                if attempt + 1 == IMAGE_ATTEMPTS or failure in ("Forbidden", "NotFound", "RateLimited"):
                     raise
             finally:
                 if timings is not None:
@@ -393,6 +470,8 @@ def progress_downloader(JmDownloader, progress):
 
 
 def error_category(exc):
+    if isinstance(exc, MetadataRetryLimit):
+        return "metadata_retry_limit"
     names = {cls.__name__.lower() for cls in type(exc).__mro__}
     if any("timeout" in name for name in names):
         return "timeout"
@@ -464,7 +543,7 @@ def main():
             from jmcomic import JmDownloader
             timings.mark("importMs")
             option = build_option(JmOption, args.out)
-            album, downloader = download_album(
+            _, downloader = download_album(
                 args.id, option=option, check_exception=True,
                 downloader=progress_downloader(JmDownloader, progress),
             )
@@ -483,11 +562,8 @@ def main():
         if not complete:
             emit(failure_result(progress, "incomplete", files, bytes_total))
             raise SystemExit(1)
-        progress.publish(phase="preparing", force=True)
         emit({
             "ok": True,
-            "id": str(args.id),
-            "title": getattr(album, "name", ""),
             "files": files,
             "bytes": bytes_total,
             "all_success": True,

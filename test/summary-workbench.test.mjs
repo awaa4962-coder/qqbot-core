@@ -221,7 +221,7 @@ test("confirmed partial failure resumes only remaining chunks of the identical r
   assert.equal(sent.filter(text => text.startsWith("乙")).length, 2);
 });
 
-test("revoked summary group stops later chunks and keeps the partial attempt unconfirmed", async t => {
+test("revoked summary group stops before arming the next chunk and preserves the confirmed prefix", async t => {
   const allowed = [101];
   let sends = 0;
   const options = sandbox(t, { groupWhitelist: allowed, sendGroupMessage: async () => {
@@ -230,10 +230,119 @@ test("revoked summary group stops later chunks and keeps the partial attempt unc
   const report = prepared(options, "甲".repeat(900) + "乙".repeat(900));
   await assert.rejects(publishSummary(report, options), /该群未启用日报/);
   assert.equal(sends, 1);
-  assert.equal(readSummaryDelivery(day, 101, options).status, "unconfirmed");
+  const delivery = readSummaryDelivery(day, 101, options);
+  assert.equal(delivery.status, "partial");
+  assert.equal(delivery.completed, 1);
   allowed.push(101);
   assert.equal((await publishSummary(report, options)).skipped, true);
   assert.equal(sends, 1);
+});
+
+test("cancellation before the first chunk leaves no attempt or progress", async t => {
+  let sends = 0;
+  const options = sandbox(t, { sendGroupMessage: async () => { sends++; return { status: "ok" }; } });
+  const report = prepared(options);
+  await assert.rejects(publishSummary(report, { ...options, beforeChunk: () => { throw new Error("cancelled"); } }), /cancelled/);
+  assert.equal(sends, 0);
+  assert.equal(readSummaryDelivery(day, 101, options).status, "not_sent");
+  assert.equal((await publishSummary(report, options)).sent, true);
+});
+
+test("an attempt checkpoint can recover a missing progress file without resending an unknown segment", async t => {
+  const sent = [];
+  const options = sandbox(t, { sendGroupMessage: async (_group, text) => {
+    sent.push(text[0]);
+    if (sent.length === 2) return null;
+    return { status: "ok", data: { message_id: sent.length } };
+  } });
+  const report = prepared(options, "A".repeat(900) + "B".repeat(900) + "C".repeat(100));
+  const first = await publishSummary(report, options);
+  assert.equal(first.delivery.status, "unconfirmed");
+  fs.unlinkSync(path.join(options.root, "delivery", day + "-101.delivery.json"));
+
+  const recovered = readSummaryDelivery(day, 101, options);
+  assert.equal(recovered.status, "unconfirmed");
+  assert.equal(recovered.revisionId, report.revisionId);
+  assert.equal(recovered.completed, 1);
+  assert.equal(recovered.total, 3);
+  assert.deepEqual(recovered.receipts, ["1"]);
+  assert.equal((await publishSummary(report, options)).skipped, true);
+  await assert.rejects(publishSummary(report, { ...options, resume: true }), /已确认失败/);
+  assert.throws(() => resolveSummaryDelivery({ ...report, summary: report.summary + "X" }, true, options), /没有可核实/);
+  assert.deepEqual(sent, ["A", "B"]);
+
+  const verified = resolveSummaryDelivery(report, true, options);
+  assert.equal(verified.delivery.completed, 2);
+  assert.equal((await publishSummary(report, { ...options, resume: true })).sent, true);
+  assert.deepEqual(sent, ["A", "B", "C"]);
+});
+
+test("an ambiguous retry supersedes the previous definite rejection at the same index", async t => {
+  const sent = [];
+  const options = sandbox(t, { sendGroupMessage: async (_group, text) => {
+    sent.push(text[0]);
+    if (sent.length === 2) return { status: "failed", retcode: 100 };
+    return sent.length === 3 ? null : { status: "ok" };
+  } });
+  const report = prepared(options, "A".repeat(900) + "B".repeat(100));
+  const rejected = await publishSummary(report, options);
+  assert.equal(rejected.delivery.status, "partial");
+  const ambiguous = await publishSummary(report, { ...options, resume: true });
+  assert.equal(ambiguous.delivery.status, "unconfirmed");
+  assert.notEqual(ambiguous.delivery.attemptId, rejected.delivery.attemptId);
+  await assert.rejects(publishSummary(report, { ...options, resume: true }), /已确认失败/);
+  assert.deepEqual(sent, ["A", "B", "B"]);
+});
+
+test("a legacy attempt without its segment checkpoint remains unknown and unchanged", async t => {
+  const options = sandbox(t, { sendGroupMessage: () => assert.fail("must not send") });
+  const report = prepared(options);
+  const guard = createDailySummaryGuard({ dateText: day, groupId: 101, rootDir: path.join(options.root, "delivery") });
+  guard.markAttempt({ revisionId: report.revisionId, messages: 8 });
+  guard.release();
+  const marker = fs.readFileSync(guard.attemptFile, "utf8");
+  assert.deepEqual(readSummaryDelivery(day, 101, options), { status: "unconfirmed" });
+  assert.equal((await publishSummary(report, options)).skipped, true);
+  await assert.rejects(publishSummary(report, { ...options, resume: true }), /已确认失败/);
+  assert.throws(() => resolveSummaryDelivery(report, false, options), /没有可核实/);
+  assert.equal(fs.readFileSync(guard.attemptFile, "utf8"), marker);
+});
+
+test("the persisted final receipt blocks retries even if writing the sent marker fails", async t => {
+  let sends = 0;
+  const options = sandbox(t, { sendGroupMessage: async () => { sends++; return { status: "ok" }; } });
+  const report = prepared(options);
+  const guard = createDailySummaryGuard({ dateText: day, groupId: 101, rootDir: path.join(options.root, "delivery") });
+  try {
+    await assert.rejects(publishSummary(report, { ...options, guard: { ...guard, markSent() { throw new Error("marker unavailable"); } } }), /marker unavailable/);
+  } finally {
+    guard.release();
+  }
+  assert.equal(fs.existsSync(guard.sentFile), false);
+  assert.equal(fs.existsSync(guard.attemptFile), true);
+  assert.equal(readSummaryDelivery(day, 101, options).status, "sent");
+  assert.equal((await publishSummary(report, options)).reason, "already_sent");
+  assert.equal(sends, 1);
+});
+
+test("manual finalization without an attempt keeps the unknown state until the sent marker is written", async t => {
+  const options = sandbox(t, { sendGroupMessage: async () => null });
+  const report = prepared(options);
+  await publishSummary(report, options);
+  const deliveryBase = path.join(options.root, "delivery", day + "-101");
+  fs.unlinkSync(deliveryBase + ".attempt.json");
+
+  const rename = fs.renameSync;
+  const markerWrite = t.mock.method(fs, "renameSync", (source, destination) => {
+    if (destination === deliveryBase + ".sent.json") throw new Error("marker unavailable");
+    return rename(source, destination);
+  });
+  assert.throws(() => resolveSummaryDelivery(report, true, options), /marker unavailable/);
+  assert.equal(readSummaryDelivery(day, 101, options).status, "unconfirmed");
+
+  markerWrite.mock.restore();
+  assert.equal(resolveSummaryDelivery(report, true, options).sent, true);
+  assert.equal(readSummaryDelivery(day, 101, options).status, "sent");
 });
 
 test("ambiguous network failure requires explicit verification before any retry", async t => {

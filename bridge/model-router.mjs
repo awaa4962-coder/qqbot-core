@@ -168,14 +168,34 @@ function withToolSession(request, task) {
   const scope = { surface, groupId: request.groupId, userId: options.currentUserId };
   const liveScope = currentChatScope() || scope;
   const imagePolicy = resolveImagePolicy(liveScope);
-  const visionSession = options.visionSession || (request.imageUrls?.length && !Object.hasOwn(options, "visionContext")
-    ? createVisionSession(request.imageUrls, { scope, imagePolicy, sources: options.imageSources, usageContext: { task } }) : null);
+  const boundImages = options.imageBindings?.some(Boolean);
+  const visionSession = chatVisionSession(request.imageUrls, options, { scope, imagePolicy, task, boundImages });
   const imageTask = hasGroupImageInput(surface, task, liveScope, request.imageUrls, visionSession);
-  return { ...options, imagePolicy, imageTask, ...(visionSession ? { visionSession } : {}), toolSession: options.toolSession || createChatToolSession({
+  const toolSession = options.toolSession || createChatToolSession({
     scope, task,
     userMessage: request.userMsg, userName: request.userName, mentioned: request.isAtMe === true, allowTools: options.allowTools,
     attachments: options.attachments, currentMessageId: options.currentMessageId, mentionTargets: options.mentionTargets,
-  }) };
+    assertEvidenceCurrent: visionSession?.assertEvidenceCurrent,
+  });
+  return { ...options, imagePolicy, imageTask, ...(visionSession ? { visionSession } : {}),
+    toolSession: options.toolSession && boundImages && visionSession ? guardModelImageUse(toolSession, visionSession) : toolSession };
+}
+
+function chatVisionSession(urls, options, { scope, imagePolicy, task, boundImages }) {
+  if (!boundImages && options.visionSession) return options.visionSession;
+  if (!urls?.length || (!boundImages && Object.hasOwn(options, "visionContext"))) return null;
+  return createVisionSession(urls, { scope, imagePolicy, sources: options.imageSources, usageContext: { task },
+    imageBindings: options.imageBindings, requiredImageBindings: options.requiredImageBindings });
+}
+
+function guardModelImageUse(session, vision) {
+  // The runner reuses assembled evidence across rounds and transport retries.
+  const check = vision.assertEvidenceCurrent;
+  return { ...session, assertCurrent() { session.assertCurrent(); check(); }, prepareModel(request) {
+    check();
+    const prepared = session.prepareModel(request);
+    return { ...prepared, beforeAttempt() { check(); return prepared.beforeAttempt?.(); } };
+  } };
 }
 
 function hasGroupImageInput(surface, task, liveScope, imageUrls, visionSession) {

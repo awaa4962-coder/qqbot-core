@@ -437,13 +437,34 @@ test("actual prepareModel sees media provenance before allowing a public-query c
   const f = fixture();
   let searches = 0;
   const session = f.create({ webSearchResults: async () => { searches++; return found(); } });
-  const image = "data:image/jpeg;base64,AAAA";
+  const image = "data:image/jpeg;base64," + "A".repeat(28000);
   session.prepareModel({ messages: [{ role: "user", content: [{ type: "text", text: question }, { type: "image_url", image_url: { url: image } }] }],
     trustedImageUrls: [image] });
   const declared = session.definitions();
   assert.equal(unpack(await session.execute(call("web_search", { query: rewrite }), declared, {})).status, "denied");
   assert.equal(unpack(await session.execute(call("web_search", { query: "Moon look larger" }), declared, {})).status, "ok");
   assert.equal(searches, 1);
+});
+
+test("the built-in web plugin lets the model search then read a same-turn result", async () => {
+  const f = fixture();
+  let networkCalls = 0;
+  const session = f.create({ userMessage: "能不能帮我搜一下月亮的资料？",
+    webSearchResults: async () => { networkCalls++; return found(); },
+    readPublicPage: async url => {
+      networkCalls++;
+      return { ok: true, url, response: new globalThis.Response("Synthetic public article", { headers: { "content-type": "text/plain" } }) };
+    },
+  });
+  const tools = session.definitions();
+  for (const name of ["web_search", "read_public_page"]) assert.equal(registeredTool(name).source, "public-web");
+  const searched = unpack(await session.execute(call("web_search", { query: "lunar horizon" }), tools, {}));
+  assert.equal(searched.status, "ok");
+  const result = unpack(await session.execute(call("read_public_page", { source_ref: searched.sources[0].source_ref }), tools, {}));
+  assert.equal(result.status, "ok");
+  assert.equal(networkCalls, 2);
+  assert.equal(unpack(await session.execute(call("read_public_page", { source_ref: "src_" + "f".repeat(32) }), tools, {})).reason, "unknown_source");
+  assert.equal(networkCalls, 2);
 });
 
 test("real full/minimal preference layers taint actual session without fake note dependencies", async t => {

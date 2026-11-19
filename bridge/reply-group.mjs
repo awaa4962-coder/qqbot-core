@@ -12,7 +12,7 @@ import {
   hasMiniAppPayload,
   buildInterjectionDecision,
 } from "./reply-handlers.mjs";
-import { inspectAutoPreview } from "./services/link-preview/index.mjs";
+import { inspectAutoPreview, recordLinkPreviewSkip } from "./services/link-preview/index.mjs";
 import { dispatchGroupCommand, matchSpecialGroupAction } from "./commands/action-dispatcher.mjs";
 import { observeMemoryEvent, getActiveMemoryContext } from "./memory-profile.mjs";
 import { observeGroupDuplicate } from "./duplicate-message.mjs";
@@ -42,11 +42,9 @@ export async function handleGroupMessage(ctx, rawMessage, options = {}) {
   if (stopStaleGroupContext(ctx)) return null;
   if (!ctx.isAtMe) observeGroupStickerCandidates(ctx);
 
-  const detachedPreview = startDetachedGroupPreview(ctx, rawMessage, options);
-  if (detachedPreview) return detachedPreview;
-
-  const previewState = await handleGroupPreviews(ctx, rawMessage, options.previewOptions);
-  if (stopStaleGroupContext(ctx)) return null;
+  const previewState = await handleGroupPreviewWork(ctx, rawMessage, options);
+  if (previewState.detached) return previewState;
+  if (previewState.kind === "cancelled" || stopStaleGroupContext(ctx)) return null;
 
   if (previewState.sent && !ctx.isAtMe) {
     traceStage("route", { status: "ok", route: "preview" });
@@ -60,8 +58,8 @@ export async function handleGroupMessage(ctx, rawMessage, options = {}) {
 }
 
 async function handleGroupCommand(ctx, replyState, options) {
-  const detachedCommand = await startDetachedSlowCommand(ctx, replyState, options);
-  if (detachedCommand) return detachedCommand;
+  const kind = ctx.isAtMe ? slowCommandKind(ctx) : "";
+  if (kind && (options.detachChat || kind === "preview")) return handleSlowCommand(ctx, replyState, kind, options);
   return await dispatchGroupCommand(ctx, { replyToId: replyState.replyToId }) ? {} : null;
 }
 
@@ -73,17 +71,13 @@ function slowCommandKind(ctx) {
   return "";
 }
 
-async function startDetachedSlowCommand(ctx, replyState, options) {
-  if (!options.detachChat || !ctx.isAtMe) return null;
-  const kind = slowCommandKind(ctx);
-  if (!kind) return null;
+async function handleSlowCommand(ctx, replyState, kind, options) {
   const commandOptions = kind === "preview" ? options.previewOptions : options.commandOptions;
-  const run = () => withChatRun({ surface: "group", lane: kind, groupId: ctx.group_id, userId: ctx.user_id,
-    messageId: ctx.message_id, eventTime: ctx.eventTime,
-    contextPrivacyGeneration: ctx.contextPrivacyGeneration }, async () => {
+  const run = () => withGroupChatRun(ctx, kind, async () => {
     await dispatchGroupCommand(ctx, { replyToId: replyState.replyToId, ...commandOptions });
     noteChatOutcome({ kind: "silence" });
   });
+  if (!options.detachChat) { await run(); return {}; }
   const scheduled = (options.chatScheduler || chatWorkScheduler).start(
     { groupId: ctx.group_id, userId: ctx.user_id, kind }, run);
   if (scheduled.ok) return { completion: scheduled.completion };
@@ -169,8 +163,7 @@ function inheritedSourceExclusion(ctx) {
   }
 }
 
-async function handleGroupPreviews(ctx, rawMessage, previewOptions = {}) {
-  const isLong = requireLongGroup(ctx.group_id);
+async function handleGroupPreviews(ctx, rawMessage, isLong, previewOptions) {
   const link = await handleLinkPreview(ctx.group_id, ctx.rawText, isLong, { ...previewOptions, isAtMe: ctx.isAtMe });
   const miniApp = !ctx.isAtMe && !link.sent && !link.reason.startsWith("send_")
     ? await handleMiniAppResult(rawMessage, ctx.group_id, isLong, previewOptions)
@@ -181,24 +174,33 @@ async function handleGroupPreviews(ctx, rawMessage, previewOptions = {}) {
   };
 }
 
-function startDetachedGroupPreview(ctx, rawMessage, options) {
-  if (!options.detachChat || ctx.isAtMe) return null;
+async function handleGroupPreviewWork(ctx, rawMessage, options) {
+  const previewOptions = options.previewOptions || {};
   const isLong = requireLongGroup(ctx.group_id);
-  const link = inspectAutoPreview(ctx.rawText, { groupId: ctx.group_id, isLongGroup: isLong });
-  if (!link.ok && (isLong || !hasMiniAppPayload(rawMessage))) return null;
-  traceStage("route", { status: "ok", route: "preview" });
-  const run = () => withChatRun({ surface: "group", lane: "preview", groupId: ctx.group_id, userId: ctx.user_id,
-    messageId: ctx.message_id, eventTime: ctx.eventTime,
-    contextPrivacyGeneration: ctx.contextPrivacyGeneration }, async () => {
-    const result = await handleGroupPreviews(ctx, rawMessage, options.previewOptions);
+  const link = inspectAutoPreview(ctx.rawText, { groupId: ctx.group_id, isLongGroup: isLong,
+    isAtMe: ctx.isAtMe, now: previewOptions.now, dedupeWindowMs: previewOptions.dedupeWindowMs });
+  if (!link.ok && (ctx.isAtMe || isLong || !hasMiniAppPayload(rawMessage))) {
+    if (link.hadLink) recordLinkPreviewSkip(link.reason);
+    return { sent: false, suppressInterjection: link.hadLink };
+  }
+  const run = () => withGroupChatRun(ctx, "preview", async () => {
+    const result = await handleGroupPreviews(ctx, rawMessage, isLong, previewOptions);
     noteChatOutcome({ kind: result.sent ? "reply" : "silence" });
     return result;
   });
+  if (!options.detachChat) return run();
+  traceStage("route", { status: "ok", route: "preview" });
   const scheduled = (options.chatScheduler || chatWorkScheduler).start(
     { groupId: ctx.group_id, userId: ctx.user_id, kind: "preview" }, run);
-  if (scheduled.ok) return { completion: scheduled.completion };
+  if (scheduled.ok) return { detached: true, completion: scheduled.completion };
   traceStage("output", { status: "skipped", reason: scheduled.reason });
-  return {};
+  return { detached: true };
+}
+
+function withGroupChatRun(ctx, lane, run) {
+  return withChatRun({ surface: "group", lane, groupId: ctx.group_id, userId: ctx.user_id,
+    messageId: ctx.message_id, eventTime: ctx.eventTime,
+    contextPrivacyGeneration: ctx.contextPrivacyGeneration }, run);
 }
 
 async function handleMentionedGroupMessage(ctx, replyState, options = {}) {
@@ -233,8 +235,7 @@ async function handleMentionedGroupMessage(ctx, replyState, options = {}) {
 
 async function sendChatCapacityNotice(ctx, replyState, reason, lane = "chat") {
   traceStage("output", { status: "failed", reason });
-  await withChatRun({ surface: "group", lane, groupId: ctx.group_id, userId: ctx.user_id, messageId: ctx.message_id,
-    eventTime: ctx.eventTime, contextPrivacyGeneration: ctx.contextPrivacyGeneration }, async () => {
+  await withGroupChatRun(ctx, lane, async () => {
     noteChatOutcome({ kind: "error" });
     await sendMsg(ctx.group_id, "当前回复任务较多，请稍后再试。", replyState.replyToId);
   });

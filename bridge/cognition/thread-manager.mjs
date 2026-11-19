@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { wallAgeMs } from "../runtime-clock.mjs";
 import { compareRelevance, currentTopicText, isContinuation } from "../context/relevance.mjs";
 import { redactSensitiveText } from "../privacy.mjs";
-import { normalizeMemoryDependencies, normalizeMemoryExpiry } from "../context/memory-dependencies.mjs";
+import { normalizeHistoricalImageSources, normalizeMemoryDependencies, normalizeMemoryExpiry } from "../context/memory-dependencies.mjs";
 
 const GROUP_THREAD_TTL_MS = 90 * 60 * 1000;
 const PRIVATE_THREAD_TTL_MS = 6 * 60 * 60 * 1000;
@@ -73,8 +73,20 @@ export function getConversationThread(uid, groupId, options = {}) {
     : (options.userStore || users)[id]?.cognition?.threads?.[scope];
   if (!isActiveThread(thread, now)) return null;
   if (scope !== "private" && !validStoredGroupThread(thread, scope)) return null;
-  const selected = scope === "private" ? thread : selectReadableBranch(thread, options.forMessage, now);
+  const selected = scope === "private" ? thread : selectReadableBranch(thread, options.forMessage, now, options.filterTurn);
   return selected ? snapshotThread(selected, scope) : null;
+}
+
+export function findStoredGroupAssistantTurn(groupId, messageId) {
+  for (const [uid, user] of Object.entries(users)) {
+    const thread = user?.cognition?.threads?.[groupId];
+    if (!thread || !validStoredGroupThread(thread, groupId)) continue;
+    for (const branch of [thread, ...(thread.branches || [])]) {
+      const turn = branch.turns.find(item => item.assistantMessageIds?.includes(messageId));
+      if (turn) return { uid, turn };
+    }
+  }
+  return null;
 }
 
 export function buildConversationThreadBlock(uid, groupId, options = {}) {
@@ -286,11 +298,10 @@ function pruneInactiveBranches(thread, now) {
     .slice(0, MAX_INACTIVE_BRANCHES).map(compactBranch);
 }
 
-function selectReadableBranch(thread, query, now) {
+function selectReadableBranch(thread, query, now, filterTurn) {
   if (!query) return thread;
   if (currentTopicText(query.userMsg).switched) return null;
-  const branches = [thread, ...(Array.isArray(thread.branches) ? thread.branches : [])]
-    .filter(branch => isActiveThread(branch, now));
+  const branches = readableBranches(thread, now, filterTurn);
   const quoteId = normalizeId(query.replyToMessageId);
   const quotedUser = String(query.replyUserId || "");
   const bot = String(query.selfUin || "");
@@ -301,7 +312,16 @@ function selectReadableBranch(thread, query, now) {
   const queryText = quotedUser === bot && query.replyText ? query.replyText + " " + query.userMsg : query.userMsg;
   const candidates = topicCandidates(branches, queryText);
   if (!candidates.length) return null;
-  return bestBranch(candidates, queryText) || (knownTopic(queryText) ? exactTopicBranch(candidates, queryText) : thread);
+  return bestBranch(candidates, queryText) || (knownTopic(queryText) ? exactTopicBranch(candidates, queryText) : branches[0]);
+}
+
+function readableBranches(thread, now, filterTurn) {
+  const active = [thread, ...(thread.branches || [])].filter(branch => isActiveThread(branch, now));
+  if (!filterTurn) return active;
+  return active.map(branch => {
+    const turns = branch.turns.filter(filterTurn);
+    return turns.length === branch.turns.length ? branch : { ...branch, id: branchId(branch), turns, topic: "" };
+  }).filter(branch => branch.turns.length);
 }
 
 function topicCandidates(branches, query) {
@@ -372,6 +392,7 @@ function buildTurn(event, userSummary, assistantSummary, now) {
   const memorySources = normalizeMemoryDependencies(event.memorySources);
   const memoryExpiresAt = normalizeMemoryExpiry(event.memoryExpiresAt);
   const assistantMessageIds = normalizeAssistantMessageIds(event.assistantMessageIds);
+  const historicalImageSources = event.historicalImageSources === undefined ? [] : normalizeHistoricalImageSources(event.historicalImageSources);
   return {
     id: explicitId || "turn-" + now,
     messageId: explicitId,
@@ -382,6 +403,7 @@ function buildTurn(event, userSummary, assistantSummary, now) {
     assistantTruncated: normalizedText(event.assistantText).length > 480,
     outcome: String(event.outcome || "sent"),
     createdAt: now,
+    ...(normalizeScope(event.groupId || event.scope) === "private" ? {} : { historicalImageSources }),
     ...(memorySources && !Number.isNaN(memoryExpiresAt) ? { memorySources, memoryExpiresAt, memoryDependencyVersion: 2 } : {}),
   };
 }

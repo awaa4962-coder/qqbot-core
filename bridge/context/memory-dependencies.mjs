@@ -23,3 +23,22 @@ export function normalizeMemoryDependencies(value) {
   }
   return [...found].map(([noteId, revision]) => ({ noteId, revision }));
 }
+
+// A missing list on a stored group turn means its image provenance is unknown.
+export function normalizeHistoricalImageSources(value) {
+  if (!Array.isArray(value) || value.length > 512) return null;
+  const sources = new Map();
+  for (const item of value) {
+    if (!validImageSource(item)) return null;
+    const { kind, userId, messageId, at } = item;
+    sources.set(JSON.stringify([kind, userId, messageId, at]), { kind, userId, messageId, at });
+    if (sources.size > MAX_MEMORY_DEPENDENCIES) return null;
+  }
+  return [...sources.values()];
+}
+
+function validImageSource(item) {
+  return item && (item.kind === "recent" || item.kind === "quote") && typeof item.userId === "string" &&
+    /^\d{1,20}$/.test(item.userId) && typeof item.messageId === "string" && /^-?\d{1,20}$/.test(item.messageId) &&
+    Number.isSafeInteger(item.at) && item.at > 0;
+}

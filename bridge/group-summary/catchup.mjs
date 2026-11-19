@@ -20,31 +20,59 @@ export function createDailySummaryCatchUp(options = {}) {
   let completed = false;
   let exhausted = false;
   let runAttempts = 0;
+  let inFlight = null;
+  let running = false;
 
   function start() {
-    if (stopped || completed || exhausted || timer) return;
+    if (stopped || completed || exhausted || timer || inFlight) return;
     schedule(initialDelayMs);
   }
 
-  async function runNow() {
-    timer = null;
-    if (stopped || completed || exhausted) return null;
-    if (!isReady()) {
+  function runNow() {
+    if (inFlight) return inFlight;
+    if (stopped || completed || exhausted) return Promise.resolve(null);
+    clearTimer();
+    inFlight = Promise.resolve().then(runIfReady).finally(() => { inFlight = null; });
+    return inFlight;
+  }
+
+  async function runIfReady() {
+    if (stopped) return null;
+    let ready;
+    try { ready = await isReady(); }
+    catch { ready = false; }
+    if (stopped) return null;
+    if (!ready) {
       log("deferred", { reason: "onebot_not_ready" });
       schedule(retryDelayMs);
       return null;
     }
     runAttempts++;
     const dateText = resolvePreviousSummaryDate(now());
-    const result = await run({ dateText, log: (event, detail) => log(event, detail) });
-    completed = result.ok === true && !result.pending;
-    log(completed ? "complete" : result.pending ? "pending" : "failed", { dateText, ok: result.ok, sent: result.sent, groups: result.groups });
-    if (!completed) retryOrExhaust();
-    return result;
+    running = true;
+    try {
+      const result = await run({ dateText, log });
+      completed = result.ok === true && !result.pending;
+      log(completed ? "complete" : result.pending ? "pending" : "failed", { dateText, ok: result.ok, sent: result.sent, groups: result.groups });
+      if (!completed) retryOrExhaust();
+      return result;
+    } catch (error) {
+      log("error", { error: error.message });
+      retryOrExhaust();
+      throw error;
+    } finally {
+      running = false;
+    }
   }
 
   function stop() {
     stopped = true;
+    clearTimer();
+    // A pending readiness check cannot dispatch after stop; only wait for an actual run.
+    return running ? inFlight.then(() => true, () => true) : true;
+  }
+
+  function clearTimer() {
     if (timer) clearTimeoutFn(timer);
     timer = null;
   }
@@ -60,10 +88,10 @@ export function createDailySummaryCatchUp(options = {}) {
 
   function schedule(delayMs) {
     if (stopped || completed || exhausted || timer) return;
-    timer = setTimeoutFn(() => { runNow().catch(error => {
-      log("error", { error: error.message });
-      retryOrExhaust();
-    }); }, delayMs);
+    timer = setTimeoutFn(() => {
+      timer = null;
+      runNow().catch(() => {});
+    }, delayMs);
     timer?.unref?.();
   }
 

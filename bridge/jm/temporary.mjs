@@ -10,12 +10,13 @@ export const JM_CLEANUP_DELAY_MS = 24 * 60 * 60 * 1000;
 export const FUTURE_SKEW_MS = 5 * 60 * 1000;
 
 export const activeJmTempDirs = new Set();
+const CLEANUP_OPTIONS = { recursive: true, force: true, maxRetries: 3, retryDelay: 100 };
 
 export function scheduleJmTempCleanup(tempDir, delayMs = JM_CLEANUP_DELAY_MS) {
   const timer = setTimeout(() => {
-    fs.rm(tempDir, { recursive: true, force: true })
-      .then(() => log("jm temp cleaned:", tempDir))
-      .catch(error => logE("jm temp cleanup failed:", error.message));
+    fs.rm(tempDir, CLEANUP_OPTIONS)
+      .then(() => log("jm temp cleaned"))
+      .catch(error => logE("jm temp cleanup failed:", cleanupErrorCode(error)));
   }, Math.max(0, delayMs));
   timer.unref?.();
   return timer;
@@ -29,7 +30,7 @@ export async function cleanupExpiredJmTempDirs(options = {}) {
   try {
     items = await fs.readdir(root, { withFileTypes: true });
   } catch (error) {
-    logE("jm temp scan failed:", error.message);
+    logE("jm temp scan failed:", cleanupErrorCode(error));
     return 0;
   }
 
@@ -49,10 +50,14 @@ export async function cleanupJmTempEntry(root, item, now, maxAgeMs) {
     const age = now - (await fs.stat(fullPath)).mtimeMs;
     if (age >= 0 && age < maxAgeMs) return false;
     if (age < 0 && age > -FUTURE_SKEW_MS) return false;
-    await fs.rm(fullPath, { recursive: true, force: true });
+    await fs.rm(fullPath, CLEANUP_OPTIONS);
     return true;
   } catch (error) {
-    logE("jm temp cleanup failed:", error.message);
+    if (error.code !== "ENOENT") logE("jm temp cleanup failed:", cleanupErrorCode(error));
     return false;
   }
+}
+
+function cleanupErrorCode(error) {
+  return /^(?:EACCES|EBUSY|EIO|EMFILE|ENFILE|ENOENT|ENOTDIR|ENOTEMPTY|EPERM)$/.test(error?.code) ? error.code : "unknown";
 }

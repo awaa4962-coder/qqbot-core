@@ -100,6 +100,50 @@ describe("OneBot link manager", () => {
     assert.equal(manager.status().queueDropped, 1);
     await manager.stop({ drainMs: 0 });
   });
+
+  it("closes admission immediately and drains already queued events exactly once", async () => {
+    const processed = [];
+    let release;
+    const manager = createOneBotLinkManager({ processor: async event => {
+      processed.push(event.message_id);
+      if (event.message_id === 1) await new Promise(resolve => { release = resolve; });
+    } });
+    const socket = new FakeSocket();
+    manager.attach(socket);
+    socket.emit("message", jsonEvent(1, 100));
+    socket.emit("message", jsonEvent(2, 100));
+    await waitFor(() => release);
+
+    const drained = manager.stop({ drainMs: 500 });
+    assert.equal(manager.status().ready, false);
+    assert.equal(socket.closed, true);
+    assert.equal(manager.attach(new FakeSocket()), 0);
+    assert.equal(manager.enqueue({ message_id: 3 }), false);
+    socket.emit("message", jsonEvent(4, 100));
+    release();
+    assert.equal(await drained, true);
+    assert.deepEqual(processed, [1, 2]);
+    assert.equal(manager.status().queueDepth, 0);
+  });
+
+  it("reports a timeout with unfinished work and does not dispatch the queued tail afterward", async () => {
+    const processed = [];
+    let release;
+    const manager = createOneBotLinkManager({ processor: async event => {
+      processed.push(event.message_id);
+      if (event.message_id === 1) await new Promise(resolve => { release = resolve; });
+    } });
+    manager.enqueue({ message_id: 1 });
+    manager.enqueue({ message_id: 2 });
+    await waitFor(() => release);
+    assert.equal(await manager.stop({ drainMs: 10 }), false);
+    assert.equal(await manager.stop({ drainMs: 0 }), false);
+    assert.equal(manager.status().queueDepth, 2);
+    release();
+    await waitFor(() => manager.status().queueDepth === 0);
+    assert.deepEqual(processed, [1]);
+    assert.equal(await manager.stop({ drainMs: 0 }), true);
+  });
 });
 
 class FakeSocket extends EventEmitter {

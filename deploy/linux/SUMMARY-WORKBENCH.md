@@ -37,3 +37,5 @@
 - `Web/summaries.js`、`summaries.css`：Linux 浏览器工作台。
 
 更新备份需包含 `state/qqfriend/config`、`state/qqfriend/data` 和 `state/qqfriend/logs/summary-state`。保留旧发送标记，禁止通过清空账本处理重复发送。
+
+异常退出后，日报锁可能留在磁盘。仅在暂停定时任务、停止 Bridge 并确认没有日报进程后，才可人工清理已核实无人持有的锁。部署的 `publication.hold` 会暂停所有新版日报发布入口；如果切换失败，该文件可能故意保留，只有核对本次部署状态和账本后才可解除。不要移动或删除发送账本、草稿或分段回执；格式损坏或回执未知要先核对，不要把它当作未发送。

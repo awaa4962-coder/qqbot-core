@@ -13,27 +13,36 @@ const ALLOWED = Object.freeze({
 });
 
 export function createAdminTaskManager(options = {}) {
+  const shutdown = new AbortController();
   const tasks = createTaskRunner({ filename: options.filename || path.join(CFG.dataRoot, ".qqfriend", "tasks", "admin.json"),
     maxConcurrent: 2, historyLimit: 20 });
   const handlers = options.handlers || { stickers: applyStickerManagerAction,
     replay: (payload, runtime) => replayService.act(payload, runtime), agent_tools: probeNativeChatTools };
 
   function start(input = {}) {
+    shutdown.signal.throwIfAborted();
     const module = String(input.module || "");
     if (module === "memes") throw new Error(MEME_RETIRED_MESSAGE);
     const payload = normalizePayload(module, input.payload);
     return tasks.start({
       scope: module, meta: { module }, action: payload.action, timeoutMs: module === "agent_tools" ? 90000 : options.timeoutMs,
       run: async ({ progress, signal }) => {
+        const taskSignal = AbortSignal.any([signal, shutdown.signal]);
+        taskSignal.throwIfAborted();
         progress("running");
-        const result = await handlers[module](payload, { signal, onProgress: progress });
+        const result = await handlers[module](payload, { signal: taskSignal, onProgress: progress });
         return { ...result, ok: result?.ok !== false && result?.result?.ok !== false };
       },
       resultView: compactResult,
     });
   }
   function snapshot(input = {}) { return input.id ? { task: tasks.inspect(String(input.id)) } : { tasks: tasks.list() }; }
-  return { start, snapshot, wait: tasks.wait };
+  async function stop() {
+    shutdown.abort(Object.assign(new Error("服务正在关闭。"), { code: "bridge_stopping" }));
+    await tasks.wait();
+    return true;
+  }
+  return { start, snapshot, wait: tasks.wait, stop };
 }
 
 function normalizePayload(module, value) {

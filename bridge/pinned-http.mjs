@@ -25,7 +25,7 @@ function decodeResponseBody(source, headers) {
 }
 
 // Preserve the URL hostname for Host/SNI/certificate verification; only DNS resolution is pinned.
-export function fetchPinnedResponse(url, { addresses, method, headers, signal, requestImpl } = {}) {
+export function fetchPinnedResponse(url, { addresses, method, headers, signal, requestImpl, body } = {}) {
   const request = requestImpl || (url.protocol === "https:" ? httpsRequest : httpRequest);
   return new Promise((resolve, reject) => {
     const req = request(url, {
@@ -40,11 +40,11 @@ export function fetchPinnedResponse(url, { addresses, method, headers, signal, r
         const noBody = method === "HEAD" || [204, 205, 304].includes(incoming.statusCode);
         const stream = noBody ? null : decodeResponseBody(incoming, responseHeaders);
         if (noBody) incoming.resume();
-        const body = stream && Readable.toWeb(stream, { strategy: { highWaterMark: 65536, size: chunk => chunk.length } });
-        resolve(new globalThis.Response(body, { status: incoming.statusCode, headers: responseHeaders }));
+        const responseBody = stream && Readable.toWeb(stream, { strategy: { highWaterMark: 65536, size: chunk => chunk.length } });
+        resolve(new globalThis.Response(responseBody, { status: incoming.statusCode, headers: responseHeaders }));
       } catch (error) { incoming.destroy(); reject(error); }
     });
     req.once("error", reject);
-    req.end();
+    req.end(body);
   });
 }

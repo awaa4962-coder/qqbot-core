@@ -9,6 +9,23 @@ import { fetchSafeResponse } from "../bridge/safe-url.mjs";
 import { CFG } from "../bridge/config.mjs";
 import { bingSearch, webSearch, webSearchResults } from "../bridge/search.mjs";
 
+test("Tavily and Bing both recheck turn authorization after DNS", { timeout: 5000 }, async () => {
+  for (const tavily of [true, false]) {
+    CFG.tavilyKey = tavily ? "synthetic-search-key" : "";
+    const { promise: pendingDns, resolve: enteredDns } = Promise.withResolvers();
+    const { promise: dnsResponse, resolve: finishDns } = Promise.withResolvers();
+    let authorized = true;
+    globalThis.fetch = () => assert.fail("authorization was revoked before HTTP");
+    const result = webSearchResults("synthetic public query", { lookup: () => { enteredDns(); return dnsResponse; },
+      requestImpl: () => assert.fail("authorization was revoked before socket creation"),
+      beforeRequest: () => { if (!authorized) throw new Error("synthetic permission revoked"); } });
+    await pendingDns;
+    authorized = false;
+    finishDns([{ address: "8.8.8.8", family: 4 }]);
+    await assert.rejects(result, /synthetic permission revoked/);
+  }
+});
+
 const originalFetch = globalThis.fetch;
 const originalKey = CFG.tavilyKey;
 afterEach(() => { globalThis.fetch = originalFetch; CFG.tavilyKey = originalKey; });
@@ -52,6 +69,32 @@ function pinnedFixture(routes, { addresses = {}, requests = [], lookups = [] } =
     },
   });
 }
+
+test("pinned Tavily POST keeps its original endpoint and sends a bounded request body", async () => {
+  CFG.tavilyKey = "synthetic-search-key";
+  globalThis.fetch = () => assert.fail("expected pinned transport");
+  let dispatches = 0;
+  const result = await webSearchResults("synthetic public query", {
+    lookup: async host => { assert.equal(host, "api.tavily.com"); return [{ address: "8.8.8.8", family: 4 }]; },
+    requestImpl: (target, options, receive) => {
+      dispatches++;
+      assert.equal(target.href, "https://api.tavily.com/search");
+      assert.equal(options.method, "POST");
+      const req = new EventEmitter();
+      req.end = body => {
+        assert.equal(Number(options.headers["content-length"]), Buffer.byteLength(body));
+        assert.equal(JSON.parse(body).api_key, "synthetic-search-key");
+        const response = Readable.from([Buffer.from(JSON.stringify({ results: [] }))]);
+        response.rawHeaders = ["content-type", "application/json"];
+        response.statusCode = 200;
+        receive(response);
+      };
+      return req;
+    },
+  });
+  assert.equal(dispatches, 1);
+  assert.equal(result.status, "empty");
+});
 
 test("Tavily structured sources retain URLs and stay bounded without a model call", async () => {
   CFG.tavilyKey = "synthetic-key";
@@ -112,7 +155,7 @@ test("provider failures remain unavailable and structured search honors cancella
   CFG.tavilyKey = "";
   globalThis.fetch = async () => { throw new Error("offline failure"); };
   assert.equal(await webSearch("public article"), "搜索暂时不可用");
-  assert.deepEqual(await webSearchResults("public article"), { status: "unavailable", sources: [], answer: "" });
+  assert.deepEqual(await webSearchResults("public article"), { status: "unavailable", reason: "network_error", sources: [], answer: "" });
   const abort = new globalThis.AbortController(); abort.abort();
   globalThis.fetch = () => assert.fail("aborted search must not fetch");
   await assert.rejects(webSearchResults("public article", { signal: abort.signal }), { name: "AbortError" });
@@ -164,6 +207,29 @@ test("bare, quoted, negated, historical, interjection and file links are not aut
     assert.equal(session.available, false);
     checkResult(await session.search("public article"), "denied");
   }
+});
+
+test("natural read requests bind only the public link they refer to", async () => {
+  for (const prefix of ["阅读这个链接，说明主要结论：", "打开这个链接：", "读一下这个链接，链接："]) {
+    const session = create({ userMessage: prefix + source().url + "，另外供参考 " + source(1).url,
+      autonomous: true, read: async url => page("Public article", "text/plain", url) });
+    const [ref] = session.initialSources();
+    assert.deepEqual(session.initialSources().map(item => item.url), [source().url]);
+    checkResult(await session.read(ref.source_ref), "ok");
+  }
+  const vetoed = create({ userMessage: "不要打开这个链接：" + source().url, autonomous: true });
+  assert.deepEqual(vetoed.initialSources(), []);
+});
+
+test("page transport failures remain distinguishable without exposing raw details", async () => {
+  for (const [status, reason] of [[403, "upstream_forbidden"], [429, "upstream_rate_limited"], [503, "upstream_error"]]) {
+    const session = direct({ read: async url => ({ ok: true, url, response: new globalThis.Response("private error body", { status }) }) });
+    const result = checkResult(await session.read(session.initialSources()[0].source_ref), "unavailable");
+    assert.equal(result.reason, reason);
+    assert.doesNotMatch(JSON.stringify(result), /private error body|https:\/\//);
+  }
+  const session = direct({ read: async () => ({ ok: false, reason: "dns_lookup_failed" }) });
+  assert.equal((await session.read(session.initialSources()[0].source_ref)).reason, "dns_lookup_failed");
 });
 
 test("private, IP, local, credential and query-secret URLs never mint initial refs", () => {
@@ -287,12 +353,13 @@ test("reads share a two-page turn budget, including concurrent reads and failure
   const ref = session.initialSources()[0].source_ref;
   const results = await Promise.all([session.read(ref), session.read(ref), session.read(ref)]);
   assert.deepEqual(results.map(result => result.status), ["ok", "ok", "denied"]);
+  assert.equal(results[2].reason, "page_budget");
   assert.equal(reads, 2);
   const failing = direct({ read: async () => { reads++; throw new Error("offline"); } });
   const failRef = failing.initialSources()[0].source_ref;
   checkResult(await failing.read(failRef), "unavailable");
   checkResult(await failing.read(failRef), "unavailable");
-  checkResult(await failing.read(failRef), "denied");
+  assert.equal(checkResult(await failing.read(failRef), "denied").reason, "page_budget");
 });
 
 test("read injection receives the pinned helper contract and no more than an eight-second timeout", async () => {
@@ -355,6 +422,17 @@ test("HTML strips scripts, styles and comments, decodes entities, and returns bo
   const result = checkResult(await session.read(session.initialSources()[0].source_ref), "ok");
   assert.match(result.text, /^Public & evidence A B/);
   assert.doesNotMatch(result.text, /SECRET_SCRIPT|SECRET_STYLE|SECRET_COMMENT|<html>/);
+});
+
+test("HTML parsing keeps anchor text but excludes hidden materials and embedded URLs", async () => {
+  const body = '<p>Public <a href="https://example.test/not-a-source">article</a></p>' +
+    '<div hidden>HIDDEN_A</div><div aria-hidden="true">HIDDEN_B</div><p style="display: none">HIDDEN_C</p>' +
+    '<img src="https://example.test/embedded.png" alt="IMAGE_ALT">';
+  const session = direct({ read: async () => page(body, "text/html") });
+  const result = checkResult(await session.read(session.initialSources()[0].source_ref), "ok");
+  assert.match(result.text, /Public article/);
+  assert.doesNotMatch(result.text, /HIDDEN_|IMAGE_ALT|not-a-source|embedded.png/);
+  assert.equal(result.sources.length, 1);
 });
 
 test("plain, markdown and JSON content types are usable without execution", async () => {

@@ -60,8 +60,43 @@ assert config['download']['threading'] == {'image': 12, 'photo': 2}
 new_config = config['client']['postman']
 assert new_config['type'] == 'curl_cffi_session'
 meta = new_config['meta_data']
-assert meta['timeout'] == (3, 8) and meta['impersonate'] == 'chrome'
+assert meta['timeout'] == (3, 4) and meta['impersonate'] == 'chrome'
 assert meta['headers'] is None and meta['proxies'] is None
+
+def verify_pinned_retry_adapter():
+    from jmcomic import JmApiClient
+    from types import SimpleNamespace
+    class OfflineClient(JmApiClient):
+        def after_init(self):
+            pass
+    timings = runner.DownloadTimings()
+    client = runner.bound_image_requests(OfflineClient(None, ['mirror%d.invalid' % index for index in range(6)], retry_times=1), timings)
+    attempts = []
+    def timeout(url, **kwargs):
+        attempts.append(urlsplit(url).hostname)
+        assert kwargs['timeout'] == (3, 4)
+        raise TimeoutError('synthetic metadata failure')
+    try:
+        client.request_with_retry(timeout, '/synthetic')
+    except runner.MetadataRetryLimit:
+        pass
+    else:
+        raise AssertionError('the pinned client made it past the metadata attempt cap')
+    assert attempts == ['mirror0.invalid', 'mirror1.invalid', 'mirror2.invalid', 'mirror3.invalid']
+    assert timings.snapshot()['metadataTimeouts'] == 4
+    images = []
+    def throttled(url, **kwargs):
+        images.append(url)
+        return SimpleNamespace(status_code=429, content=b'delay', url=url)
+    try:
+        client.request_with_retry(throttled, 'https://images.invalid/01.jpg', is_image=True)
+    except Exception:
+        assert len(images) == 1 and timings.snapshot()['imageRateLimited'] == 1
+    else:
+        raise AssertionError('the pinned client accepted a rate-limited image')
+with runner.quiet_dependencies():
+    verify_pinned_retry_adapter()
+
 payload = b'synthetic-image-bytes-' * 1024
 baseline_threads = set(threading.enumerate())
 
@@ -129,7 +164,7 @@ def run_case(postman_config):
         parsed = urlsplit(url)
         assert parsed.scheme == 'http' and parsed.hostname == '127.0.0.1' and parsed.port == server.server_port
         assert not parsed.username and not parsed.password and session.trust_env is False
-        assert kwargs.get('timeout', session.timeout) == (3, 8)
+        assert kwargs.get('timeout', session.timeout) == (3, 4)
         return original_request(session, method, url, *args, **kwargs)
     data = copy.deepcopy(postman_config)
     data['meta_data'].update(http_version=CurlHttpVersion.V1_1, allow_redirects=False,

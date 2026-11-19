@@ -49,7 +49,7 @@ test("daily summary runner skips only the guarded or empty group", async () => {
   assert.deepEqual(result.results.map(item => item.reason || ""), ["already_sent", "no_messages", ""]);
 });
 
-test("daily summary runner clears a reserved attempt after a confirmed send failure", async () => {
+test("daily summary runner leaves attempt bookkeeping to the segment publisher", async () => {
   const events = [];
   const result = await runDailySummaries({
     dateText: "2026-07-29",
@@ -62,11 +62,39 @@ test("daily summary runner clears a reserved attempt after a confirmed send fail
     }),
     loadMessages: () => [{ text: "ready" }],
     sendSummary: async options => {
-      await options.beforeSend({ messages: 1 });
+      assert.equal(options.beforeSend, undefined);
       return { ok: false, sent: false, error: "send_failed" };
     },
   });
 
   assert.equal(result.ok, false);
-  assert.deepEqual(events, [["attempt", 1], ["failed"], ["released"]]);
+  assert.deepEqual(events, [["released"]]);
+});
+
+test("a claim error and a release error both leave later groups runnable", async () => {
+  const sent = [];
+  const failures = [];
+  const result = await runDailySummaries({
+    dateText: "2026-07-29",
+    groupIds: [101, 202, 303],
+    createGuard: ({ groupId }) => {
+      if (groupId === 101) throw new Error("claim failed");
+      return { ok: true, release() { if (groupId === 202) throw new Error("release failed"); } };
+    },
+    loadMessages: () => [{ text: "ready" }],
+    sendSummary: async ({ groupId }) => {
+      sent.push(groupId);
+      return { publicationManaged: true, ok: true, sent: true };
+    },
+    log: (event, detail) => { if (event === "error") failures.push(detail.stage); },
+  });
+
+  assert.deepEqual(sent, [202, 303]);
+  assert.deepEqual(failures, ["claim", "release"]);
+  assert.equal(result.ok, false);
+  assert.equal(result.sent, 2);
+  assert.equal(result.results[0].error, "claim failed");
+  assert.equal(result.results[1].releaseError, "release failed");
+  assert.equal(result.results[1].sent, true);
+  assert.equal(result.results[2].ok, true);
 });

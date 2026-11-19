@@ -12,12 +12,20 @@ import {
 } from "./service.mjs";
 
 const SUMMARY_COMMAND_RE = /^日报(?:帮助|预览|发送)?(?:\s|$)/;
+const commandShutdown = new AbortController();
 const summaryCommandTasks = createTaskRunner({ filename: path.join(CFG.dataRoot, ".qqfriend", "tasks",
   process.env.NODE_ENV === "test" ? `summary-commands-${process.pid}.json` : "summary-commands.json"),
-  maxConcurrent: 2, historyLimit: 256, busyMessage: "这个群的日报任务仍在运行，请稍后再试。" });
+  maxConcurrent: 2, historyLimit: 256, busyMessage: "这个群的日报任务仍在运行，请稍后再试。",
+  describeResult: result => ({ ...(result.sent ? { sent: true } : {}), ...(result.pending ? { pending: true } : {}) }),
+});
 
 export function waitSummaryCommandTasks() { return summaryCommandTasks.wait(); }
 export function listSummaryCommandTasks() { return summaryCommandTasks.list(); }
+export async function stopSummaryCommandTasks() {
+  commandShutdown.abort();
+  await waitSummaryCommandTasks();
+  return true;
+}
 
 export function isGroupSummaryCommand(cmd) {
   return SUMMARY_COMMAND_RE.test(String(cmd || "").trim());
@@ -40,6 +48,7 @@ export function buildGroupSummaryHelpText() {
 }
 
 export async function buildGroupSummaryCommandReply(cmd, options = {}) {
+  if (commandShutdown.signal.aborted) return null;
   const parsed = parseGroupSummaryCommand(cmd, options);
   if (!parsed.ok) return parsed.text;
   if (parsed.action === "help") return buildGroupSummaryHelpText();
@@ -51,6 +60,7 @@ export async function buildGroupSummaryCommandReply(cmd, options = {}) {
 
 export async function queueGroupSummaryCommand(cmd, options = {}) {
   if (!isGroupSummaryCommand(cmd)) return false;
+  if (commandShutdown.signal.aborted) return true;
   const decision = summaryDispatchDecision(cmd, options);
   if (decision.immediate) { await notifySummary(options, decision.immediate); return true; }
   const parsed = decision.parsed;
@@ -67,7 +77,8 @@ export async function queueGroupSummaryCommand(cmd, options = {}) {
     summaryCommandTasks.start({ scope: `${parsed.groupId}:${parsed.dateText}`, action: parsed.action, timeoutMs: 10 * 60 * 1000,
       meta: { targetGroupId: String(parsed.groupId), dateText: parsed.dateText, style: parsed.style, eventKey }, run: async ({ progress, signal }) => {
         await gate;
-        return runQueuedSummary(parsed, { ...options, onProgress: progress, signal });
+        const taskSignal = AbortSignal.any([signal, commandShutdown.signal]);
+        return runQueuedSummary(parsed, { ...options, onProgress: progress, signal: taskSignal });
       } });
   } catch (error) {
     const busy = error.message === "这个群的日报任务仍在运行，请稍后再试。" || error.message === "后台任务已满，请稍后再试";
@@ -93,17 +104,22 @@ function summaryDispatchDecision(cmd, options) {
 async function runQueuedSummary(parsed, options) {
   const stopReason = () => queuedSummaryStopReason(options);
   const assertCurrent = () => { const reason = stopReason(); if (reason) throw new Error(reason); };
+  const guard = hook => async (...args) => {
+    assertCurrent();
+    const result = await hook?.(...args);
+    assertCurrent();
+    return result;
+  };
   if (stopReason()) return { ok: false, reason: stopReason() };
   try {
     const result = await runSummaryCommand(parsed, { ...options,
       beforeCall: () => { assertCurrent(); options.beforeCall?.(); },
-      beforeSave: () => { assertCurrent(); options.beforeSave?.(); },
-      beforeSend: info => { assertCurrent(); return options.beforeSend?.(info); },
-      beforeChunk: () => { assertCurrent(); options.beforeChunk?.(); },
+      beforeSave: guard(options.beforeSave), beforeSend: guard(options.beforeSend), beforeChunk: guard(options.beforeChunk),
     });
-    if (stopReason()) return { ok: false, reason: stopReason() };
+    const delivery = { sent: result.sent === true, pending: result.pending === true };
+    if (stopReason()) return { ...delivery, ok: delivery.sent, reason: stopReason() };
     const receipt = await notifySummary(options, formatSummaryCommandResult(parsed.action, result));
-    return { ok: result.ok && isSuccessfulOutbound(receipt), reason: result.reason || result.error ||
+    return { ...delivery, ok: result.ok && isSuccessfulOutbound(receipt), reason: result.reason || result.error ||
       (isSuccessfulOutbound(receipt) ? "" : "notice_unconfirmed"), skipped: Boolean(result.skipped) };
   } catch {
     const reason = stopReason() || "task_failed";
@@ -113,11 +129,13 @@ async function runQueuedSummary(parsed, options) {
 }
 
 function queuedSummaryStopReason(options) {
+  if (commandShutdown.signal.aborted) return "bridge_stopping";
   if (options.signal?.aborted) return "task_timeout";
   return isAdminUser(options.userId, options.admins) ? "" : "permission_changed";
 }
 
 async function notifySummary(options, text) {
+  if (commandShutdown.signal.aborted) return null;
   try { return await options.sendReply(text); }
   catch { return null; }
 }
@@ -139,6 +157,7 @@ async function runSummaryCommand(parsed, options) {
     beforeSave: options.beforeSave,
     beforeSend: options.beforeSend,
     beforeChunk: options.beforeChunk,
+    signal: options.signal,
     onProgress: options.onProgress,
     root: options.summaryRoot,
   });

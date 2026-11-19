@@ -1,19 +1,35 @@
 import assert from "node:assert/strict";
 import process from "node:process";
 import { after, test } from "node:test";
-import { runPythonJson, sanitizeJmTimings } from "../bridge/jm/runtime.mjs";
+import { parseRunnerResult, runPythonJson, sanitizeJmTimings } from "../bridge/jm/runtime.mjs";
 import { cleanupLogger } from "../bridge/logger.mjs";
 
 after(cleanupLogger);
 
 test("JM timing telemetry permits only bounded integer counters and durations", () => {
-  assert.deepEqual(sanitizeJmTimings({ firstImageMs: 74, imageRequestsCompleted: 2, observedMs: 80,
+  assert.deepEqual(sanitizeJmTimings({ firstImageMs: 74, imageRequestsCompleted: 2, observedMs: 80, imageRateLimited: 1,
+    metadataTimeouts: 2, imageUnknownFailure: 17,
     url: "private-url", token: "private-token", title: "private-title", nested: { secret: "private" },
     imageRequestMs: -1, metadataMs: 1.5, metadataCallsCompleted: "2", imageSaveMs: Infinity,
-    imageRetriesCompleted: 1000001 }), { firstImageMs: 74, imageRequestsCompleted: 2, observedMs: 80 });
+    imageRetriesCompleted: 1000001 }), { firstImageMs: 74, imageRequestsCompleted: 2, observedMs: 80,
+    imageRateLimited: 1, metadataTimeouts: 2 });
   for (const value of [null, [], "secret", { url: "secret" }, { firstImageMs: 86400001 }]) {
     assert.equal(sanitizeJmTimings(value), null);
   }
+});
+
+test("a crashed worker cannot be mistaken for successful output or a missing dependency", () => {
+  for (const stdout of ["", 'QQFRIEND_JM_RESULT {"ok":true,"all_success":true,"files":1,"bytes":1}']) {
+    assert.deepEqual(parseRunnerResult(stdout, "private runner output", 1), { ok: false, reason: "worker_exited" });
+  }
+});
+
+test("JM worker success requires complete positive totals and drops private extra fields", () => {
+  const result = { ok: true, all_success: true, files: 1, bytes: 10, title: "private-title" };
+  const parse = value => parseRunnerResult("QQFRIEND_JM_RESULT " + JSON.stringify(value), "", 0);
+  assert.equal(parse(result).title, undefined);
+  assert.equal(parse({ ...result, bytes: 0 }).reason, "incomplete_result");
+  assert.equal(parse({ ...result, all_success: false }).reason, "incomplete_result");
 });
 
 test("cancelled JM workers retain the last measured timing snapshot without forwarding private progress", async () => {

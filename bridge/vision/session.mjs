@@ -6,6 +6,7 @@ import { describeVisionImages } from "../vision.mjs";
 import { buildImageContextMessage, buildImageInterpretationRules } from "../system-prompts/image-context.mjs";
 import { traceStage } from "../diagnostics/message-trace.mjs";
 import { imagePolicyFromOptions, IMAGE_POLICY_EVIDENCE } from "../system-prompts/image-policy.mjs";
+import { registerContextGroups } from "../context/pruning.mjs";
 
 export function createVisionSession(urls, options = {}) {
   const scope = Object.freeze({ ...(currentChatScope() || options.scope || {}) });
@@ -13,20 +14,54 @@ export function createVisionSession(urls, options = {}) {
   const privacy = getMemoryPrivacyGeneration();
   const userRevision = getUserMemoryGeneration(scope.userId);
   const signal = AbortSignal.any([chatRunSignal(), options.signal, AbortSignal.timeout(90000)].filter(Boolean));
+  const requiredBindings = new Set(options.requiredImageBindings);
+  let input;
+  let activeBindings = new Map();
   let prepared;
   let description;
-  function check() {
+  function checkBase() {
     assertChatRunCurrent();
     signal.throwIfAborted();
     if (privacy !== getMemoryPrivacyGeneration() || userRevision !== getUserMemoryGeneration(scope.userId)) throw new Error("privacy_changed");
     if (!toolScopeAllowed(scope, options.cfg)) throw new Error("permission_changed");
   }
+  function check() {
+    checkBase();
+    for (const [binding, evidence] of activeBindings) {
+      if (!binding.validate()) throw historicalImageUnavailable(evidence);
+    }
+  }
   async function load() {
     check();
-    prepared ??= (options.prepareImages || prepareVisionImages)(urls, { signal, assertCurrent: check });
+    if (!prepared) {
+      input = selectInputs();
+      prepared = (options.prepareImages || prepareVisionImages)(input.urls, { signal, assertCurrent: check });
+    }
     const result = await prepared;
     check();
+    const used = new Set(result.images.map(image => input.bindings[image.index - 1]));
+    activeBindings = new Map([...activeBindings].filter(([binding]) => used.has(binding) || requiredBindings.has(binding)));
     return result;
+  }
+
+  function selectInputs() {
+    const selected = { urls: [], sources: [], bindings: [] };
+    const candidates = Array.isArray(urls) ? urls : [];
+    const sources = Array.isArray(options.sources) ? options.sources : [];
+    for (const [index, url] of candidates.entries()) {
+      const binding = options.imageBindings?.[index];
+      if (binding && !activeBindings.has(binding)) activeBindings.set(binding, binding.validate());
+      if (binding && !activeBindings.get(binding)) {
+        if (requiredBindings.has(binding)) throw historicalImageUnavailable();
+        continue;
+      }
+      selected.urls.push(url);
+      selected.sources.push(sources[index]);
+      selected.bindings.push(binding);
+    }
+    activeBindings = new Map([...activeBindings].filter(([, evidence]) => evidence));
+    if (selected.urls.length === candidates.length) selected.urls = candidates;
+    return selected;
   }
   async function message(provider, config) {
     const data = await load();
@@ -34,9 +69,9 @@ export function createVisionSession(urls, options = {}) {
       imageFirstFrames: data.images.filter(image => image.animated).length };
     if (data.images.length && provider.enabled !== false && provider.capabilities.includes("vision")) {
       traceStage("vision", { status: "ok", reason: "image_direct", ...meta });
-      const text = imageEvidenceLabel(data, options.sources, imagePolicy);
-      return { message: { role: "user", content: [{ type: "text", text }, ...data.images.map(image => image.content)] },
-        trustedImageUrls: data.images.map(image => image.content.image_url.url) };
+      const text = imageEvidenceLabel(data, input.sources, imagePolicy);
+      return bindEvidence({ role: "user", content: [{ type: "text", text }, ...data.images.map(image => image.content)] },
+        data.images.map(image => image.content.image_url.url));
     }
     if (data.images.length) description ??= (options.describe || describeVisionImages)(data, { config, scope, signal, assertCurrent: check,
       usageContext: { ...options.usageContext, userId: scope.userId } });
@@ -44,10 +79,27 @@ export function createVisionSession(urls, options = {}) {
     check();
     traceStage("vision", { status: result.text ? "ok" : "failed", reason: descriptionReason(result), ...meta });
     const fallback = buildImageContextMessage(result.text, { imageCount: data.requested, imagePolicy });
-    fallback.content += "\n" + imageEvidenceLabel(data, options.sources, imagePolicy);
-    return { message: fallback, trustedImageUrls: [] };
+    fallback.content += "\n" + imageEvidenceLabel(data, input.sources, imagePolicy);
+    return bindEvidence(fallback, []);
   }
-  return { message };
+
+  function bindEvidence(frame, trustedImageUrls) {
+    if (activeBindings.size) {
+      const evidence = [...activeBindings.values()];
+      registerContextGroups([frame], [{ group: "historical-vision", priority: 100, index: 0,
+        sources: [], memorySources: evidence.flatMap(item => item.memorySources),
+        memoryExpiresAt: evidence.reduce((expiry, item) => item.memoryExpiresAt === null ? expiry :
+          Math.min(expiry ?? Infinity, item.memoryExpiresAt), null) }]);
+    }
+    return { message: frame, trustedImageUrls };
+  }
+
+  return { message, assertEvidenceCurrent: () => { if (activeBindings.size) check(); } };
+}
+
+function historicalImageUnavailable(evidence) {
+  const reason = Number.isFinite(evidence?.memoryExpiresAt) && Date.now() >= evidence.memoryExpiresAt ? "memory_expired" : "memory_unavailable";
+  return Object.assign(new Error(reason), { code: "CHAT_MEMORY_CHANGED" });
 }
 
 function descriptionReason(result) {

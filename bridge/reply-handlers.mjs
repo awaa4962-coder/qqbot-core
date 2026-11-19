@@ -8,7 +8,6 @@ import { selectRecentImageMessage, selectionSource } from "./context/conversatio
 import { traceStage } from "./diagnostics/message-trace.mjs";
 import { getMemoryPrivacyGeneration } from "./memory-profile/generation.mjs";
 import { validateQuotedReply } from "./context/quoted-reply.mjs";
-import { summaryPrivacy, isForgottenSummaryRecord } from "./group-summary/state.mjs";
 import { memoryCorrectionSnapshot } from "./memory-profile/notes.mjs";
 import {
   getImages,
@@ -20,6 +19,7 @@ import {
   sendMsgWithImage,
 } from "./napcat.mjs";
 import { classifyOutboundDelivery } from "./cognition/outcome.mjs";
+import { chatRunStopReason, checkChatSendDestination } from "./cognition/chat-run.mjs";
 import {
   extractLinkPreview,
   inspectAutoPreview,
@@ -101,14 +101,13 @@ function rejectQuote(ctx, reason) {
 }
 
 export function pullRecentImages(groupId, options = {}) {
-  let recentMsgs;
+  let message;
   try {
-    const privacy = summaryPrivacy();
-    const corrections = memoryCorrectionSnapshot({ userId: options.uid, groupId });
-    recentMsgs = (groupChats[String(groupId)] || []).filter(item => !isForgottenSummaryRecord(item, privacy) &&
-      !corrections.excludedMessageIds.has(String(item.messageId)) && !item.memoryCommand && !item.retracted && !item.deleted && !item.recalled);
+    const { excludedMessageIds } = memoryCorrectionSnapshot({ userId: options.uid, groupId });
+    // The selector needs the erased ancestors to rule out their surviving descendants.
+    message = selectRecentImageMessage(groupChats[String(groupId)] || [], { ...options, groupId, selfUin: CFG.selfUin,
+      excludeMessageIds: excludedMessageIds });
   } catch { return []; }
-  const message = selectRecentImageMessage(recentMsgs, options);
   const urls = [...new Set(message?.imageUrls || [])].slice(0, 3);
   if (urls.length) traceStage("context", { status: "ok", images: urls.length, sources: [selectionSource(message, "image", "image_reference")] });
   if (urls.length) log("pulled", urls.length, "recent images into context");
@@ -129,11 +128,13 @@ export async function handleLinkPreview(gid, rawText, isLongGroup, options = {})
     return previewResult(false, false, decision.hadLink, decision.reason);
   }
 
+  if (previewStopped(gid)) return previewResult(false, false, true, "send_cancelled");
   const previewer = options.previewer || extractLinkPreview;
   let preview = null;
   try {
     preview = await previewer(decision.candidate.url);
   } catch {}
+  if (previewStopped(gid)) return previewResult(false, false, true, "send_cancelled");
   if (!preview) {
     recordLinkPreviewSkip("unavailable");
     return previewResult(false, false, true, "unavailable");
@@ -143,7 +144,7 @@ export async function handleLinkPreview(gid, rawText, isLongGroup, options = {})
     return previewResult(false, Boolean(preview.bvid), true, "low_value");
   }
 
-  const delivery = await attemptPreviewSend(() => sendPreview(gid, preview, options));
+  const delivery = await sendPreview(gid, preview, options);
   const sent = delivery === "sent";
   if (["sent", "partial", "unknown"].includes(delivery)) {
     markAutoPreviewSent(gid, decision.candidate, options);
@@ -166,17 +167,24 @@ export async function executeExplicitLinkPreviewCommand(ctx, options = {}) {
   });
   if (!parsed) return { handled: false, delivery: "not_attempted", reason: "not_command" };
 
+  const gid = ctx.group_id;
+  if (previewStopped(gid)) return explicitPreviewResult("cancelled");
   const previewer = options.previewer || extractLinkPreview;
   const sender = options.sender || sendMsg;
   let preview = null;
   try { preview = await previewer(parsed.url); } catch {}
   if (!preview) {
-    const delivery = await attemptPreviewSend(() => sender(ctx.group_id, "链接预览失败，网页不可访问或被安全规则拦截。", options.replyToId));
-    return { handled: true, previewSent: false, delivery, reason: "preview_unavailable" };
+    const delivery = await attemptPreviewSend(gid, () => sender(gid, "链接预览失败，网页不可访问或被安全规则拦截。", options.replyToId));
+    return explicitPreviewResult(delivery, true);
   }
 
-  const delivery = await attemptPreviewSend(() => sendPreview(ctx.group_id, preview, options));
-  return { handled: true, previewSent: delivery === "sent", delivery, reason: delivery === "sent" ? "sent" : `send_${delivery}` };
+  return explicitPreviewResult(await sendPreview(gid, preview, options));
+}
+
+function explicitPreviewResult(delivery, unavailable = false) {
+  const previewSent = delivery === "sent" && !unavailable;
+  const reason = previewSent ? "sent" : unavailable && delivery !== "cancelled" ? "preview_unavailable" : `send_${delivery}`;
+  return { handled: true, previewSent, delivery, reason };
 }
 
 export function parseExplicitLinkPreviewCommand(text, options = {}) {
@@ -238,34 +246,43 @@ function formatMiniAppReply(detail, url) {
 }
 
 async function sendMiniAppPreview(detail, gid, options = {}) {
+  if (previewStopped(gid)) return "cancelled";
   const url = extractMiniAppUrl(detail);
   if (url && (url.includes("bilibili.com") || url.includes("b23.tv"))) {
     let bili = null;
     try { bili = await (options.previewer || extractLinkPreview)(url); } catch {}
     if (bili) {
-      const delivery = await attemptPreviewSend(() => sendPreview(gid, bili, options));
+      const delivery = await sendPreview(gid, bili, options);
       if (delivery === "sent") log("miniApp bili preview sent");
       return delivery;
     }
   }
 
-  const delivery = await attemptPreviewSend(() => (options.sender || sendMsg)(gid, formatMiniAppReply(detail, url)));
+  const delivery = await attemptPreviewSend(gid, () => (options.sender || sendMsg)(gid, formatMiniAppReply(detail, url)));
   if (delivery === "sent") log("miniApp preview sent");
   return delivery;
 }
 
-async function attemptPreviewSend(send) {
+function previewStopped(groupId) {
+  return chatRunStopReason() || checkChatSendDestination("group", groupId).reason;
+}
+
+async function attemptPreviewSend(groupId, send) {
+  if (previewStopped(groupId)) return "cancelled";
   try { return classifyOutboundDelivery(await send()); }
   catch { return "unknown"; }
 }
 
 async function sendPreview(groupId, preview, options = {}) {
+  if (previewStopped(groupId)) return "cancelled";
   const sender = options.sender || sendMsg;
   const imageSender = options.imageSender || sendMsgWithImage;
   const imageResolver = options.imageResolver || resolvePreviewImage;
-  const image = preview.image ? await imageResolver(preview.image) : null;
-  if (image) return imageSender(groupId, preview.text, image);
-  return sender(groupId, preview.text, options.replyToId);
+  let image;
+  try { image = preview.image ? await imageResolver(preview.image) : null; }
+  catch { return previewStopped(groupId) ? "cancelled" : "failed"; }
+  return attemptPreviewSend(groupId, () => image ? imageSender(groupId, preview.text, image)
+    : sender(groupId, preview.text, options.replyToId));
 }
 
 function previewResult(sent, isBili, hadLink, reason) {
