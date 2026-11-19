@@ -6,7 +6,7 @@
 
 ## v2.1.3 - 2026-11-19 - Linux 运行可靠性
 
-候选源码记录，服务器实际版本以部署核验为准。
+已实际部署并发布 [v2.1.3](https://github.com/awaa4962-coder/qqbot-core/releases/tag/v2.1.3)。冻结源码 `651df45`、已扫描源码包 `e84f5b3f`、实际运行镜像 `9769f6f7` 一致。[同源 CI](https://github.com/awaa4962-coder/qqbot-core/actions/runs/44498446243) 与服务器隔离验收通过：3,576 通过、44 可选跳过、0 失败，lint 零告警，13 个回放及冒烟通过，354 个运行文件一致。切换前的受限备份通过 336 个 JSON 的隔离恢复检查；切换后 Bridge 就绪、NapCat 未重启，JM 和日报维护均已解除。未做真实 JM 下载、测试发 QQ 或付费模型调用。
 
 **Linux 可靠性**
 
