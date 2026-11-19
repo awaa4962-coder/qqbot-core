@@ -21,7 +21,7 @@ export function buildModelPrompt(options = {}) {
     system,
     dynamicMessage: { role: "user", content },
     metadata: {
-      promptVersion: (passive ? "interjection-v9" :
+      promptVersion: (passive ? "interjection-v10" :
         policyOptions.imageTask === true && policyOptions.imagePolicy === IMAGE_POLICY_EVIDENCE ? "chat-image-v5" : "chat-v16") +
         (policyOptions.imagePolicy === IMAGE_POLICY_EVIDENCE
           ? policyOptions.imageTask === true && !passive ? "-image-evidence-v7" : "-image-evidence-v5" : ""),

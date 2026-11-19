@@ -55,8 +55,7 @@ export function parseMiMoResponse(rawResponse, options = {}) {
   return parseChatOutcome(rawResponse, options).text;
 }
 
-function resolveMaxTokens(groupId, isAtMe) {
-  if (!isAtMe) return 192;
+function resolveChatMaxTokens(groupId) {
   return LONG_GROUPS.includes(String(groupId)) ? 1024 : 1536;
 }
 
@@ -91,22 +90,20 @@ export async function tryMiMo(userMsg, userName, history, imageUrls, groupId, is
 
 export async function tryMiMoResult(userMsg, userName, history, imageUrls, groupId, isAtMe, mood, options = {}) {
   const shouldAnswer = isAtMe === undefined ? true : isAtMe;
-  const maxTok = resolveMaxTokens(groupId, shouldAnswer);
+  const replyMode = options.replyMode || 'chat';
   const mimoOptions = {
     allowTools: options.allowTools !== undefined ? options.allowTools : shouldAnswer,
-    replyMode: options.replyMode || 'chat',
+    replyMode,
     currentUserId: options.currentUserId,
     currentInput: options.currentInput,
     toolSession: options.toolSession,
     visionSession: options.visionSession,
     imagePolicy: imagePolicyFromOptions({ ...options, groupId }),
     imageTask: options.imageTask === true,
-    thinking: options.replyMode === 'interjection' ? { type: 'disabled' } : undefined,
-    personaCue: options.personaCue || selectPersonaCue(userMsg, {
-      replyMode: options.replyMode || 'chat',
-    }),
+    thinking: replyMode === 'interjection' ? { type: 'disabled' } : undefined,
+    personaCue: options.personaCue || selectPersonaCue(userMsg, { replyMode }),
     providerId: options.providerId,
-    task: options.task || (options.replyMode === "interjection" ? "interjection" : "group_chat"),
+    task: options.task || (replyMode === "interjection" ? "interjection" : "group_chat"),
     position: options.position || "primary",
     reasoningSignals: { hasImages: Boolean(imageUrls?.length) },
     usageContext: buildMiMoUsageContext(options),
@@ -122,7 +119,9 @@ export async function tryMiMoResult(userMsg, userName, history, imageUrls, group
     const msgs = await buildMiMoMessages(history, imageUrls, userMsg, userName, mimoOptions);
     return await runScopedChat({
       messages: composeModelMessages(prompt, msgs),
-      maxTokens: maxTok, temperature: 0.7, timeoutMs: 60000,
+      // Interjections use the shared light budget; the prompt controls visible length.
+      ...(replyMode === 'interjection' ? {} : { maxTokens: resolveChatMaxTokens(groupId) }),
+      temperature: 0.7, timeoutMs: 60000,
       thinking: mimoOptions.thinking, reasoningSignals: mimoOptions.reasoningSignals,
       usageContext: mimoOptions.usageContext, selfContext: mimoOptions.selfContext,
       promptMetadata: prompt.metadata,

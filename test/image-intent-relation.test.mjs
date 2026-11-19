@@ -263,21 +263,21 @@ test("closed and nonselected image scopes retain original STABLE system bytes", 
   }
 });
 
-test("private and passive image scopes retain their original system hashes", async t => {
+test("private and passive image scopes retain separate system hashes", async t => {
   const input = request("私聊：解释单据文字。", "private");
   input.groupId = null;
   Object.assign(input.options, { imageTask: true, imagePolicy: IMAGE_POLICY_EVIDENCE, visionContext: objective });
   const { chat } = await execute(t, input, { liveScope: { surface: "private", groupId: null, userId: "62100" } });
   assert.equal(hash(chat[0].messages[0].content), "29984aa6cae5573c542f5adcba55b8e6b3960d50d552b494d26ae8d76b20355e");
-  for (const [rollout, imagePolicy, originalHash] of [
-    ["52100", IMAGE_POLICY_EVIDENCE, "51e425638387529a96b18c283c938a0186aba89466b16009a0cd245d0cf761d6"],
-    ["", IMAGE_POLICY_STABLE, "ec45bc77c9c1eadf22b0963432257c5542a668569c8c8334158e668057fbcc25"],
+  for (const [rollout, imagePolicy, expectedHash] of [
+    ["52100", IMAGE_POLICY_EVIDENCE, "1e159cf693a21b0b06a4f7e71ba6243c470d8cca5dafb111f0dd88d43015031c"],
+    ["", IMAGE_POLICY_STABLE, "e09d908f8560b8fdb5847465fb81d88a0d46b96a370cba0e0eae338258b81a1e"],
   ]) {
     process.env.QQBOT_IMAGE_CONTEXT_ROLLOUT = rollout;
     const passive = request("旁观消息。", "passive");
     Object.assign(passive.options, { replyMode: "interjection", imageTask: true, imagePolicy: IMAGE_POLICY_EVIDENCE });
     const wire = await execute(t, passive, { fallback: false });
-    assert.equal(hash(wire.chat[0].messages[0].content), originalHash);
+    assert.equal(hash(wire.chat[0].messages[0].content), expectedHash);
     assert.equal(wire.chat[0].messages[0].content, buildModelPrompt({ imagePolicy, replyMode: "interjection" }).system);
   }
 });

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { tryMiMo } from "../bridge/model-mimo.mjs";
 import { tryDeepSeek } from "../bridge/model-ds.mjs";
 import { CFG, LONG_GROUPS } from "../bridge/config.mjs";
+import { TOOL_LIMIT_PROFILES } from "../bridge/chat-tools/limits.mjs";
 
 const LONG_GROUP_ID = Number(LONG_GROUPS[0] || 2000000005);
 const NORMAL_GROUP_ID = 909090909;
@@ -62,10 +63,11 @@ describe("MiMo output sizing", () => {
       tryMiMo("hello", "user", [], [], 123, false, "", { replyMode: "interjection" })
     );
     assert.equal(body.model, "mimo-v2.6-flash");
-    assert.equal(body.max_completion_tokens, 192);
+    assert.equal(body.max_completion_tokens, TOOL_LIMIT_PROFILES.light.maxTokens);
     assert.deepEqual(body.thinking, { type: "disabled" });
     assert.equal(Object.prototype.hasOwnProperty.call(body, "tools"), false);
     assert.match(body.messages[0].content, /明确回应点/);
+    assert.match(body.messages[0].content, /一句自然短句，优先8到35个汉字/);
     assert.match(body.messages.at(-1).content, /插话判断/);
     assert.equal(Object.prototype.hasOwnProperty.call(body, "max_tokens"), false);
   });

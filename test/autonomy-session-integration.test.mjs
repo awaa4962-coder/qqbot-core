@@ -25,7 +25,7 @@ const { buildReplyContextPacket } = await import("../bridge/context/assemble.mjs
 const { buildPreferenceContextBlock, buildMinimalPreferenceContextBlock } = await import("../bridge/user-preferences.mjs");
 const { users } = await import("../bridge/storage.mjs");
 const { invalidateMemoryPrivacyGeneration } = await import("../bridge/memory-profile/generation.mjs");
-const { saveApiProvider } = await import("../bridge/api-providers/store.mjs");
+const { saveApiProvider, saveApiRoutes } = await import("../bridge/api-providers/store.mjs");
 const { executeChatTask, executePrivateChatTask } = await import("../bridge/model-router.mjs");
 const { withChatRun } = await import("../bridge/cognition/chat-run.mjs");
 
@@ -588,4 +588,38 @@ test("light primary tool loop keeps a fallback model round and two transport att
   const fallback = await runScopedChat(request, { providerId: "audit-light-fallback", position: "fallback", task: "interjection", userMessage: question, toolSession: session });
   assert.equal(fallback.kind, "reply"); assert.equal(attempts, 6);
   assert.equal(session.snapshot().modelRounds, 3); assert.equal(session.snapshot().transportAttempts, 6);
+});
+
+test("deep interjection falls back on reasoning-only output within the shared light budget", async t => {
+  const rootOptions = { root: process.env.QQBOT_CONFIG_ROOT };
+  const providers = [
+    { id: "audit-deep-interjection", endpoint: "https://api.deepseek.com/chat/completions", model: "deepseek-v4-flash" },
+    { id: "audit-mimo-interjection", endpoint: "https://example.com/audit-mimo-interjection", model: "mimo-v2.6-pro" },
+  ];
+  for (const provider of providers) saveApiProvider({ ...provider, protocol: "openai-chat", presetId: "custom-openai-chat",
+    auth: "none", capabilities: ["text", "reasoning"], enabled: true }, rootOptions);
+  saveApiRoutes({ interjection: { primary: providers[0].id, fallback: providers[1].id, reasoning: "deep" } }, rootOptions);
+
+  const session = fixture().create({ task: "interjection", mentioned: false });
+  const calls = [];
+  const visibleReply = "是视觉错觉，月亮本身没变大。";
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    calls.push({ url: String(url), body: JSON.parse(options.body) });
+    const message = calls.length === 1 ? { content: null, reasoning_content: "private synthetic reasoning" }
+      : { content: JSON.stringify({ reply: visibleReply }), reasoning_content: "private fallback reasoning" };
+    return new globalThis.Response(JSON.stringify({ choices: [{ message }] }), { headers: { "content-type": "application/json" } });
+  });
+
+  const result = await executeChatTask({ groupId: scope.groupId, userName: "test user", userMsg: question, isAtMe: false,
+    options: { replyMode: "interjection", currentUserId: scope.userId, toolSession: session } });
+  assert.equal(result.kind, "reply");
+  assert.equal(result.position, "fallback");
+  assert.equal(result.text, visibleReply);
+  assert.deepEqual(calls.map(item => item.url), providers.map(item => item.endpoint));
+  for (const { body } of calls) {
+    assert.equal(body.max_completion_tokens ?? body.max_tokens, session.limits.maxTokens);
+    assert.deepEqual(body.thinking, { type: "enabled" });
+    assert.doesNotMatch(JSON.stringify(body.messages), /private synthetic reasoning/);
+  }
+  assert.equal(session.snapshot().modelRounds, 2);
 });

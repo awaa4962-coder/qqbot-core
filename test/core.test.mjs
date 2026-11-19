@@ -1,6 +1,7 @@
 // test/core.test.mjs — 纯函数单元测试
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { TOOL_LIMIT_PROFILES } from "../bridge/chat-tools/limits.mjs";
 
 // ── context.mjs ──
 import {
@@ -1051,7 +1052,7 @@ describe("tryMiMo tool_call defensive handling", () => {
       };
     }, async () => tryMiMo("我有点红温了", "小黑", [], [], 2000000001, false, "", { replyMode: "interjection", currentUserId: "123" }));
     assert.strictEqual(result, "先别急喵，慢慢说。");
-    assert.strictEqual(body.max_completion_tokens, 192);
+    assert.strictEqual(body.max_completion_tokens, TOOL_LIMIT_PROFILES.light.maxTokens);
     assert.deepEqual(body.thinking, { type: "disabled" });
     assert.strictEqual(Object.prototype.hasOwnProperty.call(body, "max_tokens"), false);
     assert.ok(!Object.prototype.hasOwnProperty.call(body, "tools"));

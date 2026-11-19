@@ -325,7 +325,7 @@ test("closed and nonselected real gateways ignore caller policy and task escalat
   }
 });
 
-test("private and passive gateway pictures retain their separate original system profiles", async t => {
+test("private and passive gateway pictures retain separate system profiles", async t => {
   const privateInput = request("私聊：解释这个单据上的文字。", "private");
   privateInput.groupId = null;
   Object.assign(privateInput.options, { imageTask: true, imagePolicy: IMAGE_POLICY_EVIDENCE, visionContext: "合成单据候选描述。" });
@@ -333,17 +333,17 @@ test("private and passive gateway pictures retain their separate original system
   assert.equal(sha256(privateWire.bodies[0].messages[0].content), "29984aa6cae5573c542f5adcba55b8e6b3960d50d552b494d26ae8d76b20355e");
   assertCurrentQuestion(privateWire.bodies[0], privateInput);
 
-  // Reviewed 2.1.0 interjection bytes, independent of focused image rules.
-  for (const [rollout, imagePolicy, originalHash] of [
-    ["52100", IMAGE_POLICY_EVIDENCE, "51e425638387529a96b18c283c938a0186aba89466b16009a0cd245d0cf761d6"],
-    ["", IMAGE_POLICY_STABLE, "ec45bc77c9c1eadf22b0963432257c5542a668569c8c8334158e668057fbcc25"],
+  // Interjection v10 stays independent of focused image rules.
+  for (const [rollout, imagePolicy, expectedHash] of [
+    ["52100", IMAGE_POLICY_EVIDENCE, "1e159cf693a21b0b06a4f7e71ba6243c470d8cca5dafb111f0dd88d43015031c"],
+    ["", IMAGE_POLICY_STABLE, "e09d908f8560b8fdb5847465fb81d88a0d46b96a370cba0e0eae338258b81a1e"],
   ]) {
     process.env.QQBOT_IMAGE_CONTEXT_ROLLOUT = rollout;
     const passiveInput = request("这是一条旁观消息。", "passive");
     Object.assign(passiveInput.options, { imageTask: true, imagePolicy: "unknown-policy", replyMode: "interjection" });
     const passiveWire = await execute(t, passiveInput);
     const system = passiveWire.bodies[0].messages[0].content;
-    assert.equal(sha256(system), originalHash);
+    assert.equal(sha256(system), expectedHash);
     assert.equal(system, buildModelPrompt({ imagePolicy, replyMode: "interjection" }).system);
     assert.ok(!system.includes(lines[0]));
     assert.ok(!system.includes(lines[5]));

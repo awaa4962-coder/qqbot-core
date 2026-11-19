@@ -13,7 +13,7 @@ test("all varying expression settings stay outside stable task prefixes", () => 
     const plain = buildModelPrompt({ replyMode, mood: "正常", personaCue: "none" });
     const playful = buildModelPrompt({ replyMode, mood: "活跃", personaCue: "hiss", groupId: 123 });
     assert.equal(plain.system, playful.system);
-    assert.equal(plain.metadata.promptVersion, replyMode === "interjection" ? "interjection-v9" : "chat-v16");
+    assert.equal(plain.metadata.promptVersion, replyMode === "interjection" ? "interjection-v10" : "chat-v16");
     assert.equal(plain.metadata.promptFingerprint, playful.metadata.promptFingerprint);
     assert.notEqual(plain.dynamicMessage.content, playful.dynamicMessage.content);
     assert.match(plain.system, /建议.*(?:不代表|不是完成)/);
