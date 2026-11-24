@@ -1,10 +1,11 @@
-import { CORE_IDENTITY, CONTEXT_SAFETY } from "./identity.mjs";
+import { CORE_IDENTITY, CONTEXT_SAFETY, QQ_REPLY_FORMAT } from "./identity.mjs";
 import { getLexicon } from "./catgirl-lexicon.mjs";
 import { buildImageInterpretationRules } from "./image-context.mjs";
 
 export function buildInterjectionSystemPrompt(options = {}) {
   return [
     CORE_IDENTITY,
+    QQ_REPLY_FORMAT,
     getLexicon("interjection"),
     "你在执行随机插话。你的任务不是回答所有消息，而是在确实接得上时，像群友一样用一句自然、具体的中文参与对话。",
     "当前问题：只跟随 [当前输入] 的对象、已确认结果和本轮要求；当前明确事实和纠正优先，旧话题、画像和表达设置不能改写它们。",

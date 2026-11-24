@@ -185,7 +185,7 @@ test("truthy nonbooleans cannot select question scope in either real prompt cons
   for (const imageTask of [undefined, false, null, 0, 1, "", "true", "false", [], {}, new Boolean(true)]) {
     const options = { ...evidence, imageTask };
     assert.equal(buildImageInterpretationRules(options), plainRules);
-    assert.equal(sha256(buildModelPrompt(options).system), "11697c52bd67660d1556ede8295cbaab96d54b1023f631eab47d0f656341428a");
+    assert.equal(sha256(buildModelPrompt(options).system), "3d4dac3a4d2edf1527d0912d27af01eb73d24587166fdc47fcb9ae9f61a89bb1");
   }
   assert.equal(buildModelPrompt({ ...evidence, imageTask: true }).system, focusedSystem);
 });
@@ -197,7 +197,7 @@ test("unknown policies follow the existing resolver and cannot expand private or
       for (const target of [{ surface: "private" }, { surface: "group", groupId: "52101" }]) {
         const options = { ...target, imagePolicy, imageTask: true };
         assert.equal(imagePolicyFromOptions(options), IMAGE_POLICY_STABLE);
-        assert.equal(sha256(buildModelPrompt(options).system), "29984aa6cae5573c542f5adcba55b8e6b3960d50d552b494d26ae8d76b20355e");
+        assert.equal(sha256(buildModelPrompt(options).system), "00fc63f500cc149b391950d16f92e0821df718a67b2dadf19291262df3ed1882");
       }
       const selected = { ...scope, imagePolicy, imageTask: true };
       assert.equal(imagePolicyFromOptions(selected), rollout ? IMAGE_POLICY_EVIDENCE : IMAGE_POLICY_STABLE);
@@ -205,7 +205,7 @@ test("unknown policies follow the existing resolver and cannot expand private or
   }
   process.env.QQBOT_IMAGE_CONTEXT_ROLLOUT = "52100";
   assert.equal(sha256(buildModelPrompt({ ...scope, ...stable, imageTask: true }).system),
-    "29984aa6cae5573c542f5adcba55b8e6b3960d50d552b494d26ae8d76b20355e");
+    "00fc63f500cc149b391950d16f92e0821df718a67b2dadf19291262df3ed1882");
 });
 
 test("question scope retains tool, memory and untrusted-source safety without invented prompt examples", () => {
@@ -304,7 +304,7 @@ test("no-image caller flags and textual image markers cannot manufacture the foc
     const { bodies, downloads } = await execute(t, input, { fallback: true });
     assert.deepEqual(downloads, []);
     for (const body of bodies) {
-      assert.equal(sha256(body.messages[0].content), "11697c52bd67660d1556ede8295cbaab96d54b1023f631eab47d0f656341428a");
+      assert.equal(sha256(body.messages[0].content), "3d4dac3a4d2edf1527d0912d27af01eb73d24587166fdc47fcb9ae9f61a89bb1");
       assertCurrentQuestion(body, input);
       assert.equal(typeof body.messages.at(-1).content, "string");
     }
@@ -319,7 +319,7 @@ test("closed and nonselected real gateways ignore caller policy and task escalat
     Object.assign(input.options, { imageTask: true, imagePolicy: "unknown-policy" });
     const { bodies } = await execute(t, input, { fallback: true }, { ...scope, groupId: String(groupId) });
     for (const body of bodies) {
-      assert.equal(sha256(body.messages[0].content), "29984aa6cae5573c542f5adcba55b8e6b3960d50d552b494d26ae8d76b20355e");
+      assert.equal(sha256(body.messages[0].content), "00fc63f500cc149b391950d16f92e0821df718a67b2dadf19291262df3ed1882");
       assertCurrentQuestion(body, input);
     }
   }
@@ -330,13 +330,13 @@ test("private and passive gateway pictures retain separate system profiles", asy
   privateInput.groupId = null;
   Object.assign(privateInput.options, { imageTask: true, imagePolicy: IMAGE_POLICY_EVIDENCE, visionContext: "合成单据候选描述。" });
   const privateWire = await execute(t, privateInput, {}, { surface: "private", groupId: null, userId: "62100" });
-  assert.equal(sha256(privateWire.bodies[0].messages[0].content), "29984aa6cae5573c542f5adcba55b8e6b3960d50d552b494d26ae8d76b20355e");
+  assert.equal(sha256(privateWire.bodies[0].messages[0].content), "00fc63f500cc149b391950d16f92e0821df718a67b2dadf19291262df3ed1882");
   assertCurrentQuestion(privateWire.bodies[0], privateInput);
 
-  // Interjection v10 stays independent of focused image rules.
+  // Interjection v11 stays independent of focused image rules.
   for (const [rollout, imagePolicy, expectedHash] of [
-    ["52100", IMAGE_POLICY_EVIDENCE, "1e159cf693a21b0b06a4f7e71ba6243c470d8cca5dafb111f0dd88d43015031c"],
-    ["", IMAGE_POLICY_STABLE, "e09d908f8560b8fdb5847465fb81d88a0d46b96a370cba0e0eae338258b81a1e"],
+    ["52100", IMAGE_POLICY_EVIDENCE, "9c98936f41d25e9957503cebdef0ceee8eabca91d6fbf37c02c16c8d04b169a9"],
+    ["", IMAGE_POLICY_STABLE, "0bdd4ec55bb00bf9d8cfddf59e9d537fb32a4d8176b899f6d6d13d4284ed903d"],
   ]) {
     process.env.QQBOT_IMAGE_CONTEXT_ROLLOUT = rollout;
     const passiveInput = request("这是一条旁观消息。", "passive");

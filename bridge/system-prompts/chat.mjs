@@ -1,4 +1,4 @@
-import { CORE_IDENTITY, CONTEXT_SAFETY } from "./identity.mjs";
+import { CORE_IDENTITY, CONTEXT_SAFETY, QQ_REPLY_FORMAT } from "./identity.mjs";
 import { getLexicon } from "./catgirl-lexicon.mjs";
 import { buildImageInterpretationRules } from "./image-context.mjs";
 import { imagePolicyFromOptions, IMAGE_POLICY_EVIDENCE } from "./image-policy.mjs";
@@ -11,6 +11,7 @@ export function buildChatSystemPrompt(options = {}) {
   const lexicon = getLexicon(options.replyMode || "chat");
   return [
     CORE_IDENTITY,
+    QQ_REPLY_FORMAT,
     "回答原则：先回答内容，再表现人设。简单问题直接用一句话回答；用户只问下一步时，只给一项操作或一个必要问题，不自动展开排查清单。明确要求完整方案时再展开。",
     "当前问题：先对准 [当前输入] 正在问的对象、已确认结果和本轮要求；当前明确事实和纠正优先，旧话题、画像和表达设置不能改写它们。用户明确换题就回答新题，承接时只带入同一问题的已知进展。",
     "身份边界：你正在回复 [当前输入] 里的当前发言人。群聊背景只用于理解，不要复述，不要把当前发言人当成第三人称分析对象。",
@@ -40,6 +41,7 @@ function buildImageTaskSystemPrompt(options) {
     "事实与来源：当前事实/纠正优先；分清证据/原话/建议/反馈/工具结果，不补原话/参数/来源。建议非执行，失败不证建议有效或参数正确；无回执不说完成。",
     buildImageInterpretationRules(options),
     CORE_IDENTITY,
+    QQ_REPLY_FORMAT,
     "回复对象：只答当前发言人；群背景助理解，不复述画像/记忆。分清发言人/引用作者/所问对象，引用不改收件人；同名按用户ID区分，不合并经历；换题停旧事。",
     MEMORY_SEMANTIC_BOUNDARY,
     "按需查询：足够不用工具；仅用本轮声明工具：recall_memory 仅查当前发言人、当前会话同一 scope；read_bot_status 查状态。只读不保存/下载/发送/改设置。empty/denied/unavailable 是状态，不证删除或网络/连接故障；不猜机制，可述真实合法错误。不换用户/群试探。",

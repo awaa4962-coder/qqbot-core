@@ -22,14 +22,14 @@ const replyModes = ["chat", "interjection", "technical", "summary", "admin"];
 // Reviewed 2.1.0 tool-autonomy bytes; image/failure rules and policy isolation stay fixed.
 const originalHashes = {
   [IMAGE_POLICY_STABLE]: {
-    chat: "29984aa6cae5573c542f5adcba55b8e6b3960d50d552b494d26ae8d76b20355e",
-    interjection: "204b36f0ad189b4f56fe0a60bcbafb5be76be4742be0b86f91b13edda8fb1b7b",
-    technical: "6bf04d09fd45d0de921ad549b17d5671cda749d8aa52800149a338b73cb1c0ae",
+    chat: "00fc63f500cc149b391950d16f92e0821df718a67b2dadf19291262df3ed1882",
+    interjection: "672b692de15b6b04c6e6ae8e5aa78a4663714b51baa5e99f0e7f1d6ae919e75a",
+    technical: "d18d820c1adeb39586f79af54acec6a040aa7c72adfc4e2357fb7faaea493d48",
   },
   [IMAGE_POLICY_EVIDENCE]: {
-    chat: "11697c52bd67660d1556ede8295cbaab96d54b1023f631eab47d0f656341428a",
-    interjection: "e0ecc1fac36c7d0430bd75358dc197795230fef0fcb5d8b4f0cebd1ab838ca43",
-    technical: "6605a5b25117b7adff384882adb00e39a533bfd381d0515a4e24a12264c40776",
+    chat: "3d4dac3a4d2edf1527d0912d27af01eb73d24587166fdc47fcb9ae9f61a89bb1",
+    interjection: "b7d29c4c194142363837a21ad6a6e51333e98d9f9fefeae8c516e6f935df83b6",
+    technical: "1c57cb109a5cce5326df1795c3cf19ecdc1bacf0d56780604e5e51eca731e7f4",
   },
 };
 
@@ -218,7 +218,7 @@ test("image task system text is at least twenty percent shorter than each existi
       `${replyMode}: focused ${profile.length} chars, candidate ${original.length} chars`);
   }
   const original = buildChatSystemPrompt(evidence);
-  assert.equal(original.length, 3055);
+  assert.equal(original.length, 3067);
   t.diagnostic(JSON.stringify({ metric: "system-prompt-text-only", candidateChars: original.length,
     imageTaskChars: focused.length, removedChars: original.length - focused.length,
     reductionPercent: Number(((1 - focused.length / original.length) * 100).toFixed(2)) }));

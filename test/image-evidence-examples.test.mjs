@@ -98,8 +98,8 @@ test("closed rollout, private and nonselected group scopes do not acquire questi
 test("only focused system substitutes question scope while plain bytes and every mode's shrink threshold remain", () => {
   const normal = buildChatSystemPrompt(evidence);
   const focused = buildChatSystemPrompt({ ...evidence, imageTask: true });
-  assert.equal(normal.length, 3055);
-  assert.equal(sha256(normal), "11697c52bd67660d1556ede8295cbaab96d54b1023f631eab47d0f656341428a");
+  assert.equal(normal.length, 3067);
+  assert.equal(sha256(normal), "3d4dac3a4d2edf1527d0912d27af01eb73d24587166fdc47fcb9ae9f61a89bb1");
   assert.ok(!normal.includes(taskContract));
   assert.equal(focused.split(focusedRules).length, 2);
   assert.ok(!focused.includes(plain));
@@ -112,7 +112,7 @@ test("only focused system substitutes question scope while plain bytes and every
   for (const text of [CORE_IDENTITY, CONTEXT_SAFETY, MEMORY_SEMANTIC_BOUNDARY]) {
     assert.equal(focused.split(text).length, 2);
   }
-  assert.equal(focused.length, 2298 + focusedRules.length - plain.length);
+  assert.equal(focused.length, 2310 + focusedRules.length - plain.length);
   assert.ok(focused.length <= 2360);
   for (const replyMode of ["chat", "interjection", "technical", "summary", "admin"]) {
     const profile = buildChatSystemPrompt({ ...evidence, replyMode, imageTask: true });
