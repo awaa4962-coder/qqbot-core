@@ -115,6 +115,7 @@ test("structured fixed and actual-id schemas retain the exact JSON field contrac
   assert.deepEqual(actual.topics[0].evidenceIds, ["E0390"]);
   assert.deepEqual(actual.headlineEvidenceIds, ["E0390"]);
   assert.doesNotMatch(user, /"id":"D001"|"E0001"|sourceDiscussionIds/);
+  assert.match(system, /headline、title、body 均用纯文本。正文不加粗，不套星号。/);
   assert.match(system, /不要额外填写 sourceDiscussionIds/);
   assert.match(system, /status 只能是 resolved（有明确后续反馈支持）、open（确有未完成事项）、chat（普通讨论）/);
   assert.match(system, /topic.id.*稳定标识.*不重复/);
@@ -181,7 +182,7 @@ for (const structured of [false, true]) {
     const plan = createSummaryPlan(records, options, structured ? null : buildSummaryDigest(records));
     for (const { prompt, request } of calls) {
       assert.equal(request.systemPrompt, plan.systemPrompt);
-      assert.equal(request.promptMetadata.promptVersion, structured ? "group-summary-structured-v2" : "group-summary-legacy-v2");
+      assert.equal(request.promptMetadata.promptVersion, structured ? "group-summary-structured-v3" : "group-summary-legacy-v2");
       assert.equal(request.task, "group_summary");
       assert.deepEqual(request.messages, [{ role: "user", content: prompt }]);
       assert.match(prompt, /^本次日报数据：/);

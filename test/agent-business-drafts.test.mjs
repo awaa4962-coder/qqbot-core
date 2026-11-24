@@ -451,7 +451,7 @@ test("real daily primary and fallback route through the same injected parent cal
   const before = snapshot(f.root); const result = await f.create().generate({ kind: "daily" });
   assert.equal(result.ok, true); assert.deepEqual(f.calls.map(call => call.slice(0, 2)), [["group_summary", "primary"], ["group_summary", "fallback"]]);
   assert.deepEqual(f.calls.map(call => call[3]), [{ reasoningMode: undefined }, { reasoningMode: "economy" }]);
-  assert.equal(f.calls[0][2].promptMetadata.promptVersion, "group-summary-structured-v2");
+  assert.equal(f.calls[0][2].promptMetadata.promptVersion, "group-summary-structured-v3");
   assert.deepEqual(snapshot(f.root), before);
 });
 
